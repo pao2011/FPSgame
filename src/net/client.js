@@ -33,7 +33,12 @@ export function serverUrl(custom) {
   let s = String(custom || '').trim();
   if (s) {
     if (!/^wss?:\/\//.test(s)) s = s.replace(/^http/, 'ws');
-    if (!/^wss?:\/\//.test(s)) s = 'ws://' + s;
+    if (!/^wss?:\/\//.test(s)) {
+      // IP, localhost o dirección con puerto = red local (ws://); un dominio
+      // como mi-isla.onrender.com está detrás de https (wss://).
+      const local = /^(localhost|\d{1,3}(\.\d{1,3}){3}|[^/]*:\d+)(\/|$)/.test(s);
+      s = (local ? 'ws://' : 'wss://') + s;
+    }
     if (!/\/ws\/?$/.test(s)) s = s.replace(/\/$/, '') + '/ws';
     return s;
   }
