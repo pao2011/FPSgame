@@ -4,6 +4,43 @@ import { smoothstep } from '../core/rng.js';
 
 const tmpColor = new THREE.Color();
 
+// Variación de color con ruido en el shader del terreno: rompe la
+// uniformidad de los colores por vértice (matas de hierba, tierra, vetas).
+export function addGroundDetail(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGWorld;\nvarying vec3 vGNormal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGWorld = (modelMatrix * vec4(position, 1.0)).xyz;\nvGNormal = normal;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vGWorld;
+varying vec3 vGNormal;
+float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float gNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), u.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+{
+  vec2 gp = vGWorld.xz;
+  float camD = length(cameraPosition - vGWorld);
+  float fade = 1.0 - smoothstep(120.0, 600.0, camD);
+  float big = gNoise(gp * 0.035) * 0.6 + gNoise(gp * 0.09) * 0.4;
+  float fine = gNoise(gp * 0.7) * 0.5 + gNoise(gp * 2.3) * 0.5;
+  float green = diffuseColor.g - max(diffuseColor.r, diffuseColor.b);
+  float grassy = smoothstep(0.0, 0.08, green);
+  vec3 c = diffuseColor.rgb;
+  c *= 0.86 + big * 0.28;
+  c = mix(c, c * vec3(1.12, 1.05, 0.72), grassy * smoothstep(0.55, 0.8, big) * 0.6);
+  c *= mix(1.0, 0.9 + fine * 0.2, fade);
+  float gFlat = clamp(vGNormal.y, 0.0, 1.0);
+  c = mix(c * vec3(0.92, 0.9, 0.88), c, smoothstep(0.75, 0.95, gFlat));
+  diffuseColor.rgb = c;
+}`);
+  };
+}
+
 // Terreno de isla basado en ruido con zonas aplanadas para pueblos/edificios.
 export class Terrain {
   constructor(noise) {
@@ -125,6 +162,7 @@ export class Terrain {
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    addGroundDetail(mat);
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.receiveShadow = true;
     this.mesh.name = 'terrain';

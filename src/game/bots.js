@@ -268,7 +268,7 @@ class Bot extends Character {
     const g = this.game;
     // Los compañeros del jugador le siguen en el aire
     const leader = g.teamLeader(this.team);
-    if (leader && leader !== this && leader.isPlayer && leader.mode !== 'bus') {
+    if (leader && leader !== this && !leader.isBot && leader.mode !== 'bus') {
       this.landTarget.set(leader.pos.x + (this.id % 3 - 1) * 8, 0, leader.pos.z + ((this.id >> 1) % 3 - 1) * 8);
     }
     const t = this.landTarget;
@@ -291,7 +291,7 @@ class Bot extends Character {
     }
   }
 
-  respawnAt(x, z, loadout) {
+  respawnAt(x, z, loadout, height = 140) {
     this.resetBody();
     this.weapons = loadout.weapons.map((w) => (w ? { ...w } : null));
     this.cur = 0;
@@ -302,9 +302,10 @@ class Bot extends Character {
     this.task = 'idle';
     this.path = null;
     this.goal = null;
-    this.pos.set(x, 140, z);
+    this.pos.set(x, height, z);
     this.vel.set(0, -10, 0);
     this.mode = 'freefall';
+    this.deployAlt = Math.min(this.deployAlt, height - 5);
     this.landTarget = new THREE.Vector3(x, 0, z);
     this.setHeld(this.weapon || PICKAXE);
   }
@@ -871,10 +872,15 @@ class Bot extends Character {
     const near = this.pos.distanceToSquared(g.camera.position) < 200 * 200;
     const d = new THREE.Vector3();
     let total = 0, head = false, victim = null;
+    const ends = g.net ? [] : null;
     for (let i = 0; i < pellets; i++) {
       g.combat.coneDir(dir, spread, d);
       const hit = g.raycast(eye, d, def.range, 0, this);
-      if (near && i < 4) g.effects.tracer(muzzle, hit ? hit.point : eye.clone().addScaledVector(d, def.range), 0xffe0a0, 0.02);
+      if ((near || ends) && i < 4) {
+        const end = hit ? hit.point : eye.clone().addScaledVector(d, def.range);
+        if (near) g.effects.tracer(muzzle, end, 0xffe0a0, 0.02);
+        if (ends) ends.push(end);
+      }
       if (!hit) continue;
       if (hit.kind === 'character') {
         if (hit.entity.team === this.team) continue;
@@ -895,6 +901,7 @@ class Bot extends Character {
       }
     }
     if (victim && total > 0) victim.damage(total, head ? 'headshot' : 'bullet', this);
+    if (ends) g.net.shotFx(this, def.sound, muzzle, ends);
     const dCam = this.pos.distanceTo(g.camera.position);
     const vol = clamp(1 - dCam / 260, 0, 1);
     if (vol > 0.03) g.audio.shot(def.sound, vol * vol * 0.9);
@@ -1022,6 +1029,7 @@ class Bot extends Character {
       } else if (it.kind === 'material') {
         this.mats[it.mat] = Math.min(MATERIALS[it.mat].max, this.mats[it.mat] + it.count);
       } else if (it.kind !== 'ammo') continue;
+      g.net?.claimPickup(pk, this);
       g.pickups.remove(pk);
       if (this.goalRef === pk) this.task = 'idle';
       break;

@@ -1,17 +1,25 @@
 import * as THREE from 'three';
 
-// Cúpula de cielo con degradado y sol.
+export const SKY = {
+  top: 0x2a74d8,
+  horizon: 0xcfe8ff,
+  bottom: 0x8fb8d8,
+};
+
+// Cúpula de cielo: degradado atmosférico, halo del sol y nubes altas
+// procedurales que se desplazan despacio.
 export function createSky(scene, sunDir) {
-  const geo = new THREE.SphereGeometry(2800, 32, 16);
+  const geo = new THREE.SphereGeometry(2800, 48, 24);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
     uniforms: {
-      top: { value: new THREE.Color(0x2d7fe0) },
-      horizon: { value: new THREE.Color(0xbfe3ff) },
-      bottom: { value: new THREE.Color(0x8fb8d8) },
+      top: { value: new THREE.Color(SKY.top) },
+      horizon: { value: new THREE.Color(SKY.horizon) },
+      bottom: { value: new THREE.Color(SKY.bottom) },
       sunDir: { value: sunDir.clone().normalize() },
+      time: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -22,13 +30,38 @@ export function createSky(scene, sunDir) {
         gl_Position.z = gl_Position.w; // siempre al fondo
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 top; uniform vec3 horizon; uniform vec3 bottom; uniform vec3 sunDir;
+      uniform vec3 top; uniform vec3 horizon; uniform vec3 bottom; uniform vec3 sunDir; uniform float time;
       varying vec3 vDir;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 5; i++) { v += noise(p) * a; p = p * 2.03 + 17.1; a *= 0.5; }
+        return v;
+      }
       void main() {
-        float h = vDir.y;
-        vec3 col = h > 0.0 ? mix(horizon, top, pow(h, 0.55)) : mix(horizon, bottom, pow(-h, 0.4));
-        float s = max(dot(vDir, sunDir), 0.0);
-        col += vec3(1.0, 0.92, 0.75) * (pow(s, 900.0) * 3.0 + pow(s, 12.0) * 0.25);
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 col = h > 0.0 ? mix(horizon, top, pow(h, 0.5)) : mix(horizon, bottom, pow(-h, 0.4));
+        float s = max(dot(d, sunDir), 0.0);
+        // Dispersión cálida alrededor del sol y cerca del horizonte
+        col += vec3(1.0, 0.78, 0.5) * pow(s, 8.0) * 0.28 * (1.0 - clamp(h, 0.0, 1.0) * 0.5);
+        col += vec3(1.0, 0.9, 0.7) * pow(1.0 - abs(h), 12.0) * 0.12;
+        // Nubes altas (proyectadas sobre un plano)
+        if (h > 0.02) {
+          vec2 uv = d.xz / (h + 0.12) * 1.4 + vec2(time * 0.004, time * 0.0015);
+          float c = fbm(uv);
+          float cov = smoothstep(0.52, 0.78, c) * smoothstep(0.02, 0.25, h);
+          vec3 cc = mix(vec3(0.82, 0.88, 0.98), vec3(1.0), smoothstep(0.55, 0.85, c));
+          cc += vec3(1.0, 0.85, 0.65) * pow(s, 6.0) * 0.5;
+          col = mix(col, cc, cov * 0.75);
+        }
+        // Disco solar
+        col += vec3(1.0, 0.93, 0.78) * (pow(s, 1200.0) * 6.0 + pow(s, 90.0) * 0.6);
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }`,

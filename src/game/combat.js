@@ -256,6 +256,7 @@ export class Combat {
     const spread = def.pellets ? lerp(def.spread, def.adsSpread, this.adsBlend) * (p.onGround ? 1 : 1.4) : this.currentSpread(def);
     const hits = new Map();
     const d = new THREE.Vector3();
+    const ends = [];
     for (let i = 0; i < pellets; i++) {
       this.coneDir(dir, spread, d);
       if (def.projectile) {
@@ -264,14 +265,17 @@ export class Combat {
           pos: start, vel: d.clone().multiplyScalar(def.projectile.speed), gravity: def.projectile.gravity,
           life: 3, item, def, from: muzzle.clone(), traveled: 0,
         });
+        ends.push(origin.clone().addScaledVector(d, 300));
         continue;
       }
       const hit = g.raycast(origin, d, def.range, skip, p);
       const end = hit ? hit.point : origin.clone().addScaledVector(d, def.range);
       g.effects.tracer(muzzle, end, 0xfff1b0, def.pellets ? 0.015 : 0.022);
+      ends.push(end);
       if (hit) this.collectHit(hit, def, item, hits);
     }
     this.applyHits(hits);
+    g.net?.shotFx(p, def.sound, muzzle, ends);
     this.bloom = Math.min(def.maxBloom, this.bloom + def.bloom);
     const rec = def.recoil * (1 - 0.45 * this.adsBlend);
     p.pitch += rec;

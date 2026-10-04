@@ -4,8 +4,16 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
-**Incluye:** menú principal con opciones, **6 modos de juego** (Solitario,
-Dúos, Escuadras, Duelo por equipos, Construcción cero y Práctica), **bots con
+**Novedades:** 🌐 **modo online** con cuentas, **amigos**, **grupos**,
+invitaciones, chat y emparejamiento para **1v1 Práctica, Solitario, Dúos,
+Tríos, Escuadras, Duelo por equipos y Construcción cero** (con bots de relleno
+opcionales), pantalla **Personaje** para elegir tu aspecto y un apartado
+gráfico renovado: bloom, antialiasing, cielo con nubes, agua con olas,
+reflejos y espuma en la orilla, terreno con más detalle y menús nuevos.
+
+**Incluye:** menú principal con opciones, **8 modos de juego** (Solitario,
+Dúos, Tríos, Escuadras, 1v1 Práctica, Duelo por equipos, Construcción cero y
+Práctica libre), **bots con
 IA** (navegan por el mapa, saquean, construyen, se curan, se reaniman y
 trabajan en equipo), una isla de 1,6 km con **carreteras y pueblos ordenados
 por calles** y muchos tipos de estructuras (casas, tiendas, gasolineras,
@@ -26,6 +34,7 @@ autobús de batalla, planeador y tormenta.
 5. [Problemas frecuentes y soluciones](#5-problemas-frecuentes-y-soluciones)
 6. [Opciones avanzadas](#6-opciones-avanzadas)
 7. [Estructura del proyecto](#7-estructura-del-proyecto)
+8. [Jugar online con amigos](#8-jugar-online-con-amigos)
 
 ---
 
@@ -38,7 +47,7 @@ necesitas Node.js, npm ni terminal.
    1. Entra en <https://github.com/pao2011/FPSgame>.
    2. Arriba a la izquierda, en el selector de ramas (el botón con el icono de
       rama), comprueba que está seleccionada la rama
-      **`claude/compassionate-edison-em662m`** (es la que tiene el juego).
+      **`claude/festive-babbage-xm10eq`** (es la que tiene el juego).
    3. Pulsa el botón verde **`<> Code`** → **`Download ZIP`**.
 2. **Descomprime el ZIP**
    - **Windows:** clic derecho sobre el ZIP → **Extraer todo…** → **Extraer**.
@@ -82,11 +91,11 @@ instante en el navegador).
 ### Paso 2 — Descargar el proyecto
 
 - **Con ZIP:** igual que en la sección 1 (rama
-  `claude/compassionate-edison-em662m`, *Download ZIP* y **extraer**).
+  `claude/festive-babbage-xm10eq`, *Download ZIP* y **extraer**).
 - **Con Git:**
 
   ```bash
-  git clone -b claude/compassionate-edison-em662m https://github.com/pao2011/FPSgame.git
+  git clone -b claude/festive-babbage-xm10eq https://github.com/pao2011/FPSgame.git
   ```
 
 ### Paso 3 — Abrir una terminal *dentro* de la carpeta del proyecto
@@ -105,7 +114,7 @@ Comprueba que estás en el sitio correcto: el comando `dir` (Windows) o `ls`
 (Mac/Linux) debe mostrar `package.json`, `index.html` y la carpeta `src`.
 
 > Al descomprimir un ZIP a veces queda una carpeta dentro de otra
-> (`FPSgame-claude-compassionate-edison-em662m/FPSgame-...`). Entra hasta la
+> (`FPSgame-claude-festive-babbage-xm10eq/FPSgame-...`). Entra hasta la
 > que tenga `package.json`.
 
 ### Paso 4 — Instalar las dependencias
@@ -141,7 +150,9 @@ arrancan el juego.
 
 | Comando | Para qué sirve |
 | --- | --- |
-| `npm run dev` | Modo desarrollo con recarga automática |
+| `npm run dev` | Modo desarrollo: arranca el juego **y el servidor online** |
+| `npm run dev:client` | Solo el juego (sin servidor online) |
+| `npm start` | Servidor online que además sirve el juego compilado (`dist/`) |
 | `npm run build` | Genera la versión optimizada en `dist/` |
 | `npm run preview` | Sirve la carpeta `dist/` para probarla |
 | `npm run build:standalone` | Regenera `jugar.html` (un solo archivo) |
@@ -150,8 +161,10 @@ arrancan el juego.
 
 ## 3. Cómo se juega
 
-1. **Menú principal.** A la izquierda tienes **Jugar**, **Modos de juego**,
-   **Opciones**, **Controles** y **Cómo jugar**. En *Jugar* eliges la
+1. **Menú principal.** A la izquierda tienes **Online** (ver la
+   [sección 8](#8-jugar-online-con-amigos)), **Jugar con bots**,
+   **Personaje** (colores de tu personaje), **Modos de juego**,
+   **Opciones**, **Controles** y **Cómo jugar**. En *Jugar con bots* eliges la
    dificultad de los bots (Fácil, Normal, Difícil, Experto) y el número de
    jugadores, y pulsas **¡A LA ISLA!**. *Nueva isla* genera otro mapa.
    Durante la partida, **Esc** abre la pausa (continuar, opciones o
@@ -161,10 +174,12 @@ arrancan el juego.
    | --- | --- |
    | **Solitario** | Todos contra todos; gana el último en pie |
    | **Dúos** | Equipos de 2 (tu compañero es un bot) |
+   | **Tríos** | Equipos de 3 (tú + 2 bots) |
    | **Escuadras** | Equipos de 4 (tú + 3 bots) |
+   | **1v1 Práctica** | Duelo contra un bot en una arena pequeña, con equipo completo, materiales infinitos y reaparición; gana el primero en llegar a 5 |
    | **Duelo por equipos** | 2 equipos grandes, reaparición; gana el primero en llegar a 50 eliminaciones |
    | **Construcción cero** | Solitario sin construir |
-   | **Práctica** | Sin bots, materiales infinitos y dianas |
+   | **Práctica libre** | Sin bots, materiales infinitos y dianas |
 
 2. **Autobús de batalla.** Empiezas en un autobús colgado de un globo que
    cruza la isla. Mueve el ratón para mirar y pulsa **M** para ver el mapa y la
@@ -290,11 +305,12 @@ Se añaden al final de la dirección (por ejemplo
 | Opción | Efecto |
 | --- | --- |
 | `?seed=12345` | Genera siempre la misma isla |
-| `?calidad=baja` | Sin sombras ni antialiasing y menor resolución |
+| `?calidad=baja` | Sin sombras, sin posprocesado y menor resolución |
+| `?calidad=alta` | Sombras más nítidas y mayor resolución |
 
 El resto de ajustes (modo, dificultad, jugadores, sensibilidad, campo de
-visión, volumen, invertir eje, mostrar FPS) están en el menú y se guardan en
-el navegador.
+visión, volumen, invertir eje, mostrar FPS, calidad gráfica **Alta / Normal /
+Baja**, servidor online) están en el menú y se guardan en el navegador.
 
 ---
 
@@ -316,7 +332,12 @@ src/
     buildings.js      casas y naves (con escaleras, porches, chimeneas…)
     structures.js     gasolinera, iglesia, faro, búnker, estadio, muelle…
     navgrid.js        rejilla de navegación + A* para la IA
+    water.js          agua con olas, reflejos y espuma en la orilla
     terrain.js collision.js nature.js sky.js
+  net/
+    client.js         conexión con el servidor (sesión, reconexión)
+    match.js          sincronización de una partida online
+    remote.js         otros jugadores (interpolación de su movimiento)
   game/
     game.js           bucle principal, cámara, partida y victoria
     character.js      física y modelo compartidos por jugador y bots
@@ -330,8 +351,105 @@ src/
     loot.js           objetos en el suelo, cofres y cajas de munición
     items.js          definición de armas, curas, materiales y botín
     bus.js storm.js effects.js dummies.js models.js
-  ui/                 menú principal, HUD, minimapa y mapa
+  ui/                 menú principal, online (amigos/grupo/chat), HUD, minimapa y mapa
+server/
+  index.js            servidor online (WebSocket en /ws + sirve dist/)
+  lobby.js            cuentas conectadas, amigos, grupos, invitaciones, cola
+  match.js            partidas online: reenvío de estados y arbitraje
+  db.js               cuentas y amigos (archivo server/data/db.json)
 ```
 
 Tecnologías: [Three.js](https://threejs.org) para el 3D y
 [Vite](https://vitejs.dev) para el servidor de desarrollo y el build.
+
+---
+
+## 8. Jugar online con amigos
+
+El modo online necesita el **servidor del juego** (`server/`), que guarda las
+cuentas y los amigos y conecta a los jugadores. Una persona lo arranca y el
+resto se conecta a él.
+
+### 8.1 Probarlo en tu ordenador
+
+```bash
+npm install
+npm run dev
+```
+
+`npm run dev` arranca a la vez el juego (<http://localhost:5173>) y el
+servidor online (puerto **8080**). En el juego pulsa **🌐 ONLINE**, crea una
+cuenta y listo. Para probar con dos jugadores en el mismo ordenador abre una
+segunda ventana **de incógnito** (cada ventana normal comparte la sesión).
+
+### 8.2 Con amigos en la misma red (casa, instituto…)
+
+1. Quien hace de servidor ejecuta `npm run build` y luego `npm start`.
+2. La terminal muestra la dirección de red, por ejemplo
+   `http://192.168.1.20:8080`.
+3. Los demás abren **esa dirección** en su navegador. No necesitan instalar
+   nada. (Si no conecta, permite Node.js en el cortafuegos de Windows.)
+
+### 8.3 Con amigos por internet
+
+Lo más sencillo es publicar el servidor gratis en un servicio como
+[Render](https://render.com) o [Railway](https://railway.app):
+
+1. Sube el proyecto a tu GitHub y crea un *Web Service* a partir del repositorio.
+2. Comando de instalación/compilación: `npm install && npm run build`.
+3. Comando de arranque: `npm start` (el servicio indica el puerto con la
+   variable `PORT`, que el servidor ya usa).
+4. Comparte la dirección que te den (por ejemplo `https://mi-isla.onrender.com`).
+
+También puedes abrir el puerto 8080 en tu router o usar un túnel como
+`cloudflared tunnel --url http://localhost:8080` o `ngrok http 8080`.
+
+> Si usas `jugar.html` (el archivo suelto), en **ONLINE → Cambiar servidor**
+> escribe la dirección del servidor (por ejemplo `192.168.1.20:8080` o
+> `mi-isla.onrender.com`). Todos tenéis que usar el mismo servidor.
+
+### 8.4 Cómo funciona
+
+1. **Cuenta:** en **ONLINE** elige *Crear cuenta* (nombre de 3 a 16 letras o
+   números y contraseña). La sesión se recuerda en ese navegador.
+2. **Amigos:** escribe el nombre de jugador de tu amigo y pulsa **Añadir**.
+   Le llegará una solicitud que tiene que **Aceptar**. En la lista ves quién
+   está conectado, en un grupo, buscando partida o jugando.
+3. **Grupo:** pulsa **Invitar** junto a un amigo conectado. Le aparecerá un
+   aviso para **Unirse**. Un grupo admite hasta 4 jugadores y tiene chat.
+4. **Modo:** el líder del grupo (👑) elige el modo, si se rellena con
+   **bots** y su dificultad, y pulsa **BUSCAR PARTIDA**:
+
+   | Modo online | Grupo máximo | Cómo se juega |
+   | --- | --- | --- |
+   | **1v1 Práctica** | 2 | Si estáis 2 en el grupo, jugáis **uno contra el otro** al instante. Solo: se busca un rival (o un bot si tarda) |
+   | **Solitario** | 1 | Todos contra todos |
+   | **Dúos** | 2 | Equipos de 2 |
+   | **Tríos** | 3 | Equipos de 3 |
+   | **Escuadras** | 4 | Equipos de 4 |
+   | **Duelo por equipos** | 4 | 2 equipos con reaparición, primero a 30 eliminaciones |
+   | **Construcción cero** | 1 | Solitario sin construir |
+
+   Los grupos incompletos se completan con otros jugadores que estén
+   buscando y, si no hay suficientes en unos segundos, con **bots** (si la
+   opción está activada).
+5. **En la partida:** **Intro** abre el chat (empieza el mensaje con `/e` para
+   hablar solo con tu equipo). Tus compañeros aparecen en el minimapa y con su
+   nombre encima. Reanima a los derribados manteniendo **E**. La pausa no
+   detiene la partida online.
+6. Al terminar, **VOLVER AL GRUPO** te devuelve al lobby con tus amigos.
+
+Todos los jugadores juegan en la **isla online** del servidor. Si estabas en
+otra isla, el juego te ofrece cargarla con un botón.
+
+**Datos del servidor:** las cuentas se guardan en `server/data/db.json`
+(las contraseñas, cifradas con *scrypt*). Variables opcionales: `PORT`
+(puerto, 8080 por defecto), `DATA_DIR` (carpeta de datos) e `ISLA_SEED`
+(número de la isla online). Comprueba que funciona en `/estado`.
+
+| Problema online | Solución |
+| --- | --- |
+| *El servidor no responde* | Comprueba que `npm run dev` o `npm start` está en marcha y que la dirección en **Cambiar servidor** es correcta |
+| *El puerto 8080 ya está en uso* | Ya hay un servidor abierto: ciérralo o usa otro puerto (`PORT=8081 npm start`) |
+| No veo a mi amigo conectado | Tenéis que estar en el **mismo servidor** y haber aceptado la solicitud de amistad |
+| *Has iniciado sesión desde otra ventana* | Una cuenta solo puede estar conectada en un sitio a la vez |

@@ -1,4 +1,8 @@
+import * as THREE from 'three';
 import { MODES, DIFFICULTIES } from '../game/modes.js';
+import { OnlineUI } from './online.js';
+import { makeCharacter } from '../game/models.js';
+import { SKINS, SHIRTS, PANTS, HAIR, randomOutfit } from '../game/character.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -8,7 +12,77 @@ const CONTROLS = [
   ['Shift', 'Correr'], ['C', 'Agacharse'], ['E', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
   ['R', 'Recargar'], ['1–6 / rueda', 'Inventario · (construyendo) 1–4 pieza'], ['Q', 'Modo construcción'],
   ['G', 'Soltar objeto'], ['V', 'Cámara 1ª / 3ª persona'], ['M', 'Mapa'], ['Esc', 'Pausa'],
+  ['Intro', '(online) Chat de la partida · empieza con /e para hablar solo con tu equipo'],
 ];
+
+const OUTFIT_PARTS = [
+  ['shirt', 'Camiseta', SHIRTS], ['pants', 'Pantalón', PANTS], ['hair', 'Pelo', HAIR], ['skin', 'Piel', SKINS],
+];
+
+// Vista previa 3D del personaje (pantalla Personaje).
+class CharacterPreview {
+  constructor() {
+    this.canvas = document.createElement('canvas');
+    this.canvas.className = 'preview-canvas';
+    this.canvas.width = 320;
+    this.canvas.height = 400;
+    this.renderer = null;
+    this.model = null;
+    this.t = 0;
+  }
+
+  init() {
+    if (this.renderer) return;
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.setSize(320, 400, false);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.scene = new THREE.Scene();
+    this.scene.add(new THREE.HemisphereLight(0xdfefff, 0x404860, 2.2));
+    const key = new THREE.DirectionalLight(0xfff0dd, 2.6);
+    key.position.set(2, 3, 3);
+    const rim = new THREE.DirectionalLight(0x7ab8ff, 2.2);
+    rim.position.set(-3, 2, -3);
+    this.scene.add(key, rim);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.75, 48), new THREE.MeshBasicMaterial({ color: 0x5ab4ff, transparent: true, opacity: 0.25 }));
+    disc.rotation.x = -Math.PI / 2;
+    this.scene.add(disc);
+    this.camera = new THREE.PerspectiveCamera(30, 320 / 400, 0.1, 20);
+    this.camera.position.set(0, 1.2, 4.6);
+    this.camera.lookAt(0, 0.95, 0);
+  }
+
+  set(outfit) {
+    this.init();
+    if (this.model) this.scene.remove(this.model.root);
+    this.model = makeCharacter(outfit);
+    this.model.armL.rotation.z = -0.12;
+    this.model.armR.rotation.z = 0.12;
+    this.scene.add(this.model.root);
+  }
+
+  start() {
+    if (this.running) return;
+    this.running = true;
+    const tick = () => {
+      if (!this.canvas.isConnected) {
+        this.running = false;
+        return;
+      }
+      this.t += 0.016;
+      if (this.model) {
+        this.model.root.rotation.y = Math.PI + Math.sin(this.t * 0.6) * 0.6 + 0.3;
+        this.model.body.position.y = Math.sin(this.t * 2) * 0.01;
+        this.model.armL.rotation.x = Math.sin(this.t * 2) * 0.05;
+        this.model.armR.rotation.x = -Math.sin(this.t * 2) * 0.05;
+      }
+      this.renderer.render(this.scene, this.camera);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }
+}
 
 const HOWTO = [
   ['Salta del autobús', 'Pulsa Espacio cuando se abran las puertas. Mira hacia abajo y mantén W para caer más rápido; el planeador se abre solo.'],
@@ -25,7 +99,9 @@ export class Menu {
     this.game = game;
     this.root = $('main-menu');
     this.panel = 'play';
+    this.preview = new CharacterPreview();
     this.build();
+    this.online = new OnlineUI(game, this);
   }
 
   get s() {
@@ -39,7 +115,9 @@ export class Menu {
         <div class="logo">ISLA<span>ROYALE</span></div>
         <div class="tagline">Battle royale en 3D en tu navegador</div>
         <nav class="mm-nav">
-          <button data-panel="play" class="nav-btn">▶ JUGAR</button>
+          <button data-panel="online" class="nav-btn online">🌐 ONLINE <span class="badge" id="online-badge"></span></button>
+          <button data-panel="play" class="nav-btn">▶ JUGAR CON BOTS</button>
+          <button data-panel="locker" class="nav-btn">PERSONAJE</button>
           <button data-panel="modes" class="nav-btn">MODOS DE JUEGO</button>
           <button data-panel="options" class="nav-btn">OPCIONES</button>
           <button data-panel="controls" class="nav-btn">CONTROLES</button>
@@ -49,6 +127,7 @@ export class Menu {
           <span>Isla #${g.seed}</span>
           <button id="new-island" class="small-btn">Nueva isla</button>
         </div>
+        <div class="net-pill" id="net-pill"></div>
       </div>
       <div class="mm-right"><div id="mm-panel" class="mm-panel"></div></div>`;
     this.root.querySelectorAll('.nav-btn').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.panel)));
@@ -61,6 +140,7 @@ export class Menu {
     $('pause').innerHTML = `
       <div class="menu-card pause-card">
         <div class="logo small">PAUSA</div>
+        <div class="pause-online" id="pause-online">Partida online: el juego sigue en marcha mientras estás en pausa.</div>
         <div class="pause-buttons">
           <button id="resume-btn">CONTINUAR</button>
           <button id="pause-options-btn" class="secondary">OPCIONES</button>
@@ -92,16 +172,39 @@ export class Menu {
           <button id="again-btn">JUGAR OTRA VEZ</button>
           <button id="menu-btn" class="secondary">MENÚ PRINCIPAL</button>
         </div>
+        <div class="end-hint" id="end-hint"></div>
       </div>`;
-    $('again-btn').addEventListener('click', () => this.game.startMatch(this.s.mode));
+    $('again-btn').addEventListener('click', () => {
+      if (this.endOnline) this.game.quitToMenu();
+      else this.game.startMatch(this.s.mode);
+    });
     $('menu-btn').addEventListener('click', () => this.game.quitToMenu());
     this.show('play');
+  }
+
+  // Indicador de conexión y solicitudes pendientes en el menú.
+  updateBadge() {
+    const n = this.game.netClient;
+    const o = this.online;
+    const badge = $('online-badge');
+    const pill = $('net-pill');
+    if (!badge || !o) return;
+    const reqs = n.authed ? o.social.incoming.length : 0;
+    badge.textContent = reqs ? String(reqs) : '';
+    badge.className = 'badge' + (reqs ? ' on' : n.authed ? ' dot' : '');
+    pill.innerHTML = n.authed ? `<span class="dot on"></span> Conectado como <b>${n.user.name}</b>` : '';
   }
 
   show(panel) {
     this.panel = panel;
     this.root.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.panel === panel));
     const el = $('mm-panel');
+    el.classList.remove('wide');
+    el.classList.remove('anim');
+    void el.offsetWidth;
+    el.classList.add('anim');
+    if (panel === 'online') return this.online.render(el);
+    if (panel === 'locker') return this.renderLocker(el);
     if (panel === 'play') el.innerHTML = this.playHTML();
     else if (panel === 'modes') el.innerHTML = this.modesHTML();
     else if (panel === 'options') el.innerHTML = this.optionsHTML();
@@ -114,10 +217,11 @@ export class Menu {
 
   playHTML() {
     const m = MODES[this.s.mode] || MODES.solo;
-    const players = m.noBots ? 1 : this.s.players;
-    const teams = m.teams ? '2 equipos' : m.teamSize > 1 ? `equipos de ${m.teamSize}` : 'individual';
+    const players = m.noBots ? 1 : m.id === 'duel' ? 2 : this.s.players;
+    const teams = m.teams ? '2 equipos' : m.id === 'duel' ? 'contra un bot · primero a 5' : m.teamSize > 1 ? `equipos de ${m.teamSize}` : 'individual';
     return `
-      <h2>Jugar</h2>
+      <h2>Jugar contra bots</h2>
+      <div class="tip">🌐 ¿Quieres jugar con tus amigos? Entra en <a href="#" data-go="online">ONLINE</a>.</div>
       <div class="mode-hero">
         <div class="mode-icon">${m.icon}</div>
         <div>
@@ -131,15 +235,18 @@ export class Menu {
         <label>Dificultad de los bots</label>
         <div class="seg" id="diff-seg">${Object.entries(DIFFICULTIES).map(([k, d]) => `<button data-v="${k}" class="${this.s.difficulty === k ? 'on' : ''}">${d.name}</button>`).join('')}</div>
       </div>
-      <div class="opt-row ${m.noBots ? 'disabled' : ''}">
+      <div class="opt-row ${m.noBots || m.id === 'duel' ? 'disabled' : ''}">
         <label>Jugadores por partida <b id="players-val">${this.s.players}</b></label>
-        <input id="players-range" type="range" min="4" max="50" step="2" value="${this.s.players}" ${m.noBots ? 'disabled' : ''}>
+        <input id="players-range" type="range" min="4" max="50" step="2" value="${this.s.players}" ${m.noBots || m.id === 'duel' ? 'disabled' : ''}>
       </div>
       <button id="start-btn" class="big-play">¡A LA ISLA!</button>`;
   }
 
   bindPlay(el) {
-    el.querySelector('[data-go]').addEventListener('click', () => this.show('modes'));
+    el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.show(b.dataset.go);
+    }));
     el.querySelectorAll('#diff-seg button').forEach((b) => b.addEventListener('click', () => {
       this.s.difficulty = b.dataset.v;
       this.game.applySettings();
@@ -185,7 +292,8 @@ export class Menu {
       <div class="opt-row check"><label><input data-k="showFps" type="checkbox" ${s.showFps ? 'checked' : ''}> Mostrar FPS</label></div>
       <div class="opt-row"><label>Calidad gráfica</label>
         <div class="seg" data-seg="quality">
-          <button data-v="normal" class="${s.quality !== 'baja' ? 'on' : ''}">Normal</button>
+          <button data-v="alta" class="${s.quality === 'alta' ? 'on' : ''}">Alta</button>
+          <button data-v="normal" class="${s.quality === 'normal' ? 'on' : ''}">Normal</button>
           <button data-v="baja" class="${s.quality === 'baja' ? 'on' : ''}">Baja (PCs modestos)</button>
         </div>
         <small class="hint" id="quality-hint"></small>
@@ -223,10 +331,52 @@ export class Menu {
     }));
   }
 
-  showMain() {
+  // ---------------------------------------------------------- PERSONAJE
+  renderLocker(el) {
+    const o = { ...(this.s.outfit || this.game.player.outfit || randomOutfit()) };
+    const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+    el.innerHTML = `
+      <h2>Personaje</h2>
+      <p class="lead">Elige tu aspecto. En las partidas online los demás jugadores te verán así.</p>
+      <div class="locker">
+        <div class="preview-box" id="preview-box"></div>
+        <div class="swatches">${OUTFIT_PARTS.map(([k, label, list]) => `
+          <div class="sw-row"><label>${label}</label><div class="sw">${list.map((c) => `<button data-k="${k}" data-c="${c}" class="${o[k] === c ? 'on' : ''}" style="--c:${hex(c)}"></button>`).join('')}</div></div>`).join('')}
+          <button class="small-btn" id="outfit-random">🎲 Aleatorio</button>
+        </div>
+      </div>`;
+    el.querySelector('#preview-box').appendChild(this.preview.canvas);
+    this.preview.set(o);
+    this.preview.start();
+    const save = () => {
+      this.s.outfit = { ...o };
+      this.game.applySettings();
+      this.game.player.setOutfit(o);
+      this.game.combat.modelKey = null;
+      const n = this.game.netClient;
+      if (n.authed) {
+        n.user.outfit = { ...o };
+        n.send('outfit', { outfit: o });
+      }
+      this.preview.set(o);
+    };
+    el.querySelectorAll('.sw button').forEach((b) => b.addEventListener('click', () => {
+      o[b.dataset.k] = Number(b.dataset.c);
+      el.querySelectorAll(`.sw button[data-k="${b.dataset.k}"]`).forEach((x) => x.classList.toggle('on', x === b));
+      save();
+    }));
+    el.querySelector('#outfit-random').addEventListener('click', () => {
+      Object.assign(o, randomOutfit());
+      save();
+      this.renderLocker(el);
+    });
+  }
+
+  showMain(panel = null) {
     this.hideAll();
     this.root.style.display = 'flex';
-    this.show('play');
+    this.show(panel || (this.panel === 'online' ? 'online' : 'play'));
+    this.updateBadge();
   }
 
   hideAll() {
@@ -236,13 +386,19 @@ export class Menu {
 
   showPause(on) {
     $('pause').style.display = on ? 'flex' : 'none';
+    $('pause-online').style.display = this.game.net ? '' : 'none';
     if (!on) $('pause-options').innerHTML = '';
   }
 
-  showEnd(win, cause, stats) {
+  showEnd(win, cause, stats, online = false) {
+    this.endOnline = online;
+    $('again-btn').textContent = online ? 'VOLVER AL GRUPO' : 'JUGAR OTRA VEZ';
+    $('menu-btn').style.display = online ? 'none' : '';
+    $('end-hint').textContent = online ? 'Volverás al lobby online con tu grupo para buscar otra partida.' : '';
     $('end-title').textContent = win ? '¡VICTORIA MAGISTRAL!' : 'ELIMINADO';
     $('end-title').className = 'logo small ' + (win ? 'gold' : 'red');
-    $('end-cause').textContent = win ? (this.game.mode.respawn ? '¡Tu equipo ha ganado el duelo!' : 'Eres el último superviviente de la isla') : cause;
+    const m = this.game.mode;
+    $('end-cause').textContent = win ? (m.arena ? '¡Has ganado el 1v1!' : m.respawn ? '¡Tu equipo ha ganado el duelo!' : (m.teamSize || 1) > 1 ? 'Tu equipo es el último en pie' : 'Eres el último superviviente de la isla') : cause;
     $('end-stats').innerHTML = stats;
     $('end').style.display = 'flex';
     $('end').classList.toggle('win', win);
