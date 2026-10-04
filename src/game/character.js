@@ -78,6 +78,7 @@ export class Character {
     this.knocker = null;
     this.reviveT = 0;
     this.invuln = 0;
+    this.launched = false;
   }
 
   get height() {
@@ -152,7 +153,13 @@ export class Character {
       }
     }
     this.vel.y -= GRAVITY * dt;
-    return this.move(dt);
+    const land = this.move(dt);
+    // Lanzado por una explosión: al caer no se hace daño
+    if (this.launched && this.onGround && this.vel.y <= 0) {
+      this.launched = false;
+      return 0;
+    }
+    return land;
   }
 
   fallDamage(landSpeed) {
@@ -374,7 +381,7 @@ export class Character {
 
   // ------------------------------------------------------------ MODELO
   setHeld(item) {
-    const key = !item ? 'none' : item.kind === 'weapon' ? `w${item.type}${item.rarity}` : item.kind === 'consumable' ? `c${item.type}` : 'pick';
+    const key = item ? itemKey(item) : 'none';
     if (key === this.heldKey) return;
     this.heldKey = key;
     const hand = this.model.hand;

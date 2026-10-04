@@ -7,8 +7,8 @@ import { SKINS, SHIRTS, PANTS, HAIR, randomOutfit } from '../game/character.js';
 const $ = (id) => document.getElementById(id);
 
 const CONTROLS = [
-  ['W A S D', 'Moverse · W/S en una escalera de mano: trepar/bajar'], ['Ratón', 'Mirar'], ['Clic izquierdo', 'Disparar · usar · golpear · colocar pieza'],
-  ['Clic derecho', 'Apuntar · (construyendo) cambiar material'], ['Espacio', 'Saltar · salir del bus · planeador · freno de mano'],
+  ['W A S D', 'Moverse · W/S en una escalera de mano: trepar/bajar'], ['Ratón', 'Mirar'], ['Clic izquierdo', 'Disparar · usar · lanzar granada · golpear · colocar pieza · (arco) mantener para tensar'],
+  ['Clic derecho', 'Apuntar · detonar C4 · (construyendo) cambiar material'], ['Espacio', 'Saltar · salir del bus · planeador · freno de mano'],
   ['Shift', 'Correr'], ['C', 'Agacharse'], ['E', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
   ['R', 'Recargar'], ['1–6 / rueda', 'Inventario · (construyendo) 1–4 pieza'], ['Q', 'Modo construcción'],
   ['G', 'Soltar objeto'], ['V', 'Cámara 1ª / 3ª persona'], ['M', 'Mapa'], ['Esc', 'Pausa'],
@@ -86,7 +86,8 @@ class CharacterPreview {
 
 const HOWTO = [
   ['Salta del autobús', 'Pulsa Espacio cuando se abran las puertas. Mira hacia abajo y mantén W para caer más rápido; el planeador se abre solo.'],
-  ['Equípate', 'Abre cofres dorados (E) y recoge armas, curas y munición. El color indica la rareza.'],
+  ['Equípate', 'Abre cofres dorados (E) y recoge armas, curas, munición y granadas. El color indica la rareza: gris, verde, azul, morado, naranja, dorado (Mítico) y turquesa (Exótico).'],
+  ['Explosivos', 'Granadas, granadas lapa, molotov, humo, C4 y granadas de impulso: clic para lanzar (verás la trayectoria). El C4 se detona con clic derecho y el impulso te lanza por los aires sin daño por caída.'],
   ['Consigue materiales', 'Golpea árboles, rocas y coches abandonados con el pico para conseguir madera, piedra y metal.'],
   ['Construye para cubrirte', 'Q entra en modo construcción: muros, suelos, rampas y techos. Clic derecho cambia el material.'],
   ['Vigila la tormenta', 'El círculo blanco del mapa (M) es la próxima zona segura. Fuera de ella pierdes vida.'],

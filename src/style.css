@@ -761,6 +761,16 @@ button:active {
   background: rgba(10, 20, 48, 0.5);
 }
 
+.slot.glow {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--rarity) 70%, transparent), 0 3px 10px rgba(0, 0, 0, 0.35);
+  animation: rarity-glow 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes rarity-glow {
+  from { border-color: rgba(255, 255, 255, 0.2); }
+  to { border-color: var(--rarity); }
+}
+
 .slot.selected {
   border-color: #fff;
   transform: translateY(-6px);

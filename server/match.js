@@ -6,7 +6,7 @@ import { RNG } from '../src/core/rng.js';
 import { lootForChest, lootForAmmoBox } from '../src/game/items.js';
 
 let nextMatch = 1;
-const RELAY = new Set(['m.st', 'm.fx', 'm.down', 'm.drop', 'm.bdmg', 'm.harv', 'm.veh', 'm.emote']);
+const RELAY = new Set(['m.st', 'm.fx', 'm.ex', 'm.down', 'm.drop', 'm.bdmg', 'm.harv', 'm.veh', 'm.emote']);
 
 export class Match {
   constructor(lobby, mode, roster, opts) {

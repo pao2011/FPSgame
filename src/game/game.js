@@ -9,6 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Input } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { Effects } from './effects.js';
+import { Explosives } from './explosives.js';
 import { PickupManager, ContainerManager, spawnFloorLoot } from './loot.js';
 import { Dummies } from './dummies.js';
 import { BattleBus } from './bus.js';
@@ -22,7 +23,7 @@ import { BotManager } from './bots.js';
 import { HUD } from '../ui/hud.js';
 import { Menu } from '../ui/menu.js';
 import { MapRenderer } from '../ui/minimap.js';
-import { itemName, itemRarity, RARITIES, MATERIALS, CONSUMABLES, PICKAXE, makeWeapon } from './items.js';
+import { itemName, itemRarity, RARITIES, MATERIALS, AMMO, PICKAXE, makeWeapon, stackDef } from './items.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
 import { clamp, random, RNG } from '../core/rng.js';
 import { NetClient, savedToken, savedOnlineSeed } from '../net/client.js';
@@ -91,6 +92,8 @@ export class Game {
     this.input = new Input(this.canvas);
     this.audio = audio;
     this.effects = new Effects(this);
+    this.explosives = new Explosives(this);
+    this.camShake = 0;
     this.pickups = new PickupManager(this);
     this.containers = new ContainerManager(this, this.world.chestSpots, this.world.ammoSpots);
     this.dummies = new Dummies(this, this.world.dummySpots);
@@ -344,6 +347,7 @@ export class Game {
     this.harvest.reset();
     this.vehicles.reset();
     this.combat.reset();
+    this.explosives.reset();
     this.effects.clear();
     this.pickups.clear();
     spawnFloorLoot(this, this.world.lootSpots, o.rng, !!o.online);
@@ -421,7 +425,7 @@ export class Game {
         { kind: 'consumable', type: 'shieldpot', count: 2 }, { kind: 'consumable', type: 'medkit', count: 1 }];
       p.selected = 1;
     }
-    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60 };
+    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60, rockets: 6 };
     p.shield = this.mode.arena ? 100 : 50;
     this.combat.modelKey = null;
   }
@@ -430,6 +434,7 @@ export class Game {
     return {
       weapons: [makeWeapon('ar', random.int(1, 3)), makeWeapon('shotgun', random.int(1, 3)), makeWeapon(random.pick(['smg', 'pistol']), random.int(0, 2))],
       heals: { bandage: 5, medkit: 1, smallshield: 2, shieldpot: 1 },
+      nades: { grenade: random.int(0, 2), molotov: random.int(0, 1) },
     };
   }
 
@@ -448,6 +453,7 @@ export class Game {
     this.bus.active = false;
     this.bus.model.visible = false;
     this.bots.reset(0, [], 'normal');
+    this.explosives.reset();
     this.chars = [this.player];
     this.player.model.root.visible = false;
     this.menu.showMain(wasOnline && this.netClient.authed ? 'online' : null);
@@ -548,7 +554,7 @@ export class Game {
 
   onElimination(victim, killer, type) {
     if (this.net?.isLocal(victim)) this.net.sendElim(victim, killer, type);
-    const how = type === 'storm' ? 'la tormenta' : type === 'fall' ? 'una caída' : type === 'quit' ? 'abandono' : null;
+    const how = { storm: 'la tormenta', fall: 'una caída', quit: 'abandono', explosion: 'una explosión', fire: 'el fuego' }[type] || null;
     const v = `<b class="${this.teamTag(victim)}">${this.name(victim)}</b>`;
     let text;
     if (killer && killer !== victim) text = `<b class="${this.teamTag(killer)}">${this.name(killer)}</b> eliminó a ${v}`;
@@ -624,7 +630,7 @@ export class Game {
     }
     // Soltar el inventario
     const drops = [];
-    for (const it of p.inventory.slice(1)) if (it) drops.push({ ...it });
+    for (const it of p.inventory.slice(1)) if (it && !(it.count <= 0)) drops.push({ ...it });
     for (const a in p.ammo) if (p.ammo[a] > 0) drops.push({ kind: 'ammo', ammo: a, count: p.ammo[a] });
     if (!this.infiniteMats) for (const m in p.mats) if (p.mats[m] > 0) drops.push({ kind: 'material', mat: m, count: p.mats[m] });
     this.pickups.burst(drops.slice(0, 10), p.pos.clone().setY(p.pos.y + 0.8));
@@ -877,6 +883,7 @@ export class Game {
     this.pickups.update(dt, t);
     this.containers.update(dt, t);
     this.dummies.update(dt);
+    this.explosives.update(dt);
     this.effects.update(dt);
     this.updateAudio();
     if (this.noises.length && t - this.noises[0].t > 1.5) this.noises = this.noises.filter((n) => t - n.t < 1.5);
@@ -911,6 +918,7 @@ export class Game {
     const p = this.player;
     const item = p.inventory[p.selected];
     if (p.selected === 0 || !item) return;
+    if (stackDef(item) && item.count <= 0) return; // detonador del C4 sin cargas
     p.inventory[p.selected] = null;
     this.combat.reloading = false;
     this.combat.cancelUse();
@@ -927,7 +935,8 @@ export class Game {
     for (let i = 1; i < 6; i++) {
       const s = p.inventory[i];
       if (!s) return true;
-      if (item.kind === 'consumable' && s.kind === 'consumable' && s.type === item.type && s.count < CONSUMABLES[item.type].max) return true;
+      const def = stackDef(item);
+      if (def && s.kind === item.kind && s.type === item.type && s.count < def.max) return true;
     }
     return p.selected > 0 && !!p.inventory[p.selected];
   }
@@ -949,8 +958,7 @@ export class Game {
       p.addItem(item);
       this.pickups.remove(pk);
       this.audio.pickup();
-      const what = item.kind === 'material' ? MATERIALS[item.mat].name.toLowerCase()
-        : item.ammo === 'shells' ? 'cartuchos' : 'munición ' + { light: 'ligera', medium: 'media', heavy: 'pesada' }[item.ammo];
+      const what = item.kind === 'material' ? MATERIALS[item.mat].name : AMMO[item.ammo].name;
       this.hud.toast(`+${item.count} ${what}`);
       return;
     }
@@ -1189,6 +1197,12 @@ export class Game {
       }
     }
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 12);
+    if (this.camShake > 0) {
+      // Temblor de cámara por explosiones cercanas
+      const k = this.camShake * this.camShake * 0.05;
+      cam.rotation.x += (Math.random() - 0.5) * k;
+      cam.rotation.y += (Math.random() - 0.5) * k;
+    }
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     this.storm.updateVisual(cam.position);

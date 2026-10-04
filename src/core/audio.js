@@ -5,6 +5,15 @@ const SHOTS = {
   pistol: { f: 2300, d: 0.16, g: 0.45, low: 130 },
   shotgun: { f: 1000, d: 0.5, g: 0.9, low: 70 },
   sniper: { f: 1400, d: 0.9, g: 1.0, low: 55 },
+  burst: { f: 2000, d: 0.16, g: 0.5, low: 120 },
+  minigun: { f: 2800, d: 0.09, g: 0.32, low: 160 },
+  tactical: { f: 1150, d: 0.4, g: 0.8, low: 80 },
+  revolver: { f: 1600, d: 0.5, g: 0.85, low: 70 },
+  dmr: { f: 1500, d: 0.55, g: 0.85, low: 65 },
+  rocket: { f: 600, d: 0.7, g: 0.7, low: 50 },
+  glauncher: { f: 500, d: 0.3, g: 0.6, low: 60 },
+  plasma: { f: 3200, d: 0.25, g: 0.4, low: 300, zap: true },
+  bow: { f: 900, d: 0.12, g: 0.3, low: 200, soft: true },
 };
 
 class AudioSys {
@@ -116,15 +125,80 @@ class AudioSys {
     const g = c.createGain();
     this._env(g, gain, 0.003, dur, t);
     s.connect(f).connect(g).connect(this.master);
-    s.start(t, Math.random() * 1.5);
+    s.start(t, Math.random() * Math.max(0, 1.9 - dur));
     s.stop(t + dur + 0.05);
   }
 
   shot(kind, volume = 1) {
     if (!this.ctx) return;
     const s = SHOTS[kind] || SHOTS.ar;
+    if (s.zap) {
+      this._tone(s.f * 0.5, s.d, { type: 'sawtooth', gain: s.g * 0.5 * volume, slide: 0.15 });
+      this._tone(s.low * 3, s.d * 0.6, { type: 'square', gain: s.g * 0.25 * volume, slide: 0.4 });
+      return;
+    }
+    if (s.soft) {
+      this._burst(s.d, { freq: s.f, type: 'bandpass', gain: s.g * volume, q: 2 });
+      this._tone(s.low, 0.12, { type: 'triangle', gain: s.g * 0.6 * volume, slide: 0.6 });
+      return;
+    }
     this._burst(s.d, { freq: s.f * 2, endFreq: s.f * 0.25, gain: s.g * volume });
     this._tone(s.low * 2, 0.15, { gain: s.g * 0.7 * volume, slide: 0.25 });
+  }
+
+  // volume: 0..1 según la distancia. impulse: estallido sin metralla.
+  explosion(volume = 1, impulse = false) {
+    if (!this.ctx || volume < 0.01) return;
+    if (impulse) {
+      this._burst(0.5, { freq: 2500, endFreq: 200, type: 'bandpass', gain: 0.6 * volume, q: 1.2 });
+      this._tone(300, 0.4, { type: 'sine', gain: 0.35 * volume, slide: 0.2 });
+      return;
+    }
+    this._burst(1.4, { freq: 1800, endFreq: 60, gain: 1.1 * volume });
+    this._burst(0.25, { freq: 5000, type: 'highpass', gain: 0.25 * volume });
+    this._tone(70, 0.9, { type: 'sine', gain: 0.8 * volume, slide: 0.4 });
+  }
+
+  throwSound(volume = 1) {
+    if (!this.ctx || volume < 0.02) return;
+    this._burst(0.18, { freq: 400, endFreq: 1400, type: 'bandpass', gain: 0.2 * volume, q: 1.5 });
+  }
+
+  bounce(volume = 1) {
+    if (!this.ctx || volume < 0.03) return;
+    this._tone(900 + Math.random() * 300, 0.05, { type: 'triangle', gain: 0.1 * volume });
+  }
+
+  stick(volume = 1) {
+    if (!this.ctx || volume < 0.03) return;
+    this._burst(0.06, { freq: 700, type: 'bandpass', gain: 0.25 * volume, q: 4 });
+    this._tone(1600, 0.06, { type: 'square', gain: 0.05 * volume, delay: 0.05 });
+  }
+
+  smokePop(volume = 1) {
+    if (!this.ctx || volume < 0.02) return;
+    this._burst(1.2, { freq: 1200, endFreq: 300, type: 'bandpass', gain: 0.35 * volume, q: 0.8 });
+  }
+
+  molotov(volume = 1) {
+    if (!this.ctx || volume < 0.02) return;
+    this._burst(0.08, { freq: 4000, type: 'highpass', gain: 0.35 * volume });
+    this._burst(0.9, { freq: 500, endFreq: 1500, gain: 0.45 * volume, delay: 0.05 });
+  }
+
+  detonator() {
+    if (!this.ctx) return;
+    this._tone(1800, 0.05, { type: 'square', gain: 0.08 });
+    this._tone(2400, 0.05, { type: 'square', gain: 0.08, delay: 0.06 });
+  }
+
+  // Zumbido de la minigun mientras giran los cañones.
+  spin(level) {
+    if (!this.ctx) return;
+    const now = this.t;
+    if (this.lastSpin && now - this.lastSpin < 0.06) return;
+    this.lastSpin = now;
+    this._tone(120 + level * 260, 0.08, { type: 'sawtooth', gain: 0.04 });
   }
 
   pickaxe() {

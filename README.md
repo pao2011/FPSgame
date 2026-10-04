@@ -19,7 +19,10 @@ trabajan en equipo), una isla de 1,6 km con **carreteras y pueblos ordenados
 por calles** y muchos tipos de estructuras (casas, tiendas, gasolineras,
 iglesias, rascacielos, fábrica, puerto con muelle y grúa, base militar,
 estadio, granjas, faro, antena de radio, depósitos de agua, búnkeres,
-campamentos, ruinas…), cofres y botín por rarezas, 5 armas con apuntado,
+campamentos, ruinas…), cofres y botín por **7 rarezas** (de común a mítico y
+exótico), **14 armas** con apuntado (rifles, escopetas, minigun, revólver,
+lanzacohetes, lanzagranadas, rifle de plasma, arco explosivo…), **granadas,
+granadas lapa, C4, granadas de impulso, humo y molotov**,
 construcción, recolección de materiales con el pico, coches conducibles,
 autobús de batalla, planeador y tormenta.
 
@@ -192,7 +195,10 @@ arrancan el juego.
 5. **Botín.** Busca **cofres dorados** (brillan y suenan cuando estás cerca) y
    ábrelos con **E**. Recoge armas, munición y curas con **E**; la munición y
    los materiales se recogen solos al pasar por encima. El color indica la
-   rareza: gris (común), verde, azul, morado y dorado (legendario).
+   rareza: gris (común), verde (poco común), azul (raro), morado (épico),
+   naranja (legendario), dorado (mítico) y turquesa (exótico). Las armas
+   míticas y exóticas brillan; las exóticas (rifle de plasma y arco
+   explosivo) solo aparecen con esa rareza.
 6. **Inventario.** Tienes 6 huecos (**1–6** o la rueda del ratón). El 1 es
    siempre el pico. Si el inventario está lleno, al recoger algo cambias el
    objeto que tengas en la mano. **G** suelta el objeto actual.
@@ -200,13 +206,27 @@ arrancan el juego.
    precisión y zoom; el francotirador usa mira telescópica). **R** recarga.
    Disparar en movimiento, saltando o seguido abre la mira (menos precisión);
    agacharse (**C**) la cierra. Los disparos a la cabeza hacen más daño.
-8. **Curarse.** Selecciona vendas, botiquín o pociones y haz **clic
-   izquierdo**; tarda unos segundos (te mueves más lento mientras tanto). El
-   **escudo** (barra azul) absorbe el daño antes que la vida.
-9. **Materiales.** Con el **pico** golpea **árboles** (madera), **rocas**
-   (piedra) y **coches abandonados** (metal). Al romperlos ganas un extra.
-   Los bots también sueltan materiales al ser eliminados.
-10. **Construir.** Pulsa **Q** para entrar en modo construcción (la cámara pasa
+8. **Armas especiales.** El **rifle de ráfagas** dispara 3 balas por clic; la
+   **minigun** necesita un momento para girar los cañones; el **arco
+   explosivo** se tensa manteniendo el clic y dispara al soltarlo; el **rifle
+   de plasma** atraviesa construcciones y enemigos. El **lanzacohetes** y el
+   **lanzagranadas** usan **cohetes** y destrozan construcciones.
+9. **Explosivos.** Selecciona una granada y verás su **trayectoria**; **clic
+   izquierdo** la lanza. *Granada*: rebota y explota a los 2,4 s. *Granada
+   lapa*: se pega a lo que toque (también a enemigos). *Molotov*: incendia el
+   suelo unos segundos. *Humo*: crea una nube que tapa la visión (los bots
+   no ven a través). *Granada de impulso*: no hace daño pero lanza por los
+   aires a todos los cercanos, y al caer no se recibe daño. *C4*: lanza hasta
+   10 cargas que se pegan donde caen y detónalas con **clic derecho**. Las
+   explosiones no atraviesan paredes y no te dañan a ti ni a tu equipo.
+10. **Curarse.** Selecciona vendas, botiquín, pociones o el **barril de
+    poción** (legendario: cura 100 de vida y 100 de escudo) y haz **clic
+    izquierdo**; tarda unos segundos (te mueves más lento mientras tanto). El
+    **escudo** (barra azul) absorbe el daño antes que la vida.
+11. **Materiales.** Con el **pico** golpea **árboles** (madera), **rocas**
+    (piedra) y **coches abandonados** (metal). Al romperlos ganas un extra.
+    Los bots también sueltan materiales al ser eliminados.
+12. **Construir.** Pulsa **Q** para entrar en modo construcción (la cámara pasa
     a tercera persona). Elige pieza con **1** muro, **2** suelo, **3** rampa,
     **4** techo, cambia de material con **clic derecho** y coloca con **clic
     izquierdo** (puedes mantenerlo pulsado). Cada pieza cuesta 10 de material.
@@ -216,21 +236,21 @@ arrancan el juego.
     rampas: se encadenan solas. Madera = rápida y débil, piedra = media,
     metal = muy resistente pero tarda más en endurecerse. Las piezas se
     rompen a tiros. **Q** vuelve al modo combate.
-11. **Coches.** Acércate a un coche de color y pulsa **E** para conducir.
+13. **Coches.** Acércate a un coche de color y pulsa **E** para conducir.
     **W/S** acelerar/frenar y marcha atrás, **A/D** girar, **Espacio** freno
     de mano, ratón para mirar alrededor. **E** para bajarte. Puedes atropellar
     a los bots.
-12. **Tormenta.** El muro morado se cierra por fases (mira el aviso arriba a
+14. **Tormenta.** El muro morado se cierra por fases (mira el aviso arriba a
     la derecha y el círculo blanco del mapa: es la próxima zona segura).
     Fuera de la zona pierdes vida cada segundo (el escudo no protege).
-13. **Equipos.** En Dúos y Escuadras, si tu vida llega a 0 quedas
+15. **Equipos.** En Dúos y Escuadras, si tu vida llega a 0 quedas
     **derribado**: sólo puedes arrastrarte y te desangras. Un compañero puede
     reanimarte (los bots lo hacen solos). Para reanimar tú a un compañero,
     acércate y **mantén E** 5 segundos. Si todo el equipo cae, quedáis
     eliminados. Si te eliminan y queda algún compañero, pasas a **espectar**
     (clic para cambiar de compañero). Tus compañeros aparecen en azul en el
     minimapa y con su nombre encima.
-14. **Ganar.** Sé el último jugador (o equipo) en pie: **¡VICTORIA
+16. **Ganar.** Sé el último jugador (o equipo) en pie: **¡VICTORIA
     MAGISTRAL!** Arriba a la derecha: 👤 jugadores vivos, 🚩 equipos vivos,
     💀 tus eliminaciones.
 
@@ -238,10 +258,11 @@ arrancan el juego.
 cercanos; comparten lo que ven con su equipo; recorren la isla por caminos
 calculados (entran por las puertas, rodean muros y vallas); eligen el arma
 según la distancia (escopeta de cerca, fusil a media distancia,
-francotirador de lejos); tardan un poco en reaccionar y afinan la puntería
+francotirador de lejos, lanzacohetes contra grupos y construcciones); tardan un poco en reaccionar y afinan la puntería
 cuanto más tiempo te siguen; disparan en ráfagas; se cubren con muros o se
 encierran para curarse; hacen rampas si estás más alto; disparan a tus
-construcciones si te escondes detrás; recogen materiales; rotan hacia la
+construcciones si te escondes detrás; te lanzan granadas, molotov y C4
+(sobre todo si te escondes); usan humo para curarse; recogen materiales; rotan hacia la
 zona segura con antelación; y reaniman a sus compañeros. La dificultad
 cambia sus reflejos, su puntería y lo mucho que construyen.
 
@@ -258,8 +279,8 @@ alrededor de la mira señala de dónde vienen los disparos.
 | **W A S D** | Moverse |
 | **W** junto a una escalera de mano | Trepar (faro, antena, depósitos, torres de vigilancia) · **S** para bajar |
 | **Ratón** | Mirar |
-| **Clic izquierdo** | Disparar · usar curas · golpear con el pico · colocar pieza |
-| **Clic derecho** | Apuntar · (construyendo) cambiar material |
+| **Clic izquierdo** | Disparar · usar curas · lanzar granadas · golpear con el pico · colocar pieza · (arco) mantener para tensar |
+| **Clic derecho** | Apuntar · detonar C4 · (construyendo) cambiar material |
 | **Espacio** | Saltar · salir del autobús · abrir planeador · freno de mano |
 | **Shift** | Correr |
 | **C** | Agacharse |

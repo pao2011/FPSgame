@@ -39,6 +39,7 @@ export class OnlineMatch {
       'm.st': (m) => this.ents.get(m.from)?.isRemote && this.ents.get(m.from).applyState(m, this.now),
       'm.bots': (m) => this.onBots(m),
       'm.fx': (m) => this.onFx(m),
+      'm.ex': (m) => this.game.explosives.onNet(this.ents.get(m.s), m),
       'm.hit': (m) => this.onHit(m),
       'm.revive': (m) => this.onRevive(m),
       'm.down': (m) => this.onDown(m),
@@ -209,11 +210,23 @@ export class OnlineMatch {
     const o = tmp.set(m.o[0], m.o[1], m.o[2]);
     const from = shooter?.isRemote && shooter.model.root.visible ? shooter.muzzleWorld(new THREE.Vector3()) : o.clone();
     const d = from.distanceTo(g.camera.position);
-    if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), 0xffe0a0, 0.02);
+    const beam = m.w === 'plasma';
+    if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), beam ? 0x3ff0e0 : 0xffe0a0, beam ? 0.045 : 0.02, beam ? 0.14 : 0.07);
     const vol = clamp(1 - d / 260, 0, 1);
     if (vol > 0.03) g.audio.shot(m.w, vol * vol * 0.9);
-    if (d < 150) g.effects.muzzleFlash(null, from);
-    if (shooter) g.noise(shooter.pos, m.w === 'sniper' ? 160 : 90, shooter);
+    if (d < 150 && m.w !== 'bow') g.effects.muzzleFlash(null, from);
+    if (shooter) g.noise(shooter.pos, m.w === 'sniper' || m.w === 'dmr' ? 160 : 90, shooter);
+  }
+
+  // Lanzamiento de un explosivo (granada, C4, cohete…) o detonación de C4.
+  sendEx(owner, data) {
+    if (!this.started || !this.isLocal(owner)) return;
+    const msg = { t: 'm.ex', s: owner.netId, a: data.a };
+    if (data.k) msg.k = data.k;
+    if (data.r !== undefined) msg.r = data.r;
+    if (data.o) msg.o = [r2(data.o.x), r2(data.o.y), r2(data.o.z)];
+    if (data.v) msg.v = [r2(data.v.x), r2(data.v.y), r2(data.v.z)];
+    this.net.sendRaw(JSON.stringify(msg));
   }
 
   // ------------------------------------------------------------ COMBATE

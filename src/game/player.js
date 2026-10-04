@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PICKAXE, CONSUMABLES, AMMO, MATERIALS } from './items.js';
+import { PICKAXE, AMMO, MATERIALS, stackDef } from './items.js';
 import { Character, R } from './character.js';
 import { clamp } from '../core/rng.js';
 
@@ -22,7 +22,7 @@ export class Player extends Character {
     this.pitch = -0.2;
     this.inventory = [PICKAXE, null, null, null, null, null];
     this.selected = 0;
-    this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0 };
+    this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
     this.mats = { wood: 0, stone: 0, metal: 0 };
     this.stepTimer = 0;
     this.vehicle = null;
@@ -45,11 +45,11 @@ export class Player extends Character {
       this.mats[item.mat] = Math.min(MATERIALS[item.mat].max, this.mats[item.mat] + item.count);
       return true;
     }
-    if (item.kind === 'consumable') {
-      const def = CONSUMABLES[item.type];
+    const def = stackDef(item);
+    if (def) {
       for (let i = 1; i < 6 && item.count > 0; i++) {
         const s = this.inventory[i];
-        if (s && s.kind === 'consumable' && s.type === item.type && s.count < def.max) {
+        if (s && s.kind === item.kind && s.type === item.type && s.count < def.max) {
           const n = Math.min(def.max - s.count, item.count);
           s.count += n;
           item.count -= n;

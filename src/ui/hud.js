@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { WEAPONS, CONSUMABLES, AMMO, RARITIES, MATERIALS, BUILD_COST, itemRarity } from '../game/items.js';
+import { WEAPONS, CONSUMABLES, THROWABLES, AMMO, RARITIES, MATERIALS, BUILD_COST, itemRarity } from '../game/items.js';
 import { PIECES, MAT_ORDER } from '../game/build.js';
-import { makeItemModel, makeWeaponModel } from '../game/models.js';
+import { makeItemModel, makeWeaponModel, itemKey } from '../game/models.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,7 +25,7 @@ class IconRenderer {
     this.camera = new THREE.PerspectiveCamera(30, 160 / 96, 0.01, 10);
   }
   get(item) {
-    const key = item.kind === 'weapon' ? `${item.type}_${item.rarity}` : item.kind === 'consumable' ? item.type : item.kind === 'ammo' ? 'ammo_' + item.ammo : 'pickaxe';
+    const key = itemKey(item);
     if (this.cache.has(key)) return this.cache.get(key);
     try {
       if (!this.renderer) this._init();
@@ -311,13 +311,15 @@ export class HUD {
           s.img.style.visibility = 'visible';
           s.root.style.setProperty('--rarity', it.kind === 'pickaxe' ? '#5a6270' : RARITIES[itemRarity(it)].color);
           s.root.classList.remove('empty');
+          s.root.classList.toggle('glow', it.kind !== 'pickaxe' && !!RARITIES[itemRarity(it)].glow);
         } else {
           s.img.style.visibility = 'hidden';
           s.root.style.setProperty('--rarity', 'transparent');
           s.root.classList.add('empty');
+          s.root.classList.remove('glow');
         }
       }
-      const cnt = it ? (it.kind === 'weapon' ? `${it.mag}` : it.kind === 'consumable' ? `${it.count}` : '') : '';
+      const cnt = it ? (it.kind === 'weapon' ? `${it.mag}` : it.kind === 'consumable' || it.kind === 'throwable' ? `${it.count}` : '') : '';
       if (s.count.textContent !== cnt) s.count.textContent = cnt;
       s.root.classList.toggle('selected', i === p.selected);
     }
@@ -333,6 +335,14 @@ export class HUD {
       wname = `<span style="color:${RARITIES[it.rarity].color}">${def.name}</span> · ${RARITIES[it.rarity].name}`;
     } else if (it && it.kind === 'consumable') {
       wname = `<span style="color:${RARITIES[CONSUMABLES[it.type].rarity].color}">${CONSUMABLES[it.type].name}</span> · Clic para usar`;
+    } else if (it && it.kind === 'throwable') {
+      const td = THROWABLES[it.type];
+      const col = RARITIES[td.rarity].color;
+      if (td.remote) {
+        const n = g.explosives.charges(p);
+        wname = `<span style="color:${col}">${it.count > 0 ? td.name : 'Detonador de C4'}</span> · ${it.count > 0 ? 'Clic izq.: lanzar · ' : ''}Clic der.: detonar${n ? ` (${n})` : ''}`;
+      } else wname = `<span style="color:${col}">${td.name}</span> · Clic para lanzar`;
+      ammoTxt = `<span class="mag">${it.count}</span>`;
     } else {
       wname = 'Pico';
     }
