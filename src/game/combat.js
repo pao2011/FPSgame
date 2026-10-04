@@ -611,14 +611,20 @@ export class Combat {
       g.hud.toast('No se puede colocar aquí: busca suelo plano');
       return false;
     }
-    const mesh = makeLaunchPad();
-    mesh.position.set(x, y, z);
-    mesh.rotation.y = p.yaw;
-    g.scene.add(mesh);
-    this.pads.push({ mesh, pos: mesh.position });
+    this.addPad(x, y, z, p.yaw);
+    g.net?.sendPad(x, y, z, p.yaw);
     g.audio.build();
     g.hud.toast('Plataforma de salto colocada: písala para salir disparado');
     return true;
+  }
+
+  // También la usan las plataformas que colocan otros jugadores (online).
+  addPad(x, y, z, yaw) {
+    const mesh = makeLaunchPad();
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = yaw;
+    this.game.scene.add(mesh);
+    this.pads.push({ mesh, pos: mesh.position });
   }
 
   updatePads() {

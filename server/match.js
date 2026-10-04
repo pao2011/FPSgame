@@ -4,9 +4,13 @@
 // vehículos, construcciones, eliminaciones, marcador y final de la partida.
 import { RNG } from '../src/core/rng.js';
 import { lootForChest, lootForAmmoBox } from '../src/game/items.js';
+import { HitGuard } from './anticheat.js';
 
 let nextMatch = 1;
-const RELAY = new Set(['m.st', 'm.fx', 'm.ex', 'm.down', 'm.drop', 'm.bdmg', 'm.bdoor', 'm.harv', 'm.veh', 'm.emote', 'm.ping']);
+const RELAY = new Set(['m.fx', 'm.ex', 'm.down', 'm.bdmg', 'm.harv', 'm.veh', 'm.emote', 'm.ping']);
+// Tiempo que se guarda el sitio de un jugador que pierde la conexión.
+export const REJOIN_MS = 45000;
+const now = () => Date.now() / 1000;
 
 export class Match {
   constructor(lobby, mode, roster, opts) {
@@ -29,7 +33,11 @@ export class Match {
     this.ready = new Set();
     this.chests = new Set();
     this.taken = new Set();
-    this.builds = new Set();
+    this.builds = new Map(); // clave -> mensaje m.build (con edición y puerta al día)
+    this.drops = new Map(); // id -> fila de m.drop (objetos tirados aún en el suelo)
+    this.pads = []; // plataformas de salto colocadas
+    this.chestItems = new Map(); // cofre -> botín que soltó
+    this.guard = new HitGuard();
     this.cars = new Map();
     this.score = [0, 0];
     this.createdAt = Date.now();
@@ -101,12 +109,43 @@ export class Match {
       return;
     }
     switch (m.t) {
+      case 'm.st':
+        this.guard.state(me.id, m.p, m.h, now());
+        m.from = me.id;
+        this.broadcast(m, c);
+        break;
       case 'm.bots':
-        if (c === this.host) {
+        if (c === this.host && Array.isArray(m.b)) {
+          const t = now();
+          for (const a of m.b) if (Array.isArray(a) && this.ent(a[0])?.bot) this.guard.state(a[0], [a[1], a[2], a[3]], a[10], t);
           m.from = me.id;
           this.broadcast(m, c);
         }
         break;
+      case 'm.drop':
+        if (!Array.isArray(m.items)) return;
+        for (const row of m.items.slice(0, 40)) {
+          const id = Array.isArray(row) && String(row[0] || '').slice(0, 40);
+          if (id && !this.taken.has(id)) this.drops.set(id, row);
+        }
+        m.from = me.id;
+        this.broadcast(m, c);
+        break;
+      case 'm.pad': {
+        const p = Array.isArray(m.p) && m.p.slice(0, 3).map(Number);
+        if (!p || !p.every(Number.isFinite) || this.pads.length > 300) return;
+        const pad = { t: 'm.pad', p, y: Number(m.y) || 0, from: me.id };
+        this.pads.push(pad);
+        this.broadcast(pad, c);
+        break;
+      }
+      case 'm.bdoor': {
+        const b = this.builds.get(m.key);
+        if (!b) return;
+        b.open = !!m.open;
+        this.broadcast({ t: 'm.bdoor', key: m.key, open: b.open, from: me.id }, c);
+        break;
+      }
       case 'm.hit': this.hit(c, me, m); break;
       case 'm.elim': this.elim(c, m); break;
       case 'm.revive': {
@@ -122,20 +161,26 @@ export class Match {
         if (this.taken.has(id)) this.send(c, { t: 'm.pickup_no', id });
         else {
           this.taken.add(id);
+          this.drops.delete(id);
           this.broadcast({ t: 'm.picked', id, by: this.owns(c, m.by) ? m.by : me.id });
         }
         break;
       }
       case 'm.build':
-        if (typeof m.key !== 'string' || this.builds.has(m.key)) return;
-        this.builds.add(m.key);
+        if (typeof m.key !== 'string' || m.key.length > 80 || this.builds.has(m.key)) return;
         m.from = me.id;
+        this.builds.set(m.key, m);
         this.broadcast(m, c);
         break;
-      case 'm.bedit':
-        if (typeof m.key !== 'string' || !this.builds.has(m.key)) return;
-        this.broadcast({ t: 'm.bedit', key: m.key, mask: m.mask | 0, dir: (m.dir | 0) & 3 }, c);
+      case 'm.bedit': {
+        const b = typeof m.key === 'string' && this.builds.get(m.key);
+        if (!b) return;
+        b.edit = m.mask | 0;
+        b.dir = (m.dir | 0) & 3;
+        b.open = false;
+        this.broadcast({ t: 'm.bedit', key: m.key, mask: b.edit, dir: b.dir }, c);
         break;
+      }
       case 'm.brm':
         if (!this.builds.delete(m.key)) return;
         this.broadcast({ t: 'm.brm', key: m.key }, c);
@@ -170,7 +215,14 @@ export class Match {
     if (!(dmg > 0 && dmg <= 400)) return; // descarta valores imposibles
     const owner = this.ownerOf(target);
     if (!owner || owner === c) return;
-    this.send(owner, { t: 'm.hit', to: target.id, by, dmg, type: String(m.type || 'bullet').slice(0, 12), head: !!m.head });
+    const type = String(m.type || 'bullet').slice(0, 12);
+    const bad = this.guard.check(by, target.id, dmg, type, now());
+    if (bad) {
+      const n = this.guard.rejected(by);
+      if (n === 1 || n % 25 === 0) console.warn(`[partida ${this.id}] impacto descartado de ${this.ent(by)?.name} (${n}): ${bad}`);
+      return;
+    }
+    this.send(owner, { t: 'm.hit', to: target.id, by, dmg, type, head: !!m.head });
   }
 
   elim(c, m) {
@@ -199,6 +251,7 @@ export class Match {
     this.chests.add(i);
     const loot = m.kind === 'ammo' ? lootForAmmoBox(this.rng) : lootForChest(this.rng);
     const items = loot.map((it, k) => [`c${i}_${k}`, it]);
+    this.chestItems.set(i, items);
     this.broadcast({ t: 'm.chest', i, by: this.owns(c, m.by) ? m.by : me.id, items });
   }
 
@@ -222,6 +275,24 @@ export class Match {
   leave(c, reason) {
     const me = this.entOf(c);
     if (!me) return;
+    // Corte de conexión en plena partida: se guarda su sitio un rato por si
+    // vuelve (el resto lo ve «reconectando»; sus bots, si era el anfitrión,
+    // se quedan quietos mientras tanto).
+    if (reason === 'disconnect' && this.status === 'playing' && me.key && (me.alive || this.mode.respawn)) {
+      me.client = null;
+      me.away = true;
+      if (c === this.host) {
+        this.host = null;
+        me.wasHost = true;
+      }
+      this.lobby.clientLeftMatch(c);
+      this.lobby.setAway(me.key, this);
+      clearTimeout(me.awayTimer);
+      me.awayTimer = setTimeout(() => this.expire(me), REJOIN_MS);
+      this.broadcast({ t: 'm.away', id: me.id, secs: REJOIN_MS / 1000 });
+      return;
+    }
+    this.lobby.setAway(me.key, null);
     const gone = [me];
     if (c === this.host) {
       // Sin anfitrión nadie simula a los bots: desaparecen de la partida.
@@ -237,17 +308,68 @@ export class Match {
       this.freeCars(e.id);
       if (wasAlive || this.mode.respawn) this.broadcast({ t: 'm.gone', id: e.id, reason });
     }
-    if (!this.ents.some((e) => e.client)) return this.close();
+    if (!this.ents.some((e) => e.client || e.away)) return this.close();
     this.ready.delete(me.id);
     if (this.status === 'loading' && this.ents.every((e) => e.bot || !e.client || this.ready.has(e.id))) this.go();
     this.checkEnd();
   }
 
+  // Ya no volvió a tiempo: sale de la partida como cualquier otro.
+  expire(me) {
+    if (!me.away) return;
+    me.away = false;
+    this.lobby.setAway(me.key, null);
+    if (this.status === 'ended') return;
+    const gone = [me];
+    if (me.wasHost) {
+      me.wasHost = false;
+      for (const e of this.ents) if (e.bot && e.alive) gone.push(e);
+    }
+    for (const e of gone) {
+      const wasAlive = e.alive;
+      e.alive = false;
+      this.freeCars(e.id);
+      if (wasAlive || this.mode.respawn) this.broadcast({ t: 'm.gone', id: e.id, reason: 'disconnect' });
+    }
+    if (!this.ents.some((e) => e.client || e.away)) return this.close();
+    this.checkEnd();
+  }
+
+  // Vuelve un jugador que había perdido la conexión: recibe lo que cambió.
+  rejoin(c) {
+    const me = this.ents.find((e) => e.away && e.key === c.key);
+    if (!me || this.status === 'ended') return false;
+    clearTimeout(me.awayTimer);
+    me.away = false;
+    me.client = c;
+    c.match = this;
+    this.lobby.setAway(me.key, null);
+    if (me.wasHost) {
+      me.wasHost = false;
+      this.host = c;
+    }
+    this.send(c, {
+      t: 'm.rejoin', id: this.id, you: me.id, host: this.entOf(this.host)?.id || 0, score: this.score,
+      builds: [...this.builds.values()], chests: [...this.chestItems], taken: [...this.taken], drops: [...this.drops.values()],
+      pads: this.pads, cars: [...this.cars], dead: this.ents.filter((e) => !e.alive).map((e) => e.id),
+      away: this.ents.filter((e) => e.away).map((e) => e.id),
+    });
+    this.broadcast({ t: 'm.back', id: me.id }, c);
+    if (c.key) this.lobby.statusChanged(c.key);
+    return true;
+  }
+
+  // Cuenta como presente quien está conectado o reconectando.
+  present(e) {
+    if (e.bot) return !!this.host || this.ents.some((x) => x.wasHost && x.away);
+    return !!e.client || !!e.away;
+  }
+
   checkEnd() {
     if (this.status === 'ended') return;
     if (this.mode.respawn) {
-      const humanTeams = new Set(this.ents.filter((e) => e.client).map((e) => e.team));
-      const botTeams = new Set(this.host ? this.ents.filter((e) => e.bot && e.alive).map((e) => e.team) : []);
+      const humanTeams = new Set(this.ents.filter((e) => !e.bot && this.present(e)).map((e) => e.team));
+      const botTeams = new Set(this.ents.filter((e) => e.bot && e.alive && this.present(e)).map((e) => e.team));
       const present = new Set([...humanTeams, ...botTeams]);
       const t = this.score.findIndex((s) => s >= this.scoreLimit);
       if (t >= 0) this.end(t);
@@ -255,7 +377,7 @@ export class Match {
       return;
     }
     const alive = new Set();
-    for (const e of this.ents) if (e.alive && (e.bot ? !!this.host : !!e.client)) alive.add(e.team);
+    for (const e of this.ents) if (e.alive && this.present(e)) alive.add(e.team);
     if (alive.size <= 1) this.end(alive.size ? [...alive][0] : -1);
   }
 
@@ -288,6 +410,11 @@ export class Match {
 
   close() {
     clearTimeout(this.loadTimer);
+    for (const e of this.ents) {
+      clearTimeout(e.awayTimer);
+      if (e.away) this.lobby.setAway(e.key, null);
+      e.away = false;
+    }
     this.status = 'ended';
     this.lobby.matchClosed(this);
   }

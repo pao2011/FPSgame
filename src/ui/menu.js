@@ -354,7 +354,7 @@ export class Menu {
   optionsHTML() {
     const s = this.s;
     const tab = this.optTab || 'game';
-    const tabs = [['game', 'Juego'], ['sens', 'Sensibilidad'], ['build', 'Construcción y edición'], ['binds', 'Controles'], ['hud', 'Interfaz'], ['video', 'Vídeo y sonido'], ['mobile', 'Móvil y táctil']];
+    const tabs = [['game', 'Juego'], ['sens', 'Sensibilidad'], ['build', 'Construcción y edición'], ['binds', 'Controles'], ['hud', 'Interfaz'], ['a11y', 'Accesibilidad'], ['pad', 'Mando'], ['video', 'Vídeo y sonido'], ['mobile', 'Móvil y táctil']];
     const range = (k, label, min, max, step, fmt = (v) => v) =>
       `<div class="opt-row"><label>${label} <b data-out="${k}">${fmt(s[k])}</b></label><input data-k="${k}" data-fmt="${fmt === pct ? 'pct' : fmt === pct100 ? 'pct100' : fmt === deg ? 'deg' : fmt === mult ? 'mult' : fmt === ms ? 'ms' : 'num'}" type="range" min="${min}" max="${max}" step="${step}" value="${s[k]}"></div>`;
     const check = (k, label, hint = '') => `<div class="opt-row check"><label><input data-k="${k}" type="checkbox" ${s[k] ? 'checked' : ''}> ${label}</label>${hint ? `<small class="hint">${hint}</small>` : ''}</div>`;
@@ -409,6 +409,27 @@ export class Menu {
         ${range('hudScale', 'Tamaño de la interfaz', 0.7, 1.4, 0.05, mult)}
         <div class="opt-row"><label>Color de la mira</label><input type="color" data-k="crosshairColor" value="${s.crosshairColor || '#ffffff'}"></div>
         ${check('showFps', 'Mostrar FPS')}`;
+    } else if (tab === 'pad') {
+      const seg = (k, opts) => `<div class="seg" data-seg="${k}">${opts.map(([v, label]) => `<button data-v="${v}" class="${String(s[k]) === String(v) ? 'on' : ''}">${label}</button>`).join('')}</div>`;
+      const scheme = s.padScheme === 'pro'
+        ? 'Combate: RT disparar · LT apuntar · A saltar · B construir · X recargar/usar · Y pico · R3 agacharse · L3 correr.<br>Construcción: <b>RT muro · RB suelo · LT rampa · LB techo</b> · L3 editar.'
+        : 'Combate: RT disparar · LT apuntar · LB/RB arma anterior/siguiente · A saltar · B agacharse · X recargar/usar · Y pico · R3 construir · L3 correr.<br>Construcción: RT colocar · LB/RB cambiar pieza · B editar.';
+      body = `
+        <p class="lead">Conecta un mando (Xbox, PlayStation o compatible) y pulsa cualquier botón. Cruceta: ↑ marcar · ↓ inventario · ← curación rápida · → cámara. Menú: pausa · Vista: mapa.</p>
+        <div class="opt-row"><label>Esquema de botones</label>${seg('padScheme', [['clasico', 'Clásico'], ['pro', 'Constructor pro']])}
+          <small class="hint">${scheme}</small></div>
+        ${range('padSens', 'Sensibilidad del stick', 0.3, 3, 0.05, num)}
+        ${check('padAimAssist', 'Asistencia de apuntado', 'Frena la cámara sobre los enemigos y ajusta la mira al apuntar.')}
+        ${range('padAssistStrength', 'Intensidad de la asistencia', 0.2, 1.5, 0.05, pct100)}`;
+    } else if (tab === 'a11y') {
+      const seg = (k, opts) => `<div class="seg" data-seg="${k}">${opts.map(([v, label]) => `<button data-v="${v}" class="${String(s[k]) === String(v) ? 'on' : ''}">${label}</button>`).join('')}</div>`;
+      body = `
+        <div class="opt-row"><label>Modo daltónico</label>${seg('colorblind', [['none', 'Desactivado'], ['protanopia', 'Protanopía'], ['deuteranopia', 'Deuteranopía'], ['tritanopia', 'Tritanopía']])}
+          <small class="hint">Corrige los colores para distinguir mejor rarezas, equipos y la tormenta.</small></div>
+        ${range('colorblindStrength', 'Intensidad de la corrección', 0.2, 1.5, 0.05, pct100)}
+        ${check('soundViz', 'Visualizar efectos de sonido', 'Iconos alrededor de la mira: disparos, explosiones, pasos, cofres, vehículos y planeadores.')}
+        ${check('compassSounds', 'Disparos y pasos cercanos en la brújula')}
+        ${check('subtitles', 'Subtítulos de los sonidos', 'Por ejemplo: [Disparos cerca a la izquierda].')}`;
     } else if (tab === 'mobile') {
       const seg = (k, opts) => `<div class="seg" data-seg="${k}">${opts.map(([v, label]) => `<button data-v="${v}" class="${String(s[k]) === String(v) ? 'on' : ''}">${label}</button>`).join('')}</div>`;
       body = `
@@ -417,6 +438,8 @@ export class Menu {
         ${range('touchSens', 'Sensibilidad táctil', 0.3, 3, 0.05, num)}
         ${range('touchSize', 'Tamaño de los botones', 0.7, 1.4, 0.05, pct100)}
         ${range('touchOpacity', 'Opacidad de los botones', 0.3, 1, 0.05, pct100)}
+        <div class="opt-row"><label>Disposición de los botones</label><button class="small-btn" id="touch-layout" ${this.game.touch ? '' : 'disabled'}>Personalizar botones</button>
+          <small class="hint">${this.game.touch ? 'Arrastra los botones donde quieras y cambia su tamaño.' : 'Disponible con los controles táctiles activos.'}</small></div>
         ${check('vibration', 'Vibración')}
         ${check('touchFullscreen', 'Pantalla completa al jugar (navegador)')}
         ${range('resScale', 'Resolución (calidad Móvil)', 40, 100, 5, pct)}
@@ -514,11 +537,95 @@ export class Menu {
         });
       }));
     }
+    el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const g = this.game;
+      if (!g.touch) return;
+      const inMenu = g.state === 'menu';
+      const ui = inMenu ? $('main-menu') : $('pause');
+      ui.style.display = 'none';
+      g.touch.editLayout(() => {
+        if (inMenu) this.showMain('options');
+        else ui.style.display = 'flex';
+      });
+    });
+    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.padScheme = b.dataset.v;
+      this.game.applySettings();
+      rerender();
+    }));
+    el.querySelectorAll('[data-seg="colorblind"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.colorblind = b.dataset.v;
+      this.game.applySettings();
+      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const g = this.game;
+      if (!g.touch) return;
+      const inMenu = g.state === 'menu';
+      const ui = inMenu ? $('main-menu') : $('pause');
+      ui.style.display = 'none';
+      g.touch.editLayout(() => {
+        if (inMenu) this.showMain('options');
+        else ui.style.display = 'flex';
+      });
+    });
+    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.padScheme = b.dataset.v;
+      this.game.applySettings();
+      rerender();
+    }));
+    el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
+    }));
     el.querySelectorAll('[data-seg="fpsCap"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       s.fpsCap = Number(b.dataset.v);
       this.game.applySettings();
-      el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const g = this.game;
+      if (!g.touch) return;
+      const inMenu = g.state === 'menu';
+      const ui = inMenu ? $('main-menu') : $('pause');
+      ui.style.display = 'none';
+      g.touch.editLayout(() => {
+        if (inMenu) this.showMain('options');
+        else ui.style.display = 'flex';
+      });
+    });
+    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.padScheme = b.dataset.v;
+      this.game.applySettings();
+      rerender();
+    }));
+    el.querySelectorAll('[data-seg="colorblind"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.colorblind = b.dataset.v;
+      this.game.applySettings();
+      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const g = this.game;
+      if (!g.touch) return;
+      const inMenu = g.state === 'menu';
+      const ui = inMenu ? $('main-menu') : $('pause');
+      ui.style.display = 'none';
+      g.touch.editLayout(() => {
+        if (inMenu) this.showMain('options');
+        else ui.style.display = 'flex';
+      });
+    });
+    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.padScheme = b.dataset.v;
+      this.game.applySettings();
+      rerender();
+    }));
+    el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
   }
 

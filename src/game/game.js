@@ -3,6 +3,9 @@ import { World } from '../world/world.js';
 import { NavGrid } from '../world/navgrid.js';
 import { createSky, SKY } from '../world/sky.js';
 import { Grass } from '../world/grass.js';
+import { InventoryPanel } from '../ui/inventory.js';
+import { Accessibility } from '../ui/accessibility.js';
+import { GamepadInput } from '../core/gamepad.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -121,6 +124,7 @@ export class Game {
     this.grass = new Grass(this.scene, this.world, this.quality);
 
     this.input = new Input(this.canvas);
+    this.gamepad = new GamepadInput(this);
     this.touch = null;
     this.audio = audio;
     this.effects = new Effects(this);
@@ -180,6 +184,8 @@ export class Game {
 
     this.menu = new Menu(this);
     this.creativePanel = new CreativePanel(this);
+    this.inventory = new InventoryPanel(this);
+    this.a11y = new Accessibility(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
@@ -298,6 +304,7 @@ export class Game {
     root.setProperty('--hud-scale', String(s.hudScale || 1));
     root.setProperty('--cross', s.crosshairColor || '#ffffff');
     this.touch?.applySettings();
+    this.a11y?.apply();
     if (this.renderer && this.quality === 'movil') {
       const pr = this.pixelRatio();
       if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.01) {
@@ -581,13 +588,14 @@ export class Game {
     this.infiniteMats = true;
     this.infiniteAmmo = true;
     p.mats = { wood: 999, stone: 999, metal: 999 };
-    // Armas de práctica en las mesas (sólo en este ordenador)
+    // Armas de práctica en las mesas (en online, compartidas: quien llega
+    // primero se la lleva, arbitrado por el servidor como el resto del botín)
     this.lobbyPickups = [];
     const types = ['ar', 'burst', 'heavyar', 'smg', 'shotgun', 'tactical', 'sniper', 'pistol', 'revolver', 'rocket', 'glauncher', 'minigun'];
     L.loot.forEach((s, i) => {
       const type = types[i % types.length];
       const it = makeWeapon(type, 3); // makeWeapon ajusta la rareza a las del arma
-      this.lobbyPickups.push(this.pickups.spawn(it, new THREE.Vector3(s.x, s.y, s.z), null, null));
+      this.lobbyPickups.push(this.pickups.spawn(it, new THREE.Vector3(s.x, s.y, s.z), null, this.net ? `lob${i}` : null));
     });
     // Los bots van llegando poco a poco (en online todos están ya)
     const bots = this.bots.list;
@@ -727,6 +735,7 @@ export class Game {
   }
 
   quitToMenu() {
+    this.inventory?.hide();
     const wasOnline = !!this.net || this.mode.online;
     if (this.mode.creative) this.creative.stop();
     // Abandonar a mitad de partida también da XP (sin bonus de puesto)
@@ -1037,6 +1046,7 @@ export class Game {
   }
 
   endMatch(win, customCause = '') {
+    this.inventory?.hide();
     if (this.state !== 'playing') return;
     this.state = win ? 'won' : 'dead';
     this.spectating = null;
@@ -1152,6 +1162,7 @@ export class Game {
 
   step(dt) {
     const input = this.input;
+    this.gamepad.update(dt);
     this.time += dt;
     const t = this.time;
 
@@ -1240,6 +1251,8 @@ export class Game {
     this.explosives.update(dt);
     this.effects.update(dt);
     this.grass.update(dt, this.camera.position);
+    this.inventory.update();
+    this.a11y.update(dt);
     this.updatePings(dt);
     this.updateAudio();
     if (this.noises.length && t - this.noises[0].t > 1.5) this.noises = this.noises.filter((n) => t - n.t < 1.5);
@@ -1252,6 +1265,7 @@ export class Game {
   handleGlobalKeys(input) {
     const p = this.player;
     if (input.hit('map')) this.hud.toggleMap();
+    if (input.hit('inventory')) this.inventory.toggle();
     if (input.hit('camera')) {
       this.camMode = this.camMode === 'fp' ? 'tp' : 'fp';
       this.hud.toast(this.camMode === 'fp' ? 'Cámara: primera persona' : 'Cámara: tercera persona');
@@ -1324,18 +1338,47 @@ export class Game {
   }
 
   dropSelected() {
+    this.dropSlot(this.player.selected);
+  }
+
+  // Suelta el objeto de un hueco (o sólo `count` unidades de una pila).
+  dropSlot(i, count = null) {
     const p = this.player;
-    const item = p.inventory[p.selected];
-    if (p.selected === 0 || !item) return;
+    const item = p.inventory[i];
+    if (i === 0 || !item) return;
     if (stackDef(item) && item.count <= 0) return; // detonador del C4 sin cargas
-    p.inventory[p.selected] = null;
-    this.combat.reloading = false;
-    this.combat.cancelUse();
+    let out = item;
+    if (stackDef(item) && count !== null && count < item.count) {
+      if (count <= 0) return;
+      out = { ...item, count };
+      item.count -= count;
+    } else p.inventory[i] = null;
+    if (i === p.selected) {
+      this.combat.reloading = false;
+      this.combat.cancelUse();
+    }
+    this.tossPickup(out);
+    this.combat.modelKey = null;
+  }
+
+  // Suelta munición o materiales (inventario con cantidades).
+  dropResource(kind, key, n) {
+    const p = this.player;
+    const store = kind === 'ammo' ? p.ammo : p.mats;
+    n = Math.min(n, store[key] || 0);
+    if (n <= 0) return;
+    if (!(kind === 'ammo' ? this.infiniteAmmo : this.infiniteMats)) store[key] -= n;
+    this.tossPickup(kind === 'ammo' ? { kind: 'ammo', ammo: key, count: n } : { kind: 'material', mat: key, count: n });
+  }
+
+  tossPickup(item) {
+    const p = this.player;
     const f = tmpF.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
     const pos = p.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
     const pk = this.pickups.spawn(item, pos, f.clone().multiplyScalar(3).setY(3));
     pk.noAuto = true;
-    this.combat.modelKey = null;
+    pk.dropAt = this.time; // la munición y los materiales tirados no se recogen solos al momento
+    return pk;
   }
 
   // ¿Hay un hueco libre (o una pila sin llenar) para el objeto?
@@ -1454,7 +1497,9 @@ export class Game {
     for (const pk of this.pickups.items.slice()) {
       const kind = pk.item.kind;
       if (!pk.settled || pk.pending || pk.pos.distanceTo(p.pos) >= 1.4) continue;
-      if (kind === 'ammo' || kind === 'material') this.tryPickup(pk);
+      if (kind === 'ammo' || kind === 'material') {
+        if (!(pk.dropAt && this.time - pk.dropAt < 2.5)) this.tryPickup(pk);
+      }
       // Recogida automática de armas y curas si hay un hueco libre
       else if (autoW && !pk.noAuto && (kind === 'weapon' || kind === 'consumable') && this.hasFreeSlot(pk.item, true)) this.tryPickup(pk);
     }

@@ -2647,8 +2647,8 @@ body.touch #touch-ui {
 .t-btn {
   --s: 56px;
   position: absolute;
-  width: calc(var(--s) * var(--tsz));
-  height: calc(var(--s) * var(--tsz));
+  width: calc(var(--s) * var(--tsz) * var(--ls, 1));
+  height: calc(var(--s) * var(--tsz) * var(--ls, 1));
   padding: 0;
   margin: 0;
   border-radius: 50%;
@@ -3671,3 +3671,201 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
   .pass-level b { font-size: 30px; }
   .buy-pass, .premium-badge { font-size: 14px; padding: 7px 12px; }
 }
+
+/* Aviso de conexión perdida (online) */
+#net-banner {
+  position: absolute;
+  left: 50%;
+  top: 92px;
+  transform: translateX(-50%);
+  background: rgba(150, 30, 30, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  z-index: 30;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+#net-banner .spin {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: netspin 0.8s linear infinite;
+}
+@keyframes netspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------------ INVENTARIO */
+#inventory {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: radial-gradient(ellipse at center, rgba(10, 16, 34, 0.72), rgba(4, 8, 18, 0.88));
+  align-items: center;
+  justify-content: center;
+  font-family: Inter, system-ui, sans-serif;
+  color: #eef3ff;
+  user-select: none;
+  touch-action: none;
+}
+#inventory .inv-panel {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: linear-gradient(180deg, rgba(34, 48, 92, 0.95), rgba(18, 26, 52, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+#inventory .inv-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+#inventory .inv-head h2 { font-family: 'Lilita One', Inter, sans-serif; letter-spacing: 1px; margin: 0; font-size: 26px; }
+#inventory .inv-head small { opacity: 0.7; flex: 1; }
+#inventory .inv-head .x { position: static; box-shadow: none; padding: 0 4px; background: none; border: 0; color: #fff; font-size: 20px; cursor: pointer; }
+#inventory kbd { background: rgba(255, 255, 255, 0.15); padding: 1px 5px; border-radius: 4px; }
+#inventory .inv-slots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 14px 0; }
+#inventory .inv-slot {
+  position: relative;
+  aspect-ratio: 1 / 1.15;
+  border-radius: 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rc, #445) 55%, #0b1224), #0b1224);
+  border: 2px solid color-mix(in srgb, var(--rc, #445) 80%, #fff 0%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+#inventory .inv-slot.empty { background: rgba(255, 255, 255, 0.05); border: 2px dashed rgba(255, 255, 255, 0.2); cursor: default; }
+#inventory .inv-slot.sel { box-shadow: 0 0 0 3px #ffd34d; }
+#inventory .inv-slot.held::after { content: 'EN MANO'; position: absolute; top: -9px; right: 6px; font-size: 9px; background: #ffd34d; color: #222; padding: 1px 5px; border-radius: 6px; font-weight: 700; }
+#inventory .inv-slot.glow { box-shadow: 0 0 16px color-mix(in srgb, var(--rc) 70%, transparent); }
+#inventory .inv-slot.over { transform: scale(1.06); box-shadow: 0 0 0 3px #5ab4ff; }
+#inventory .inv-slot img { width: 64%; height: auto; pointer-events: none; }
+#inventory .inv-slot .k { position: absolute; top: 4px; left: 7px; font-size: 11px; opacity: 0.7; }
+#inventory .inv-slot .n { font-size: 11px; text-align: center; padding: 0 4px; line-height: 1.1; }
+#inventory .inv-slot .c { position: absolute; bottom: 4px; right: 7px; font-size: 12px; font-weight: 700; }
+#inventory .inv-detail { background: rgba(0, 0, 0, 0.25); border-left: 4px solid var(--rc, #888); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+#inventory .inv-detail.empty { opacity: 0.6; border-left-color: #555; }
+#inventory .inv-detail h3 { margin: 0 0 6px; font-size: 18px; }
+#inventory .inv-detail h3 small { color: var(--rc); font-size: 12px; margin-left: 6px; }
+#inventory .inv-detail p { margin: 4px 0; opacity: 0.85; }
+#inventory .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 14px; font-size: 12px; opacity: 0.9; }
+#inventory .stats b { display: block; font-size: 15px; }
+#inventory .inv-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+#inventory h4 { margin: 4px 0 6px; font-size: 13px; text-transform: uppercase; opacity: 0.7; letter-spacing: 1px; }
+#inventory .res { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 13px; }
+#inventory .res i { width: 10px; height: 10px; border-radius: 3px; }
+#inventory .res .nm { flex: 1; }
+#inventory .res .hv { min-width: 34px; text-align: right; }
+#inventory .qty { display: flex; align-items: center; gap: 4px; }
+#inventory .qty b { min-width: 30px; text-align: center; }
+#inventory button { font: inherit; cursor: pointer; }
+#inventory .qty button, #inventory .act {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+#inventory .act { background: #2d6fd6; }
+#inventory .act.drop { background: #b8402e; margin-top: 8px; }
+#inventory .act:disabled { opacity: 0.4; cursor: default; }
+#inventory .inv-drop { margin-top: 14px; text-align: center; padding: 12px; border: 2px dashed rgba(255, 120, 100, 0.45); border-radius: 12px; opacity: 0.6; }
+#inventory.dragging .inv-drop { opacity: 1; }
+#inventory .inv-drop.over { background: rgba(255, 90, 70, 0.2); }
+#inventory .inv-ghost { position: fixed; left: 0; top: 0; width: 64px; height: 64px; pointer-events: none; display: none; z-index: 2; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6)); }
+#inventory .inv-ghost img { width: 100%; }
+@media (max-width: 640px) {
+  #inventory .inv-slots { grid-template-columns: repeat(3, 1fr); }
+  #inventory .inv-cols { grid-template-columns: 1fr; }
+  #inventory .stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ------------------------------------------------------------ ACCESIBILIDAD */
+#sound-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+#sound-ring .snd {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 22px;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  transition: opacity 0.1s;
+}
+#sound-ring .snd.shot { border-color: #ff5a4a; }
+#sound-ring .snd.boom { border-color: #ff9a3c; }
+#sound-ring .snd.step { border-color: #ffffff; }
+#sound-ring .snd.chest { border-color: #ffd34d; }
+#sound-ring .snd.car { border-color: #5ab4ff; }
+#sound-ring .snd.glide { border-color: #9be36b; }
+.cmark.snd { font-size: 14px; top: 16px; opacity: 0.9; }
+#subtitles {
+  position: absolute;
+  left: 50%;
+  bottom: 215px;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+#subtitles div {
+  display: table;
+  margin: 3px auto;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* Editor de la disposición de los botones táctiles */
+#touch-ui.editing { display: block !important; background: rgba(5, 10, 25, 0.55); z-index: 70; }
+#touch-ui.editing .t-btn { display: flex !important; opacity: 1; cursor: grab; }
+#touch-ui.editing .t-joy { display: none; }
+#touch-ui.editing .t-btn.t-sel { box-shadow: 0 0 0 3px #ffd34d, 0 0 18px #ffd34d; }
+.t-edit-bar {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 71;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  background: rgba(20, 30, 60, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 13px;
+  max-width: calc(100vw - 32px);
+}
+.t-edit-bar span { opacity: 0.7; }
+.t-edit-bar button { padding: 4px 10px; font-size: 13px; }
+.t-edit-bar button.ok { background: #2fb35a; }

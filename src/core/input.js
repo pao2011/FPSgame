@@ -29,6 +29,11 @@ export class Input {
     // Pulsaciones táctiles más cortas que un fotograma: se sueltan al acabar
     // el fotograma siguiente para que el juego llegue a verlas.
     this.frame = 0;
+    // Acciones virtuales (mando): se pulsan por nombre de acción, así que no
+    // dependen de las teclas asignadas.
+    this.vHeld = new Set();
+    this.vHit = new Set();
+    this.vUp = new Set();
     this.downFrame = new Map();
     this.lateUp = new Set();
 
@@ -113,6 +118,7 @@ export class Input {
   }
 
   releaseAll() {
+    this.vHeld.clear();
     this.keys.clear();
     this.buttons.clear();
     this.lateUp.clear();
@@ -149,6 +155,14 @@ export class Input {
     this.release(code);
   }
 
+  // Acción virtual pulsada o soltada (mando).
+  vSet(action, on) {
+    if (on && !this.vHeld.has(action)) {
+      this.vHeld.add(action);
+      this.vHit.add(action);
+    } else if (!on && this.vHeld.delete(action)) this.vUp.add(action);
+  }
+
   // ------------------------------------------------------------ CÓDIGOS
   down(code) {
     if (!code) return false;
@@ -174,23 +188,28 @@ export class Input {
   // Los controles táctiles pulsan siempre las teclas por defecto, así que en
   // táctil también se aceptan aunque se hayan reasignado.
   held(action) {
+    if (this.vHeld.has(action)) return true;
     const k = this.binds[action];
     if (k && (this.down(k[0]) || this.down(k[1]))) return true;
     const d = this.touch && DEFAULTS[action];
     return !!d && (this.down(d[0]) || this.down(d[1]));
   }
   hit(action) {
+    if (this.vHit.has(action)) return true;
     const k = this.binds[action];
     if (k && (this.wasPressed(k[0]) || this.wasPressed(k[1]))) return true;
     const d = this.touch && DEFAULTS[action];
     return !!d && (this.wasPressed(d[0]) || this.wasPressed(d[1]));
   }
   up(action) {
+    if (this.vUp.has(action)) return true;
     const k = this.binds[action];
     return !!k && (this.wasReleased(k[0]) || this.wasReleased(k[1]));
   }
 
   endFrame() {
+    this.vHit.clear();
+    this.vUp.clear();
     this.pressed.clear();
     this.released.clear();
     this.clicked.clear();

@@ -136,6 +136,7 @@ export class HUD {
     const g = this.game;
     const list = g.pings.map((pg) => ({ pos: pg.pos, cls: pg.mine ? 'mine' : 'mate' }));
     if (g.waypoint) list.push({ pos: g.waypoint, cls: 'wp' });
+    if (this.soundMarks?.length) list.push(...this.soundMarks);
     let html = '';
     for (const m of list) {
       const ang = Math.atan2(m.pos.x - p.pos.x, -(m.pos.z - p.pos.z)); // 0 = norte
@@ -144,7 +145,8 @@ export class HUD {
       if (rel < -180) rel += 360;
       if (Math.abs(rel) > 50) continue;
       const d = Math.round(Math.hypot(m.pos.x - p.pos.x, m.pos.z - p.pos.z));
-      html += `<span class="cmark ${m.cls}" style="left:${200 + rel * 4}px">▼<small>${d} m</small></span>`;
+      if (m.icon) html += `<span class="cmark ${m.cls}" style="left:${200 + rel * 4}px">${m.icon}</span>`;
+      else html += `<span class="cmark ${m.cls}" style="left:${200 + rel * 4}px">▼<small>${d} m</small></span>`;
     }
     this.set('marks', this.el.marks, 'html', html);
   }
@@ -275,6 +277,25 @@ export class HUD {
     this.toastT = 2.2;
   }
 
+  // Aviso fijo de conexión (online): texto y segundos de cuenta atrás.
+  netBanner(text, secs = 0) {
+    if (!this.netEl) {
+      this.netEl = document.createElement('div');
+      this.netEl.id = 'net-banner';
+      this.el.hud.appendChild(this.netEl);
+    }
+    this.netText = text;
+    this.netEnd = text && secs ? performance.now() / 1000 + secs : 0;
+    this.netEl.style.display = text ? '' : 'none';
+    this.paintNet();
+  }
+
+  paintNet() {
+    if (!this.netText || !this.netEl) return;
+    const left = this.netEnd ? Math.max(0, Math.ceil(this.netEnd - performance.now() / 1000)) : 0;
+    this.netEl.innerHTML = `<span class="spin"></span>${this.netText}${left ? ` <b>${left} s</b>` : ''}`;
+  }
+
   banner(msg, sub = '') {
     this.set('banner', this.el.banner, 'html', msg ? `<div class="big">${msg}</div>${sub ? `<div class="sub">${sub}</div>` : ''}` : '');
   }
@@ -330,6 +351,7 @@ export class HUD {
   }
 
   update(dt) {
+    if (this.netText) this.paintNet();
     const g = this.game;
     const p = g.player;
     const e = this.el;

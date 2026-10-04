@@ -97,6 +97,99 @@ export class TouchControls {
     const s = this.game.settings;
     this.root.style.setProperty('--tsz', String(s.touchSize || 1));
     this.root.style.setProperty('--top', String(s.touchOpacity ?? 0.85));
+    this.applyLayout(s.touchLayout || {});
+  }
+
+  // Disposición personalizada: { id: { x, y, s } } con x/y en fracción de la
+  // pantalla (centro del botón) y s = escala del botón.
+  applyLayout(layout) {
+    for (const [id, el] of Object.entries(this.btn)) {
+      const l = layout[id];
+      el.style.setProperty('--ls', String(l?.s || 1));
+      if (l && Number.isFinite(l.x) && Number.isFinite(l.y)) {
+        const half = 'var(--s) * var(--tsz) * var(--ls, 1) / 2';
+        el.style.left = `calc(${(l.x * 100).toFixed(2)}% - ${half})`;
+        el.style.top = `calc(${(l.y * 100).toFixed(2)}% - ${half})`;
+        el.style.right = el.style.bottom = 'auto';
+      } else el.style.left = el.style.top = el.style.right = el.style.bottom = '';
+    }
+  }
+
+  // ---------------------------------------------------------- EDITOR
+  // Personalizar botones: arrastrar para moverlos y regla para el tamaño.
+  editLayout(onClose) {
+    if (this.editing) return;
+    const g = this.game;
+    this.releaseAll?.();
+    this.editing = { layout: JSON.parse(JSON.stringify(g.settings.touchLayout || {})), sel: 'fire', drag: null, onClose };
+    this.root.classList.add('editing');
+    this.root.dataset.mode = 'edit';
+    this.state.mode = 'edit';
+    const bar = (this.editBar = document.createElement('div'));
+    bar.className = 't-edit-bar';
+    bar.innerHTML = `<b>Personalizar botones</b><span>Arrastra un botón para moverlo</span>
+      <label>Tamaño <input type="range" min="0.6" max="1.8" step="0.05" value="1"></label>
+      <button data-e="reset">Restablecer</button><button data-e="cancel">Cancelar</button><button data-e="save" class="ok">Guardar</button>`;
+    document.body.appendChild(bar);
+    const range = bar.querySelector('input');
+    const sync = () => {
+      for (const el of Object.values(this.btn)) el.classList.toggle('t-sel', el.dataset.act === this.editing.sel);
+      range.value = String(this.editing.layout[this.editing.sel]?.s || 1);
+    };
+    this.editing.sync = sync;
+    range.addEventListener('input', () => {
+      const e = this.editing;
+      const el = this.btn[e.sel];
+      const r = el.getBoundingClientRect();
+      e.layout[e.sel] = { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight, ...e.layout[e.sel], s: Number(range.value) };
+      this.applyLayout(e.layout);
+    });
+    bar.addEventListener('click', (ev) => {
+      const k = ev.target.closest('[data-e]')?.dataset.e;
+      if (!k) return;
+      if (k === 'reset') {
+        this.editing.layout = {};
+        this.applyLayout({});
+        sync();
+        return;
+      }
+      if (k === 'save') {
+        g.settings.touchLayout = this.editing.layout;
+        g.applySettings();
+      } else this.applyLayout(g.settings.touchLayout || {});
+      this.endEdit();
+    });
+    sync();
+  }
+
+  endEdit() {
+    const e = this.editing;
+    if (!e) return;
+    this.editing = null;
+    this.root.classList.remove('editing');
+    for (const el of Object.values(this.btn)) el.classList.remove('t-sel');
+    this.editBar?.remove();
+    this.state.mode = null;
+    e.onClose?.();
+  }
+
+  editDown(ev) {
+    const el = ev.target.closest('[data-act]');
+    if (!el) return;
+    const e = this.editing;
+    e.sel = el.dataset.act;
+    const r = el.getBoundingClientRect();
+    e.drag = { id: ev.pointerId, dx: ev.clientX - (r.left + r.width / 2), dy: ev.clientY - (r.top + r.height / 2) };
+    e.sync();
+  }
+
+  editMove(ev) {
+    const e = this.editing;
+    if (!e.drag || e.drag.id !== ev.pointerId) return;
+    const x = Math.max(0.03, Math.min(0.97, (ev.clientX - e.drag.dx) / innerWidth));
+    const y = Math.max(0.05, Math.min(0.95, (ev.clientY - e.drag.dy) / innerHeight));
+    e.layout[e.sel] = { s: e.layout[e.sel]?.s || 1, x, y };
+    this.applyLayout(e.layout);
   }
 
   // Pantalla completa y horizontal (sólo funciona tras un toque del usuario).
@@ -184,6 +277,7 @@ export class TouchControls {
   // ---------------------------------------------------------- PUNTEROS
   onDown(e) {
     e.preventDefault();
+    if (this.editing) return this.editDown(e);
     const g = this.game;
     const input = this.input;
     try {
@@ -228,6 +322,7 @@ export class TouchControls {
   }
 
   onMove(e) {
+    if (this.editing) return this.editMove(e);
     const p = this.ptrs.get(e.pointerId);
     if (!p) return;
     e.preventDefault();
@@ -242,6 +337,10 @@ export class TouchControls {
   }
 
   onUp(e) {
+    if (this.editing) {
+      if (this.editing.drag?.id === e.pointerId) this.editing.drag = null;
+      return;
+    }
     const p = this.ptrs.get(e.pointerId);
     if (!p) return;
     this.ptrs.delete(e.pointerId);
@@ -356,6 +455,7 @@ export class TouchControls {
 
   // ---------------------------------------------------------- CADA FOTOGRAMA
   update() {
+    if (this.editing) return;
     const g = this.game;
     const p = g.player;
     const playing = g.state === 'playing' && !g.paused && !g.waiting;

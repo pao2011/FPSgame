@@ -99,6 +99,17 @@ export const DEFAULT_SETTINGS = {
   showHints: true,
   skipLobby: false,
   binds: null,
+  // Accesibilidad
+  colorblind: 'none', // none | protanopia | deuteranopia | tritanopia
+  colorblindStrength: 1,
+  soundViz: false, // indicadores de sonido alrededor de la mira
+  compassSounds: true, // disparos y pasos cercanos en la brújula
+  subtitles: false,
+  // Mando
+  padScheme: 'clasico', // clasico | pro (constructor pro)
+  padSens: 1,
+  padAimAssist: true,
+  padAssistStrength: 1,
   online: { mode: 'duos', bots: true, difficulty: 'normal' },
   // Móvil / táctil
   touchControls: 'auto', // auto | on | off

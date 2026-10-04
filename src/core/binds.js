@@ -35,6 +35,7 @@ export const ACTIONS = [
   { group: 'Construcción', id: 'editReset', name: 'Restablecer edición', keys: ['Mouse2', ''] },
 
   { group: 'Interfaz', id: 'map', name: 'Mapa', keys: ['KeyM', ''] },
+  { group: 'Interfaz', id: 'inventory', name: 'Inventario (arrastrar y soltar)', keys: ['Tab', 'KeyI'] },
   { group: 'Interfaz', id: 'camera', name: 'Cámara 1ª / 3ª persona', keys: ['KeyV', ''] },
   { group: 'Interfaz', id: 'ping', name: 'Marcar ubicación', keys: ['Mouse1', 'KeyT'] },
   { group: 'Interfaz', id: 'catalog', name: 'Catálogo / panel creativo · agradecer al conductor', keys: ['KeyB', ''] },

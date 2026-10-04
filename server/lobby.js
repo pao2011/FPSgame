@@ -25,6 +25,7 @@ export class Lobby {
     this.online = new Map(); // nombre en minúsculas -> cliente
     this.parties = new Map();
     this.matches = new Map();
+    this.away = new Map(); // cuenta -> partida que le guarda el sitio
     this.queue = []; // grupos buscando partida (en orden de llegada)
     this.tickTimer = setInterval(() => this.tick(), 1000);
   }
@@ -136,6 +137,9 @@ export class Lobby {
     const u = res.user;
     this.send(c, { t: 'auth_ok', name: u.name, token: res.token, stats: u.stats, outfit: u.outfit, profile: u.profile || null, seed: this.islandSeed });
     this.ensureParty(c);
+    // Volvía de un corte en plena partida: se le devuelve a ella.
+    const back = this.away.get(key);
+    if (back && back.rejoin(c)) this.send(c, { t: 'notice', text: 'Has vuelto a la partida' });
     this.pushParty(c.party);
     this.pushSocial(key);
     this.notifyFriends(key);
@@ -571,6 +575,13 @@ export class Lobby {
         this.partyChanged(p);
       }
     }
+  }
+
+  // Jugador desconectado cuya partida le guarda el sitio (null = ya no).
+  setAway(key, match) {
+    if (!key) return;
+    if (match) this.away.set(key, match);
+    else this.away.delete(key);
   }
 
   // Un jugador sale de la partida (vuelve al lobby).
