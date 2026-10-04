@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, CONSUMABLES, MATERIALS } from './items.js';
-import { makeItemModel, makeWeaponModel, mat } from './models.js';
+import { makeItemModel, makeWeaponModel, makeProjectileModel, makeLaunchPad, mat } from './models.js';
 import { lerp } from '../core/rng.js';
 
 const tmpV = new THREE.Vector3();
@@ -35,7 +35,15 @@ export class Combat {
     this.bobPhase = 0;
     this.sway = new THREE.Vector2();
     this.projectiles = [];
+    this.throwables = [];
+    this.pads = [];
     this.autoReloadT = -1;
+    this.burstLeft = 0;
+    this.burstT = 0;
+    this.spin = 0;
+    this.adsToggled = false;
+    this.lastSlot = 0;
+    this.quickHealPending = false;
   }
 
   reset() {
@@ -45,7 +53,15 @@ export class Combat {
     this.adsBlend = 0;
     this.bloom = 0;
     this.projectiles.length = 0;
+    for (const t of this.throwables) this.game.scene.remove(t.mesh);
+    this.throwables.length = 0;
+    for (const pad of this.pads) this.game.scene.remove(pad.mesh);
+    this.pads.length = 0;
     this.modelKey = null;
+    this.burstLeft = 0;
+    this.spin = 0;
+    this.adsToggled = false;
+    this.lastSlot = 0;
   }
 
   get player() {
@@ -55,7 +71,11 @@ export class Combat {
   select(i) {
     const p = this.player;
     if (i === p.selected) return;
+    this.lastSlot = p.selected;
     p.selected = i;
+    this.burstLeft = 0;
+    this.spin = 0;
+    this.adsToggled = false;
     this.reloading = false;
     this.cancelUse();
     this.swapT = 0.3;
@@ -79,6 +99,28 @@ export class Combat {
     }
   }
 
+  // Curación rápida: elige la mejor cura para tu estado y la empieza a usar.
+  quickHeal() {
+    const p = this.player;
+    const opts = [];
+    p.inventory.forEach((it, i) => {
+      if (!it || it.kind !== 'consumable') return;
+      const d = CONSUMABLES[it.type];
+      let score = -1;
+      if (d.over || (d.heal && d.shield)) score = p.health < 100 || p.shield < 100 ? 5 : -1;
+      else if (d.heal) score = p.health < d.cap ? (p.health < 50 ? 4 : 2) + d.heal / 100 : -1;
+      else if (d.shield) score = p.shield < d.cap ? 3 + d.shield / 100 : -1;
+      if (score > 0) opts.push({ i, score });
+    });
+    if (!opts.length) {
+      this.game.hud.toast('No tienes curas útiles ahora mismo');
+      return;
+    }
+    opts.sort((a, b) => b.score - a.score);
+    this.select(opts[0].i);
+    this.quickHealPending = true;
+  }
+
   ensureModel(item) {
     const key = item.kind === 'weapon' ? `w_${item.type}_${item.rarity}` : item.kind === 'consumable' ? `c_${item.type}` : 'pickaxe';
     if (key === this.modelKey) return;
@@ -90,6 +132,7 @@ export class Combat {
     // Manos simples
     const skin = mat(0xe0b48a);
     const sleeve = mat(0x2f6fd6);
+    const isPistol = item.kind === 'weapon' && WEAPONS[item.type].cat === 'pistol';
     const hand = (x, y, z, rx = 0) => {
       const g = new THREE.Group();
       const h = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.11), skin);
@@ -102,7 +145,7 @@ export class Combat {
     };
     if (item.kind === 'weapon') {
       hand(0.0, -0.07, 0.07, 0.4);
-      hand(-0.02, -0.05, item.type === 'pistol' ? 0.0 : -0.28, 0.2);
+      hand(-0.02, -0.05, isPistol ? 0.0 : -0.28, 0.2);
     } else if (item.kind === 'pickaxe') {
       hand(0, 0.0, 0, 0);
     } else {
@@ -123,7 +166,7 @@ export class Combat {
     const p = this.player;
     const item = p.item;
     const def = this.def(item);
-    if (!def || this.reloading || item.mag >= def.mag || p.ammo[def.ammo] <= 0) return;
+    if (!def || this.reloading || item.mag >= def.mag || (p.ammo[def.ammo] <= 0 && !this.game.infiniteAmmo)) return;
     this.reloading = true;
     this.reloadTotal = def.reload[item.rarity];
     this.reloadT = this.reloadTotal;
@@ -171,7 +214,9 @@ export class Combat {
     const g = this.game;
     const p = this.player;
     this.updateProjectiles(dt);
-    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.active || p.knocked || g.spectating) {
+    this.updateThrowables(dt);
+    this.updatePads(dt);
+    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.active || g.build.editing || p.knocked || g.spectating) {
       this.viewmodel.visible = false;
       this.adsBlend = 0;
       g.hud.setScope(false);
@@ -186,11 +231,18 @@ export class Combat {
     this.bloom = Math.max(0, this.bloom - dt * (def ? def.maxBloom * 2.2 : 0.1));
     this.kick *= Math.exp(-dt * 14);
 
-    // Apuntar
-    const wantAds = input.mouseDown(2) && !!def && !this.reloading && !p.sprinting && this.swapT <= 0;
+    // Apuntar (mantener o alternar, según Opciones)
+    if (g.settings.toggleAds) {
+      if (input.hit('ads')) this.adsToggled = !this.adsToggled;
+      if (!def || p.sprinting) this.adsToggled = false;
+    }
+    const adsHeld = g.settings.toggleAds ? this.adsToggled : input.held('ads');
+    const wantAds = adsHeld && !!def && !this.reloading && !p.sprinting && this.swapT <= 0;
     this.adsBlend = Math.max(0, Math.min(1, this.adsBlend + (wantAds ? dt / 0.16 : -dt / 0.12)));
 
-    if (input.wasPressed('KeyR')) this.startReload();
+    if (input.hit('reload')) this.startReload();
+    if (input.hit('quickHeal')) this.quickHeal();
+    if (input.hit('lastWeapon')) this.select(this.lastSlot);
 
     if (def) this.updateWeapon(dt, input, item, def);
     else if (item.kind === 'pickaxe') this.updatePickaxe(dt, input);
@@ -204,19 +256,20 @@ export class Combat {
     if (this.reloading) {
       this.reloadT -= dt;
       if (this.reloadT <= 0) {
+        const inf = this.game.infiniteAmmo;
         if (def.shellReload) {
-          if (p.ammo[def.ammo] > 0) {
+          if (p.ammo[def.ammo] > 0 || inf) {
             item.mag++;
-            p.ammo[def.ammo]--;
+            if (!inf) p.ammo[def.ammo]--;
           }
-          if (item.mag < def.mag && p.ammo[def.ammo] > 0) {
+          if (item.mag < def.mag && (p.ammo[def.ammo] > 0 || inf)) {
             this.reloadT = this.reloadTotal;
             this.game.audio.reload();
           } else this.reloading = false;
         } else {
-          const n = Math.min(def.mag - item.mag, p.ammo[def.ammo]);
+          const n = inf ? def.mag - item.mag : Math.min(def.mag - item.mag, p.ammo[def.ammo]);
           item.mag += n;
-          p.ammo[def.ammo] -= n;
+          if (!inf) p.ammo[def.ammo] -= n;
           this.reloading = false;
         }
       }
@@ -225,29 +278,49 @@ export class Combat {
       this.autoReloadT -= dt;
       if (this.autoReloadT <= 0) this.startReload();
     }
-    const wantFire = def.auto ? input.mouseDown(0) : input.mouseClicked(0);
+    // Ráfagas: los disparos pendientes salen solos
+    if (this.burstLeft > 0) {
+      this.burstT -= dt;
+      if (this.burstT <= 0 && item.mag > 0) {
+        this.burstLeft--;
+        this.burstT = 1 / def.burstRate;
+        this.fire(item, def, true);
+      }
+      if (item.mag <= 0) this.burstLeft = 0;
+      return;
+    }
+    // Minigun: hay que girar el cañón antes de disparar
+    if (def.spinUp) {
+      this.spin = input.held('fire') && !this.reloading ? Math.min(def.spinUp, this.spin + dt) : Math.max(0, this.spin - dt * 2);
+      if (this.spin < def.spinUp) return;
+    }
+    const wantFire = def.auto ? input.held('fire') : input.hit('fire');
     if (!wantFire || this.cooldown > 0 || this.swapT > 0) return;
     if (this.reloading) {
       if (def.shellReload && item.mag > 0) this.reloading = false;
       else return;
     }
     if (item.mag <= 0) {
-      if (p.ammo[def.ammo] > 0) this.startReload();
-      else if (input.mouseClicked(0)) {
+      if (p.ammo[def.ammo] > 0 || this.game.infiniteAmmo) this.startReload();
+      else if (input.hit('fire')) {
         this.game.audio.empty();
         this.game.hud.toast('Sin munición: ' + def.name);
       }
       this.cooldown = 0.2;
       return;
     }
+    if (def.burst) {
+      this.burstLeft = def.burst - 1;
+      this.burstT = 1 / def.burstRate;
+    }
     this.fire(item, def);
   }
 
-  fire(item, def) {
+  fire(item, def, inBurst = false) {
     const g = this.game;
     const p = this.player;
     item.mag--;
-    this.cooldown = 1 / def.rate;
+    if (!inBurst) this.cooldown = 1 / def.rate;
     const origin = g.aimOrigin;
     const dir = g.aimDir;
     const skip = g.aimSkip;
@@ -259,6 +332,16 @@ export class Combat {
     const ends = [];
     for (let i = 0; i < pellets; i++) {
       this.coneDir(dir, spread, d);
+      if (def.explosive) {
+        const start = origin.clone().addScaledVector(d, skip + 0.6);
+        this.spawnThrowable({
+          pos: start, vel: d.clone().multiplyScalar(def.projectile.speed), gravity: def.projectile.gravity,
+          model: def.projectile.model, fuse: def.projectile.fuse ?? 6, bounce: !!def.projectile.bounce, impact: !def.projectile.bounce,
+          boom: { radius: def.explosive.radius, damage: def.damage[item.rarity], build: def.explosive.build }, owner: p,
+        });
+        ends.push(origin.clone().addScaledVector(d, 30));
+        continue;
+      }
       if (def.projectile) {
         const start = origin.clone().addScaledVector(d, skip);
         this.projectiles.push({
@@ -288,7 +371,7 @@ export class Combat {
       viewPos = this.vm.userData.muzzle.getWorldPosition(new THREE.Vector3());
     }
     g.effects.muzzleFlash(viewPos, muzzle);
-    if (item.mag === 0 && p.ammo[def.ammo] > 0) this.autoReloadT = Math.min(0.35, this.cooldown);
+    if (item.mag === 0 && (p.ammo[def.ammo] > 0 || g.infiniteAmmo) && g.settings.autoReload !== false) this.autoReloadT = Math.min(0.35, this.cooldown);
   }
 
   collectHit(hit, def, item, hits) {
@@ -361,7 +444,7 @@ export class Combat {
   updatePickaxe(dt, input) {
     const g = this.game;
     this.swingT = Math.max(0, this.swingT - dt);
-    if (input.mouseDown(0) && this.swingT <= 0 && this.swapT <= 0) {
+    if (input.held('fire') && this.swingT <= 0 && this.swapT <= 0) {
       this.swingT = 0.55;
       this.swingHit = true;
     }
@@ -397,13 +480,28 @@ export class Combat {
     const g = this.game;
     const p = this.player;
     const def = CONSUMABLES[item.type];
-    if (!this.using && input.mouseClicked(0) && this.swapT <= 0) {
-      if (def.heal && p.health >= def.cap) {
-        g.hud.toast(def.cap < 100 ? `Las vendas solo curan hasta ${def.cap}` : 'Ya tienes la salud al máximo');
-        return;
+    // Arrojadizos y desplegables: un clic los lanza / coloca
+    if (def.throw || def.deploy) {
+      this.swingT = Math.max(0, this.swingT - dt);
+      if ((input.hit('fire') || this.quickHealPending) && this.swapT <= 0 && this.swingT <= 0) {
+        this.quickHealPending = false;
+        if (def.deploy ? this.deployPad() : this.throwItem(item.type, def)) {
+          this.swingT = 0.6;
+          this.consumeOne(item);
+        }
       }
-      if (def.shield && p.shield >= def.cap) {
-        g.hud.toast(def.cap < 100 ? `Solo puedes usarlas hasta ${def.cap} de escudo` : 'Ya tienes el escudo al máximo');
+      return;
+    }
+    const start = (input.hit('fire') || this.quickHealPending) && this.swapT <= 0;
+    this.quickHealPending = false;
+    if (!this.using && start) {
+      const healFull = !def.heal || p.health >= def.cap;
+      const shieldFull = !def.shield || p.shield >= def.cap;
+      const overFull = def.over ? p.health >= 100 && p.shield >= 100 : true;
+      if (healFull && shieldFull && overFull) {
+        if (def.heal && !def.shield) g.hud.toast(def.cap < 100 ? `Las vendas solo curan hasta ${def.cap}` : 'Ya tienes la salud al máximo');
+        else if (def.shield && !def.heal) g.hud.toast(def.cap < 100 ? `Solo puedes usarlas hasta ${def.cap} de escudo` : 'Ya tienes el escudo al máximo');
+        else g.hud.toast('Ya tienes la salud y el escudo al máximo');
         return;
       }
       this.using = item;
@@ -415,15 +513,193 @@ export class Combat {
       if (this.useT <= 0) {
         if (def.heal) p.health = Math.min(def.cap, p.health + def.heal);
         if (def.shield) p.shield = Math.min(def.cap, p.shield + def.shield);
-        item.count--;
-        if (item.count <= 0) {
-          p.inventory[p.selected] = null;
-          this.modelKey = null;
-          this.select(0);
-        }
+        if (def.over) p.regen = { left: def.over.total, rate: def.over.rate };
         this.using = null;
         g.hud.setProgress(null);
         g.audio.heal();
+        this.consumeOne(item);
+      }
+    }
+  }
+
+  consumeOne(item) {
+    const p = this.player;
+    item.count--;
+    if (item.count <= 0) {
+      p.inventory[p.selected] = null;
+      this.modelKey = null;
+      this.select(0);
+    }
+  }
+
+  // ------------------------------------------------------- ARROJADIZOS
+  throwItem(type, def) {
+    const g = this.game;
+    const p = this.player;
+    const dir = g.aimDir.clone();
+    dir.y += 0.12;
+    dir.normalize();
+    const start = p.eye.addScaledVector(dir, 0.6);
+    this.spawnThrowable({
+      pos: start, vel: dir.multiplyScalar(def.throw.speed).add(tmpV.copy(p.vel).multiplyScalar(0.5)), gravity: 20,
+      model: type === 'impulse' ? 'impulse' : 'grenade', fuse: def.throw.fuse, bounce: true, impact: type === 'impulse',
+      boom: def.throw.knock ? { radius: def.throw.radius, knock: def.throw.knock } : { radius: def.throw.radius, damage: def.throw.damage, build: def.throw.build },
+      owner: p,
+    });
+    g.audio.throwItem();
+    return true;
+  }
+
+  spawnThrowable(o) {
+    const mesh = makeProjectileModel(o.model);
+    mesh.position.copy(o.pos);
+    this.game.scene.add(mesh);
+    this.throwables.push({ ...o, mesh, life: 0 });
+  }
+
+  updateThrowables(dt) {
+    const g = this.game;
+    for (let i = this.throwables.length - 1; i >= 0; i--) {
+      const t = this.throwables[i];
+      t.life += dt;
+      t.vel.y -= t.gravity * dt;
+      const step = tmpV.copy(t.vel).multiplyScalar(dt);
+      const len = step.length();
+      let boom = t.life >= t.fuse;
+      if (len > 1e-4 && !boom) {
+        const dir = step.clone().divideScalar(len);
+        const hit = g.raycast(t.pos, dir, len + 0.1, 0, t.owner);
+        if (hit) {
+          if (t.impact || hit.kind === 'character' || hit.kind === 'dummy') {
+            t.pos.copy(hit.point).addScaledVector(dir, -0.2);
+            boom = true;
+          } else if (t.bounce) {
+            const n = hit.normal || tmpU.set(0, 1, 0);
+            t.pos.copy(hit.point).addScaledVector(n, 0.12);
+            const vn = t.vel.dot(n);
+            t.vel.addScaledVector(n, -1.6 * vn).multiplyScalar(0.45);
+            if (t.vel.lengthSq() < 0.5) t.vel.set(0, 0, 0);
+          }
+        } else t.pos.add(step);
+      }
+      t.mesh.position.copy(t.pos);
+      if (t.model === 'rocket' && t.vel.lengthSq() > 1) {
+        t.mesh.lookAt(tmpR.copy(t.pos).add(t.vel));
+        g.effects.tracer(t.pos.clone().addScaledVector(t.vel, -0.03), t.pos, 0xffa040, 0.08, 0.25);
+      } else t.mesh.rotation.x += dt * 8;
+      if (boom) {
+        g.scene.remove(t.mesh);
+        this.throwables.splice(i, 1);
+        this.explode(t.pos, t.boom, t.owner);
+      }
+    }
+  }
+
+  // Explosión: daño en área a personajes, dianas y construcciones, o empuje
+  // (granada de impulso). owner = quien la lanzó (jugador o bot).
+  explode(pos, b, owner, fromNet = false) {
+    const g = this.game;
+    const r = b.radius;
+    g.effects.explosion(pos, r, !!b.knock);
+    const dCam = pos.distanceTo(g.camera.position);
+    g.audio.explosion(Math.max(0, 1 - dCam / 220));
+    if (!fromNet) g.net?.sendBoom(pos, b);
+    if (fromNet) return;
+    g.noise(pos, 140, owner);
+    if (b.knock) {
+      // empuje: también al propio jugador (movilidad)
+      for (const c of g.chars) {
+        if (!c.alive || c.isRemote || c.mode !== 'ground') continue;
+        const d = tmpV.copy(c.pos).setY(c.pos.y + 0.9).sub(pos);
+        const dist = d.length();
+        if (dist > r) continue;
+        d.normalize();
+        d.y = Math.max(d.y, 0.55);
+        d.normalize();
+        const k = b.knock * (0.6 + 0.4 * (1 - dist / r));
+        c.vel.addScaledVector(d, k);
+        c.vel.y = Math.max(c.vel.y, k * 0.75);
+        c.onGround = false;
+        c.noFallT = 4;
+      }
+      return;
+    }
+    let hitAny = false;
+    let killed = false;
+    for (const c of g.chars) {
+      if (!c.alive || c.mode === 'bus') continue;
+      const dist = tmpV.copy(c.pos).setY(c.pos.y + 0.9).distanceTo(pos);
+      if (dist > r) continue;
+      const dmg = b.damage * (1 - 0.5 * (dist / r));
+      if (c === owner) {
+        if (c.isPlayer) c.damage(dmg * 0.5, 'explosion', null);
+        continue;
+      }
+      if (owner?.isPlayer) {
+        const k = this.damageCharacter(c, dmg, false, tmpR.copy(c.pos).setY(c.pos.y + 1.2), 'explosion');
+        g.player.stats.damage += dmg;
+        hitAny = true;
+        killed = killed || k;
+      } else c.damage(dmg, 'explosion', owner);
+    }
+    for (const d of g.dummies.list) {
+      if (!d.alive) continue;
+      const dist = tmpV.copy(d.pos).setY(d.pos.y + 1.2).distanceTo(pos);
+      if (dist < r) {
+        g.dummies.damage(d, b.damage * (1 - 0.5 * (dist / r)), false, tmpR.copy(d.pos).setY(d.pos.y + 1.5));
+        hitAny = true;
+      }
+    }
+    if (hitAny && owner?.isPlayer) {
+      g.hud.hitMarker(false, killed);
+      g.audio.hit(false);
+    }
+    if (b.build) {
+      const center = new THREE.Vector3();
+      for (const piece of [...g.build.pieces.values()]) {
+        piece.mesh.getWorldPosition(center);
+        const dist = center.distanceTo(pos);
+        if (dist < r + 2) g.build.damage(piece, b.build * Math.max(0.3, 1 - dist / (r + 2)));
+      }
+    }
+  }
+
+  // --------------------------------------------------- PLATAFORMA DE SALTO
+  deployPad() {
+    const g = this.game;
+    const p = this.player;
+    const f = tmpV.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
+    const x = p.pos.x + f.x * 2.2, z = p.pos.z + f.z * 2.2;
+    const y = g.world.groundBelow(x, z, p.pos.y + 1.5);
+    if (Math.abs(y - p.pos.y) > 1.6 || y < 0.2) {
+      g.hud.toast('No se puede colocar aquí: busca suelo plano');
+      return false;
+    }
+    const mesh = makeLaunchPad();
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = p.yaw;
+    g.scene.add(mesh);
+    this.pads.push({ mesh, pos: mesh.position, cd: 0 });
+    g.audio.build();
+    g.hud.toast('Plataforma de salto colocada: písala para salir disparado');
+    return true;
+  }
+
+  updatePads(dt) {
+    const g = this.game;
+    for (const pad of this.pads) {
+      pad.cd = Math.max(0, pad.cd - dt);
+      for (const c of g.chars) {
+        if (!c.alive || !c.isPlayer || c.mode !== 'ground' || c.vehicle) continue;
+        if (Math.abs(c.pos.x - pad.pos.x) > 1.25 || Math.abs(c.pos.z - pad.pos.z) > 1.25) continue;
+        if (c.pos.y < pad.pos.y - 0.3 || c.pos.y > pad.pos.y + 0.9) continue;
+        if (c.launchT > 0) continue;
+        c.vel.y = 46;
+        c.onGround = false;
+        c.launchT = 0.6;
+        c.launched = true;
+        c.noFallT = 8;
+        if (c.isPlayer || c.pos.distanceTo(g.camera.position) < 50) g.audio.launch();
       }
     }
   }

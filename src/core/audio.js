@@ -5,6 +5,10 @@ const SHOTS = {
   pistol: { f: 2300, d: 0.16, g: 0.45, low: 130 },
   shotgun: { f: 1000, d: 0.5, g: 0.9, low: 70 },
   sniper: { f: 1400, d: 0.9, g: 1.0, low: 55 },
+  heavy: { f: 1500, d: 0.3, g: 0.7, low: 85 },
+  revolver: { f: 1700, d: 0.45, g: 0.8, low: 75 },
+  rocket: { f: 500, d: 0.6, g: 0.6, low: 60 },
+  launcher: { f: 700, d: 0.25, g: 0.5, low: 90 },
 };
 
 class AudioSys {
@@ -244,6 +248,49 @@ class AudioSys {
   land() {
     if (!this.ctx) return;
     this._burst(0.2, { freq: 300, gain: 0.3 });
+  }
+
+  explosion(volume = 1) {
+    if (!this.ctx || volume < 0.02) return;
+    this._burst(1.2, { freq: 900, endFreq: 60, gain: 0.9 * volume });
+    this._tone(70, 0.6, { type: 'sine', gain: 0.6 * volume, slide: 0.4 });
+  }
+
+  throwItem() {
+    if (!this.ctx) return;
+    this._burst(0.15, { freq: 1200, endFreq: 400, type: 'bandpass', gain: 0.2 });
+  }
+
+  launch() {
+    if (!this.ctx) return;
+    this._tone(200, 0.6, { type: 'triangle', gain: 0.2, slide: 4 });
+    this._burst(0.5, { freq: 400, endFreq: 2400, type: 'bandpass', gain: 0.3 });
+  }
+
+  beep(high = false) {
+    if (!this.ctx) return;
+    this._tone(high ? 1320 : 880, high ? 0.35 : 0.12, { type: 'square', gain: 0.07 });
+  }
+
+  thanks() {
+    if (!this.ctx) return;
+    [660, 880, 990].forEach((f, i) => this._tone(f, 0.18, { type: 'triangle', gain: 0.12, delay: i * 0.08 }));
+  }
+
+  editTile() {
+    if (!this.ctx) return;
+    this._tone(1500, 0.04, { type: 'triangle', gain: 0.06 });
+  }
+
+  ping() {
+    if (!this.ctx) return;
+    this._tone(1200, 0.12, { type: 'sine', gain: 0.15 });
+    this._tone(1800, 0.16, { type: 'sine', gain: 0.12, delay: 0.08 });
+  }
+
+  door() {
+    if (!this.ctx) return;
+    this._burst(0.25, { freq: 500, endFreq: 250, type: 'bandpass', gain: 0.25, q: 2 });
   }
 
   setWind(v) {

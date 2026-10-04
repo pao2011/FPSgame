@@ -5,16 +5,29 @@ export class Dummies {
   constructor(game, spots) {
     this.game = game;
     this.list = [];
-    for (const s of spots) {
-      const model = makeDummy();
-      model.position.set(s.x, s.y, s.z);
-      model.rotation.y = Math.random() * Math.PI * 2;
-      model.traverse((o) => {
-        if (o.isMesh) o.castShadow = true;
-      });
-      game.scene.add(model);
-      game.world.collision.add(s.x - 0.12, s.y, s.z - 0.12, s.x + 0.12, s.y + 0.9, s.z + 0.12, { type: 'dummy' });
-      this.list.push({ model, upper: model.userData.upper, pos: model.position, health: 100, shield: 50, alive: true, respawn: 0, fall: 0, shake: 0 });
+    for (const s of spots) this.add(s);
+  }
+
+  add(s, extra = false) {
+    const model = makeDummy();
+    model.position.set(s.x, s.y, s.z);
+    model.rotation.y = s.yaw ?? Math.random() * Math.PI * 2;
+    model.traverse((o) => {
+      if (o.isMesh) o.castShadow = true;
+    });
+    this.game.scene.add(model);
+    const col = this.game.world.collision.add(s.x - 0.12, s.y, s.z - 0.12, s.x + 0.12, s.y + 0.9, s.z + 0.12, { type: 'dummy' });
+    const d = { model, upper: model.userData.upper, pos: model.position, health: 100, shield: 50, alive: true, respawn: 0, fall: 0, shake: 0, extra, col };
+    this.list.push(d);
+    return d;
+  }
+
+  // Quita las dianas añadidas en el modo creativo.
+  clearExtra() {
+    for (const d of this.list.filter((x) => x.extra)) {
+      this.game.scene.remove(d.model);
+      this.game.world.collision.remove(d.col);
+      this.list.splice(this.list.indexOf(d), 1);
     }
   }
 

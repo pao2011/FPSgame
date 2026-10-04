@@ -113,6 +113,119 @@ export function makeWeaponModel(type, rarity = 0) {
       sightY = 0.08;
       break;
     }
+    case 'burst': {
+      box(g, 0.07, 0.1, 0.4, 0xc9b28a, 0, 0.0, -0.05);
+      box(g, 0.074, 0.035, 0.28, accent, 0, 0.045, -0.08, METAL);
+      box(g, 0.06, 0.07, 0.2, dark, 0, -0.005, -0.34, METAL);
+      cylZ(g, 0.015, 0.2, dark, 0, 0.01, -0.52, 8, METAL);
+      box(g, 0.05, 0.16, 0.06, dark, 0, -0.11, -0.12).rotation.x = 0.15;
+      box(g, 0.045, 0.11, 0.05, dark, 0, -0.08, 0.06).rotation.x = -0.35;
+      box(g, 0.055, 0.1, 0.24, 0xc9b28a, 0, -0.02, 0.24);
+      cylZ(g, 0.03, 0.14, 0x15171a, 0, 0.1, -0.05, 10, METAL);
+      muzzle.position.set(0, 0.01, -0.63);
+      sightY = 0.1;
+      break;
+    }
+    case 'heavyar': {
+      box(g, 0.08, 0.11, 0.46, 0x3d3a33, 0, 0.0, -0.06, METAL);
+      box(g, 0.084, 0.04, 0.32, accent, 0, 0.05, -0.1, METAL);
+      box(g, 0.075, 0.09, 0.26, dark, 0, -0.005, -0.4, METAL);
+      cylZ(g, 0.02, 0.24, dark, 0, 0.01, -0.62, 8, METAL);
+      box(g, 0.06, 0.17, 0.08, dark, 0, -0.12, -0.12).rotation.x = 0.1;
+      box(g, 0.05, 0.11, 0.05, dark, 0, -0.08, 0.08).rotation.x = -0.35;
+      box(g, 0.06, 0.1, 0.24, 0x3d3a33, 0, -0.02, 0.27);
+      box(g, 0.04, 0.05, 0.14, dark, 0, 0.085, -0.08, METAL);
+      muzzle.position.set(0, 0.01, -0.76);
+      sightY = 0.115;
+      break;
+    }
+    case 'minigun': {
+      box(g, 0.16, 0.16, 0.36, mid, 0, 0, 0, METAL);
+      box(g, 0.165, 0.05, 0.3, accent, 0, 0.09, 0, METAL);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        cylZ(g, 0.016, 0.6, dark, Math.cos(a) * 0.05, Math.sin(a) * 0.05, -0.45, 6, METAL);
+      }
+      cylZ(g, 0.075, 0.04, dark, 0, 0, -0.62, 12, METAL);
+      box(g, 0.05, 0.14, 0.06, dark, 0, -0.14, 0.05);
+      box(g, 0.2, 0.12, 0.12, 0x4b5320, 0.14, -0.06, 0.05);
+      muzzle.position.set(0, 0, -0.78);
+      sightY = 0.13;
+      break;
+    }
+    case 'tactical': {
+      box(g, 0.075, 0.1, 0.34, 0x2a2c30, 0, 0, -0.02, METAL);
+      cylZ(g, 0.024, 0.5, dark, 0, 0.025, -0.4, 10, METAL);
+      box(g, 0.07, 0.06, 0.18, mid, 0, -0.035, -0.34, METAL);
+      box(g, 0.075, 0.03, 0.22, accent, 0, 0.06, -0.04, METAL);
+      box(g, 0.045, 0.12, 0.05, dark, 0, -0.09, 0.08).rotation.x = -0.3;
+      box(g, 0.035, 0.05, 0.22, dark, 0, -0.01, 0.24);
+      box(g, 0.05, 0.14, 0.04, dark, 0, -0.1, 0.34);
+      muzzle.position.set(0, 0.025, -0.66);
+      sightY = 0.08;
+      break;
+    }
+    case 'doublebarrel': {
+      box(g, 0.08, 0.09, 0.2, mid, 0, 0, 0, METAL);
+      cylZ(g, 0.022, 0.5, dark, -0.022, 0.02, -0.35, 10, METAL);
+      cylZ(g, 0.022, 0.5, dark, 0.022, 0.02, -0.35, 10, METAL);
+      box(g, 0.085, 0.03, 0.12, accent, 0, 0.055, -0.02, METAL);
+      box(g, 0.07, 0.06, 0.22, wood, 0, -0.03, -0.25);
+      box(g, 0.05, 0.12, 0.05, wood, 0, -0.08, 0.1).rotation.x = -0.4;
+      box(g, 0.065, 0.11, 0.26, wood, 0, -0.04, 0.24);
+      muzzle.position.set(0, 0.02, -0.6);
+      sightY = 0.07;
+      break;
+    }
+    case 'hunting': {
+      box(g, 0.065, 0.09, 0.42, wood, 0, 0, -0.04);
+      cylZ(g, 0.016, 0.62, dark, 0, 0.03, -0.55, 8, METAL);
+      box(g, 0.07, 0.03, 0.26, accent, 0, 0.05, -0.08, METAL);
+      box(g, 0.04, 0.1, 0.05, dark, 0, -0.07, 0.08).rotation.x = -0.35;
+      box(g, 0.06, 0.12, 0.3, wood, 0, -0.03, 0.3);
+      box(g, 0.02, 0.03, 0.02, dark, 0, 0.075, -0.8, METAL);
+      muzzle.position.set(0, 0.03, -0.87);
+      sightY = 0.075;
+      break;
+    }
+    case 'revolver': {
+      box(g, 0.05, 0.06, 0.12, mid, 0, 0.04, -0.02, METAL);
+      cylZ(g, 0.035, 0.07, accent, 0, 0.035, -0.04, 8, METAL);
+      cylZ(g, 0.015, 0.2, dark, 0, 0.05, -0.18, 8, METAL);
+      box(g, 0.045, 0.12, 0.055, wood, 0, -0.05, 0.04).rotation.x = -0.3;
+      muzzle.position.set(0, 0.05, -0.29);
+      sightY = 0.08;
+      break;
+    }
+    case 'handcannon': {
+      box(g, 0.06, 0.08, 0.28, 0x1b1b22, 0, 0.04, -0.08, METAL);
+      box(g, 0.062, 0.025, 0.24, accent, 0, 0.085, -0.08, METAL);
+      box(g, 0.05, 0.14, 0.065, dark, 0, -0.05, 0.03).rotation.x = -0.25;
+      muzzle.position.set(0, 0.045, -0.23);
+      sightY = 0.1;
+      break;
+    }
+    case 'rocket': {
+      cylZ(g, 0.09, 0.95, 0x4b5320, 0, 0.04, -0.15, 12, METAL);
+      cylZ(g, 0.1, 0.06, accent, 0, 0.04, -0.6, 12, METAL);
+      cylZ(g, 0.1, 0.06, accent, 0, 0.04, 0.3, 12, METAL);
+      box(g, 0.05, 0.14, 0.06, dark, 0, -0.08, -0.1);
+      box(g, 0.05, 0.12, 0.06, dark, 0, -0.07, 0.12);
+      box(g, 0.04, 0.07, 0.12, dark, -0.1, 0.1, -0.15, METAL);
+      muzzle.position.set(0, 0.04, -0.66);
+      sightY = 0.14;
+      break;
+    }
+    case 'grenadelauncher': {
+      box(g, 0.09, 0.11, 0.32, mid, 0, 0, -0.02, METAL);
+      cylZ(g, 0.06, 0.16, accent, 0, 0.0, -0.08, 8, METAL);
+      cylZ(g, 0.035, 0.3, dark, 0, 0.02, -0.33, 10, METAL);
+      box(g, 0.05, 0.13, 0.06, dark, 0, -0.1, 0.06).rotation.x = -0.3;
+      box(g, 0.06, 0.09, 0.22, dark, 0, -0.02, 0.24);
+      muzzle.position.set(0, 0.02, -0.5);
+      sightY = 0.1;
+      break;
+    }
     case 'pickaxe': {
       const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.7, 8), mat(0x6b4a2b));
       handle.position.set(0, 0.2, 0);
@@ -173,6 +286,104 @@ function makeConsumableModel(type) {
       g.add(cap);
       break;
     }
+    case 'flopper': {
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), mat(0x3fa9ff, { phong: true, shininess: 80 }));
+      body.scale.set(0.7, 0.8, 1.5);
+      g.add(body);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.12, 4), mat(0x2f6fd6));
+      tail.rotation.x = -Math.PI / 2;
+      tail.position.z = 0.18;
+      g.add(tail);
+      box(g, 0.02, 0.02, 0.02, 0x111111, 0.05, 0.03, -0.1);
+      box(g, 0.02, 0.02, 0.02, 0x111111, -0.05, 0.03, -0.1);
+      break;
+    }
+    case 'slurp': {
+      const b = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.09, 0.26, 12),
+        mat(0x6a3fd6, { emissive: 0x2a0b77, transparent: true, opacity: 0.9, phong: true, shininess: 90 }),
+      );
+      g.add(b);
+      const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.04, 12), mat(0x3fd6c9));
+      lid.position.y = 0.15;
+      g.add(lid);
+      box(g, 0.01, 0.12, 0.01, 0xffffff, 0.03, 0.22, 0);
+      break;
+    }
+    case 'chug': {
+      const b = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.18, 0.3, 14),
+        mat(0x3fa9ff, { emissive: 0x0b3a77, transparent: true, opacity: 0.9, phong: true, shininess: 90 }),
+      );
+      g.add(b);
+      box(g, 0.33, 0.06, 0.33, 0xc9a050, 0, -0.12, 0);
+      box(g, 0.33, 0.06, 0.33, 0xc9a050, 0, 0.12, 0);
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 6, 10, Math.PI), mat(0xc9a050));
+      handle.position.set(0.18, 0, 0);
+      handle.rotation.z = -Math.PI / 2;
+      g.add(handle);
+      break;
+    }
+    case 'grenade': {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat(0x4b5320));
+      b.scale.y = 1.2;
+      g.add(b);
+      box(g, 0.04, 0.04, 0.04, 0x8a8f96, 0, 0.09, 0, METAL);
+      box(g, 0.012, 0.06, 0.02, 0xc9a050, 0.03, 0.1, 0, METAL);
+      break;
+    }
+    case 'impulse': {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), mat(0x3fd6ff, { emissive: 0x0b5a77, phong: true, shininess: 90 }));
+      g.add(b);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.015, 6, 16), mat(0x1b1b22));
+      ring.rotation.x = Math.PI / 2;
+      g.add(ring);
+      break;
+    }
+    case 'launchpad': {
+      box(g, 0.34, 0.06, 0.34, 0x2a2c30);
+      box(g, 0.26, 0.04, 0.26, 0xf2c230, 0, 0.05, 0);
+      box(g, 0.08, 0.05, 0.14, 0x2a2c30, 0, 0.08, 0.02);
+      box(g, 0.16, 0.05, 0.05, 0x2a2c30, 0, 0.08, -0.06);
+      break;
+    }
+  }
+  return g;
+}
+
+// Plataforma de salto colocada en el suelo (2,4 × 2,4 m).
+export function makeLaunchPad() {
+  const g = new THREE.Group();
+  box(g, 2.4, 0.3, 2.4, 0x2a2c30, 0, 0.15, 0);
+  box(g, 2.0, 0.08, 2.0, 0xf2c230, 0, 0.33, 0, { emissive: 0x332200 });
+  // flecha
+  box(g, 0.5, 0.06, 1.0, 0x2a2c30, 0, 0.4, 0.2);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.6, 3).rotateX(-Math.PI / 2), mat(0x2a2c30));
+  tip.position.set(0, 0.4, -0.5);
+  tip.scale.y = 0.15;
+  g.add(tip);
+  return g;
+}
+
+// Proyectiles visibles (cohete y granada).
+export function makeProjectileModel(kind) {
+  const g = new THREE.Group();
+  if (kind === 'rocket') {
+    cylZ(g, 0.07, 0.6, 0xdddddd, 0, 0, 0, 8);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 8).rotateX(-Math.PI / 2), mat(0xd63a2f));
+    nose.position.z = -0.38;
+    g.add(nose);
+    box(g, 0.22, 0.02, 0.1, 0x555555, 0, 0, 0.26);
+    box(g, 0.02, 0.22, 0.1, 0x555555, 0, 0, 0.26);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.4, 6).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffa040 }));
+    flame.position.z = 0.5;
+    g.add(flame);
+  } else if (kind === 'impulse') {
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat(0x3fd6ff, { emissive: 0x0b5a77 })));
+  } else {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), mat(0x4b5320));
+    b.scale.y = 1.2;
+    g.add(b);
   }
   return g;
 }
@@ -298,49 +509,147 @@ export function makeGlider() {
 }
 
 // ---------------------------------------------------------------- AUTOBÚS ---
+// Autobús de batalla detallado: carrocería con franjas, ventanillas con
+// asientos y pasajeros, conductor, puertas, faros, retrovisores, parrilla,
+// matrícula, techo con barandilla y equipaje, globo aerostático con quemador
+// y llama, cuerdas, hélice trasera y banderines.
 export function makeBus() {
   const g = new THREE.Group();
   const blue = 0x2f7de1;
+  const shiny = { phong: true, shininess: 60 };
+  const glass = { phong: true, shininess: 120, transparent: true, opacity: 0.55 };
   const body = new THREE.Group();
   g.add(body);
-  box(body, 3.2, 3.0, 10, blue, 0, 0, 0, { phong: true, shininess: 50 });
-  box(body, 3.22, 0.5, 10.02, 0xffffff, 0, 0.6, 0);
-  box(body, 3.25, 0.25, 10.05, 0xf2c230, 0, -1.2, 0);
-  for (let i = -4; i <= 3; i++) {
-    box(body, 3.26, 0.9, 0.9, 0x1c2a3a, 0, 0.6, i * 1.15 + 0.3, { phong: true, shininess: 100 });
-  }
-  box(body, 2.8, 1.1, 0.1, 0x1c2a3a, 0, 0.6, -5.02, { phong: true, shininess: 100 });
-  box(body, 2.0, 0.5, 0.1, 0xdddddd, 0, -0.8, -5.04);
-  for (const x of [-1.6, 1.6]) {
-    for (const z of [-3.5, 3.5]) {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.4, 14).rotateZ(Math.PI / 2), mat(0x1a1a1a));
-      w.position.set(x, -1.5, z);
-      body.add(w);
+  // Carrocería
+  box(body, 3.2, 2.6, 10, blue, 0, 0.2, 0, shiny);
+  box(body, 3.0, 0.4, 9.8, 0x2563c4, 0, 1.7, 0, shiny); // techo
+  box(body, 3.22, 0.35, 10.02, 0xffffff, 0, -0.55, 0);
+  box(body, 3.25, 0.22, 10.05, 0xf2c230, 0, -0.85, 0);
+  box(body, 3.26, 0.45, 10.06, 0x1d4f9e, 0, -1.2, 0); // faldón
+  // Ventanillas laterales (cristal + marco) y asientos/pasajeros
+  for (let i = -3; i <= 3; i++) {
+    const z = i * 1.25 + 0.4;
+    for (const sx of [-1, 1]) {
+      box(body, 0.06, 0.95, 1.0, 0x9fd3ff, sx * 1.62, 0.65, z, glass);
+      box(body, 0.08, 0.08, 1.12, 0xf2f2f2, sx * 1.63, 1.16, z);
+      box(body, 0.08, 0.08, 1.12, 0xf2f2f2, sx * 1.63, 0.14, z);
+      // asiento + pasajero (silueta)
+      box(body, 0.6, 0.5, 0.5, 0xd63a2f, sx * 0.9, -0.1, z + 0.2);
+      box(body, 0.6, 0.8, 0.12, 0xb02a22, sx * 0.9, 0.35, z + 0.45);
+      if ((i + sx * 2) % 3 !== 0) {
+        box(body, 0.32, 0.45, 0.25, [0x2fa84f, 0xe0a020, 0x8a3fd6, 0x1fb5b0][(i + 4) % 4], sx * 0.9, 0.4, z + 0.15);
+        box(body, 0.24, 0.24, 0.24, 0xe0b48a, sx * 0.9, 0.78, z + 0.15);
+      }
     }
   }
-  // Globo
-  const balloon = new THREE.Group();
-  balloon.position.y = 11;
-  g.add(balloon);
-  const bcol = [0x2f7de1, 0xffffff];
-  for (let i = 0; i < 12; i++) {
-    const geo = new THREE.SphereGeometry(6, 3, 14, (i / 12) * Math.PI * 2, (Math.PI * 2) / 12);
-    balloon.add(new THREE.Mesh(geo, mat(bcol[i % 2], { phong: true, shininess: 30 })));
+  // Parabrisas, conductor y volante
+  box(body, 2.8, 1.25, 0.08, 0x9fd3ff, 0, 0.75, -5.02, glass);
+  box(body, 3.0, 0.1, 0.1, 0xf2f2f2, 0, 1.4, -5.03);
+  box(body, 0.1, 1.3, 0.1, 0xf2f2f2, 0, 0.75, -5.03);
+  box(body, 0.5, 0.55, 0.4, 0xf2f2f2, -0.8, 0.35, -4.2); // conductor (camisa)
+  box(body, 0.32, 0.32, 0.32, 0xe0b48a, -0.8, 0.85, -4.2);
+  box(body, 0.36, 0.12, 0.36, 0x2f2f2f, -0.8, 1.06, -4.2); // gorra
+  box(body, 0.42, 0.04, 0.2, 0x2f2f2f, -0.8, 1.02, -4.42);
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 6, 14), mat(0x222222));
+  wheel.position.set(-0.8, 0.45, -4.6);
+  wheel.rotation.x = -0.6;
+  body.add(wheel);
+  // Frontal: parrilla, faros, matrícula, parachoques, retrovisores
+  box(body, 2.2, 0.55, 0.1, 0x333840, 0, -0.45, -5.04, METAL);
+  for (let k = -3; k <= 3; k++) box(body, 0.06, 0.45, 0.12, 0x8a8f96, k * 0.3, -0.45, -5.06, METAL);
+  for (const sx of [-1, 1]) {
+    box(body, 0.45, 0.32, 0.1, 0xfff6c8, sx * 1.25, -0.42, -5.06, { emissive: 0xfff0a0 });
+    box(body, 0.3, 0.16, 0.08, 0xff8a1a, sx * 1.25, -0.72, -5.05, { emissive: 0x803000 });
+    box(body, 0.08, 0.5, 0.08, 0x222222, sx * 1.75, 0.8, -4.7);
+    box(body, 0.12, 0.35, 0.25, 0x222222, sx * 1.8, 1.0, -4.85);
   }
-  balloon.scale.set(1, 1.15, 1);
+  box(body, 0.9, 0.22, 0.04, 0xf2f2f2, 0, -0.95, -5.08);
+  box(body, 3.3, 0.22, 0.25, 0x555b63, 0, -1.25, -5.05, METAL);
+  // Trasera: pilotos y parachoques
+  for (const sx of [-1, 1]) box(body, 0.35, 0.5, 0.08, 0xff2a2a, sx * 1.25, -0.2, 5.03, { emissive: 0x801010 });
+  box(body, 3.3, 0.22, 0.25, 0x555b63, 0, -1.25, 5.05, METAL);
+  box(body, 2.4, 1.0, 0.06, 0x9fd3ff, 0, 0.85, 5.02, glass);
+  // Puertas (lado derecho)
+  box(body, 0.07, 2.0, 1.2, 0x9fd3ff, 1.62, -0.05, -3.7, glass);
+  box(body, 0.09, 2.1, 0.06, 0xf2f2f2, 1.63, -0.05, -3.1);
+  box(body, 0.09, 2.1, 0.06, 0xf2f2f2, 1.63, -0.05, -4.3);
+  // Logo en los laterales (círculo amarillo con franja)
+  for (const sx of [-1, 1]) {
+    const logo = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 20).rotateZ(Math.PI / 2), mat(0xf2c230));
+    logo.position.set(sx * 1.63, -0.55, 3.6);
+    body.add(logo);
+    box(body, 0.07, 0.12, 0.62, 0x1d4f9e, sx * 1.64, -0.55, 3.6);
+  }
+  // Ruedas con llantas
+  for (const x of [-1.55, 1.55]) {
+    for (const z of [-3.4, 3.4]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.42, 16).rotateZ(Math.PI / 2), mat(0x1a1a1a));
+      w.position.set(x, -1.5, z);
+      body.add(w);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.44, 10).rotateZ(Math.PI / 2), mat(0xc0c4cc, METAL));
+      rim.position.set(x, -1.5, z);
+      body.add(rim);
+    }
+  }
+  // Techo: barandilla y equipaje
+  for (const sx of [-1, 1]) box(body, 0.08, 0.08, 7.5, 0x8a8f96, sx * 1.35, 2.15, 0.5, METAL);
+  for (let k = -3; k <= 4; k++) box(body, 2.7, 0.06, 0.06, 0x8a8f96, 0, 2.15, k * 1.0 + 0.5, METAL);
+  box(body, 1.1, 0.6, 0.8, 0x8a5a32, -0.5, 2.3, -1.5);
+  box(body, 0.9, 0.5, 1.2, 0x5a4632, 0.6, 2.25, 1.0);
+  box(body, 0.7, 0.45, 0.7, 0xd6a03a, -0.3, 2.22, 2.8);
+  // Globo aerostático con gajos de colores
+  const balloon = new THREE.Group();
+  balloon.position.y = 12;
+  g.add(balloon);
+  const bcol = [0x2f7de1, 0xffffff, 0xf2c230, 0xffffff];
+  for (let i = 0; i < 16; i++) {
+    const geo = new THREE.SphereGeometry(6.2, 3, 16, (i / 16) * Math.PI * 2, (Math.PI * 2) / 16);
+    balloon.add(new THREE.Mesh(geo, mat(bcol[i % 4], { phong: true, shininess: 30 })));
+  }
+  balloon.scale.set(1, 1.18, 1);
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 1.6, 2.2, 16, 1, true), mat(0x2f7de1, { side: THREE.DoubleSide }));
+  skirt.position.y = -7.3;
+  balloon.add(skirt);
+  // Quemador con llama animada
+  const burner = new THREE.Group();
+  burner.position.y = 4.4;
+  g.add(burner);
+  box(burner, 1.0, 0.4, 1.0, 0x3a3d42, 0, 0, 0, METAL);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.6, 10), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.85 }));
+  flame.position.y = 1.0;
+  burner.add(flame);
+  const core = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.0, 8), new THREE.MeshBasicMaterial({ color: 0xfff2a0 }));
+  core.position.y = 0.75;
+  burner.add(core);
+  // Cuerdas del globo al techo y al quemador
   const ropePts = [];
-  for (const [x, z] of [[-1.5, -4.5], [1.5, -4.5], [-1.5, 4.5], [1.5, 4.5]]) {
-    ropePts.push(new THREE.Vector3(x, 1.5, z), new THREE.Vector3(x * 1.8, 7, z * 0.6));
+  for (const [x, z] of [[-1.5, -4.5], [1.5, -4.5], [-1.5, 4.5], [1.5, 4.5], [-1.5, 0], [1.5, 0]]) {
+    ropePts.push(new THREE.Vector3(x, 1.9, z), new THREE.Vector3(x * 1.4, 5.4, z * 0.35));
+  }
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ropePts.push(new THREE.Vector3(Math.cos(a) * 0.5, 4.6, Math.sin(a) * 0.5), new THREE.Vector3(Math.cos(a) * 1.7, 5.4, Math.sin(a) * 1.7));
   }
   g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(ropePts), new THREE.LineBasicMaterial({ color: 0x222222 })));
-  // Hélice
+  // Banderines a lo largo de una cuerda
+  for (let k = 0; k < 6; k++) {
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.45, 3), mat([0xd63a2f, 0xf2c230, 0x2fa84f][k % 3]));
+    f.position.set(1.6 + k * 0.05, 2.5 + k * 0.45, -4.5 + k * 0.5);
+    f.rotation.z = Math.PI;
+    g.add(f);
+  }
+  // Hélice trasera con soporte
+  box(g, 0.25, 0.25, 0.8, 0x3a3d42, 0, 0, 5.4, METAL);
   const prop = new THREE.Group();
-  prop.position.set(0, 0, 5.2);
+  prop.position.set(0, 0, 5.85);
   g.add(prop);
-  box(prop, 0.3, 2.6, 0.08, 0x333333);
-  box(prop, 2.6, 0.3, 0.08, 0x333333);
+  box(prop, 0.3, 2.8, 0.08, 0x333333);
+  box(prop, 2.8, 0.3, 0.08, 0x333333);
+  box(prop, 0.4, 0.4, 0.15, 0xf2c230);
   g.userData.prop = prop;
   g.userData.balloon = balloon;
+  g.userData.flame = flame;
+  g.userData.flameCore = core;
   return g;
 }
 

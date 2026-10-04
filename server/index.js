@@ -1,7 +1,7 @@
 // Servidor online de Isla Royale.
 //   node server/index.js      (o `npm start` tras `npm run build`)
 // Sirve el juego compilado (carpeta dist/) y el WebSocket en /ws.
-// Variables de entorno: PORT (8080), DATA_DIR (server/data), ISLA_SEED.
+// Variables de entorno: PORT (8080), DATA_DIR (server/data).
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { join, dirname, extname, normalize } from 'node:path';
@@ -10,6 +10,7 @@ import { networkInterfaces } from 'node:os';
 import { WebSocketServer } from 'ws';
 import { DB } from './db.js';
 import { Lobby } from './lobby.js';
+import { MAP_SEED } from '../src/world/constants.js';
 
 const PORT = Number(process.env.PORT) || 8080;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,13 +21,8 @@ const TYPES = {
 };
 
 const db = new DB();
-// Isla online: la misma para todos (se guarda para no cambiarla en cada reinicio).
-let seed = Number(process.env.ISLA_SEED) || db.data.islandSeed;
-if (!seed) {
-  seed = Math.floor(Math.random() * 1e9);
-  db.data.islandSeed = seed;
-  db.save();
-}
+// Mapa único: la isla es siempre la misma (la misma semilla que el juego).
+const seed = MAP_SEED;
 const lobby = new Lobby(db, seed);
 
 async function serveStatic(req, res) {

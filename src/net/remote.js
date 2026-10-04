@@ -1,5 +1,5 @@
 import { Character } from '../game/character.js';
-import { PICKAXE, makeWeapon } from '../game/items.js';
+import { PICKAXE, makeWeapon, WEAPONS, CONSUMABLES } from '../game/items.js';
 
 const INTERP_DELAY = 0.12; // s de retraso para interpolar entre estados
 const MODES = ['lobby', 'bus', 'freefall', 'glide', 'ground'];
@@ -18,9 +18,9 @@ function heldFromCode(code) {
   if (code === 'p') return PICKAXE;
   if (code[0] === 'w') {
     const [type, r] = code.slice(1).split(':');
-    return makeWeapon(type, Number(r) || 0);
+    return WEAPONS[type] ? makeWeapon(type, Number(r) || 0) : PICKAXE;
   }
-  if (code[0] === 'c') return { kind: 'consumable', type: code.slice(1), count: 1 };
+  if (code[0] === 'c') return CONSUMABLES[code.slice(1)] ? { kind: 'consumable', type: code.slice(1), count: 1 } : PICKAXE;
   return null;
 }
 

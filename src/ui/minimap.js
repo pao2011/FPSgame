@@ -150,6 +150,7 @@ export class MapRenderer {
     this.drawStormOverlay(ctx, game.storm, scale, ox, oy, w, h);
     if (p.mode === 'bus' || (game.bus.active && p.mode === 'lobby')) this.drawBusPath(ctx, game.bus, scale, ox, oy);
     this.drawMates(ctx, game, scale, ox, oy);
+    this.drawMarks(ctx, game, scale, ox, oy);
     this.drawPlayer(ctx, w / 2, h / 2, p.yaw, 6);
   }
 
@@ -167,6 +168,20 @@ export class MapRenderer {
       ctx.fill();
       ctx.stroke();
     }
+  }
+
+  // Marcas de ubicación (pings) y destino del mapa.
+  drawMarks(ctx, game, scale, ox, oy) {
+    for (const pg of game.pings) {
+      ctx.fillStyle = pg.mine ? '#ffd34d' : '#3fa9ff';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(ox + pg.pos.x * scale, oy + pg.pos.z * scale, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    if (game.waypoint) this.drawMarker(ctx, ox + game.waypoint.x * scale, oy + game.waypoint.z * scale);
   }
 
   drawMarker(ctx, x, y) {
@@ -218,9 +233,20 @@ export class MapRenderer {
       ctx.fillStyle = '#fff';
       ctx.fillText(poi.name.toUpperCase(), x, y);
     }
+    // lugares destacados (más pequeños)
+    for (const lm of this.world.landmarks) {
+      const x = ox + lm.x * scale, y = oy + lm.z * scale;
+      ctx.font = 'bold 11px "Inter", sans-serif';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.strokeText(lm.name, x, y + 14);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fillText(lm.name, x, y + 14);
+    }
     ctx.textAlign = 'left';
     this.drawMates(ctx, game, scale, ox, oy);
+    this.drawMarks(ctx, game, scale, ox, oy);
     const p = game.player;
-    if (p.mode !== 'lobby') this.drawPlayer(ctx, ox + p.pos.x * scale, oy + p.pos.z * scale, p.yaw, 8);
+    if (p.mode !== 'lobby' && game.phase !== 'lobby') this.drawPlayer(ctx, ox + p.pos.x * scale, oy + p.pos.z * scale, p.yaw, 8);
   }
 }

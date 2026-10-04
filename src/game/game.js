@@ -22,12 +22,15 @@ import { BotManager } from './bots.js';
 import { HUD } from '../ui/hud.js';
 import { Menu } from '../ui/menu.js';
 import { MapRenderer } from '../ui/minimap.js';
-import { itemName, itemRarity, RARITIES, MATERIALS, CONSUMABLES, PICKAXE, makeWeapon } from './items.js';
+import { itemName, itemRarity, RARITIES, MATERIALS, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon } from './items.js';
+import { mergeBinds, keyName } from '../core/binds.js';
+import { CreativeTools } from './creative.js';
+import { CreativePanel } from '../ui/creative.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
 import { clamp, random, RNG } from '../core/rng.js';
-import { NetClient, savedToken, savedOnlineSeed } from '../net/client.js';
+import { NetClient } from '../net/client.js';
 import { OnlineMatch } from '../net/match.js';
-import { ISLAND_RADIUS } from '../world/constants.js';
+import { ISLAND_RADIUS, MAP_SEED } from '../world/constants.js';
 
 const SKY_COLOR = SKY.horizon;
 const tmpV = new THREE.Vector3();
@@ -69,7 +72,8 @@ export class Game {
 
     this.sunDir = new THREE.Vector3(0.45, 0.8, 0.35).normalize();
     this.sky = createSky(this.scene, this.sunDir);
-    this.scene.add(new THREE.HemisphereLight(0xd6ecff, 0x5f6e44, 1.5));
+    this.hemi = new THREE.HemisphereLight(0xd6ecff, 0x5f6e44, 1.5);
+    this.scene.add(this.hemi);
     const sun = (this.sun = new THREE.DirectionalLight(0xffefd2, 3.0));
     sun.castShadow = !low;
     sun.shadow.mapSize.set(high ? 4096 : 2048, high ? 4096 : 2048);
@@ -82,10 +86,8 @@ export class Game {
     this.setupPost();
 
     // ------------------------------------------------------------ MUNDO
-    // Si hay sesión online guardada se usa la isla del servidor (así no hay
-    // que recargar al entrar en una partida online).
-    const onlineSeed = savedToken() ? savedOnlineSeed() : 0;
-    this.seed = Number(params.get('seed')) || onlineSeed || Math.floor(Math.random() * 1e9);
+    // Mapa único: siempre la misma isla (también en online).
+    this.seed = MAP_SEED;
     this.world = new World(this.scene, this.seed);
 
     this.input = new Input(this.canvas);
@@ -127,12 +129,23 @@ export class Game {
     this.spectating = null;
     this.respawnT = 0;
     this.infiniteMats = false;
+    this.infiniteAmmo = false;
+    this.godMode = false;
+    this.speedMult = 1;
+    this.phase = 'menu'; // 'lobby' (isla de inicio) | 'bus' | 'match'
+    this.lobbyT = 0;
+    this.lobbyJoin = [];
+    this.lobbyCount = 0;
+    this.pings = [];
+    this.waypoint = null;
     this.net = null; // partida online en curso (OnlineMatch)
     this.waiting = false; // esperando a que empiece la partida online
     this.netClient = new NetClient();
     if (this.settings.outfit) this.player.setOutfit(this.settings.outfit);
 
     this.menu = new Menu(this);
+    this.creative = new CreativeTools(this);
+    this.creativePanel = new CreativePanel(this);
     addEventListener('resize', () => this.onResize());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
     this.canvas.addEventListener('click', () => {
@@ -147,6 +160,7 @@ export class Game {
     this.hud.show(false);
     this.applySettings();
     window.game = this;
+    this.lastFrame = 0;
     // Con la pestaña en segundo plano el navegador frena requestAnimationFrame:
     // en online se sigue simulando (sin dibujar) para no congelar al jugador
     // ni a los bots del anfitrión.
@@ -200,9 +214,19 @@ export class Game {
 
   applySettings() {
     const s = this.settings;
+    s.binds = mergeBinds(s.binds);
     saveSettings(s);
+    this.input.binds = s.binds;
     if (this.audio.master) this.audio.master.gain.value = (s.volume / 100) * 0.6;
     document.getElementById('fps').style.display = s.showFps ? 'block' : 'none';
+    const root = document.documentElement.style;
+    root.setProperty('--hud-scale', String(s.hudScale || 1));
+    root.setProperty('--cross', s.crosshairColor || '#ffffff');
+  }
+
+  // Nombre de la tecla asignada a una acción (para los avisos del HUD).
+  key(action) {
+    return keyName(this.settings.binds?.[action]?.[0]);
   }
 
   onResize() {
@@ -221,7 +245,7 @@ export class Game {
     if (locked) {
       this.hadLock = true;
       this.setPaused(false);
-    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen) {
+    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen && !this.hud.mapOpen) {
       this.setPaused(true);
     }
   }
@@ -260,6 +284,7 @@ export class Game {
       const k = mode.teamSize || 1;
       for (let i = 0; i < nb; i++) teams.push(i < k - 1 ? 0 : 1 + Math.floor((i - (k - 1)) / k));
     }
+    this.botDiff = this.settings.difficulty;
     this.bots.reset(nb, teams, this.settings.difficulty);
     this.chars = [this.player, ...this.bots.list];
     this.beginMatch({});
@@ -269,11 +294,9 @@ export class Game {
   // Partida online (info = mensaje m.start del servidor).
   startOnline(info) {
     if (info.seed !== this.seed) {
-      // Isla distinta: recargar con la isla del servidor.
-      const q = new URLSearchParams(location.search);
-      q.set('seed', info.seed);
-      q.set('online', '1');
-      location.search = q.toString();
+      // El mapa es único y fijo: un servidor con otra isla es de otra versión.
+      this.hud.toast('El servidor usa otra versión del mapa: actualiza el servidor y el juego');
+      this.netClient.send?.('leave_match');
       return;
     }
     if (this.net) this.leaveOnline();
@@ -287,6 +310,7 @@ export class Game {
     if (this.netClient.user?.outfit) this.player.setOutfit(this.netClient.user.outfit);
     // El anfitrión simula a los bots de la partida.
     const botEnts = net.isHost ? info.ents.filter((e) => e.bot) : [];
+    this.botDiff = info.difficulty;
     this.bots.reset(botEnts.length, botEnts.map((e) => e.team), info.difficulty);
     this.bots.list.forEach((b, i) => {
       b.netId = botEnts[i].id;
@@ -304,7 +328,7 @@ export class Game {
   onOnlineGo() {
     this.waiting = false;
     this.audio.busHorn?.();
-    this.hud.toast(this.mode.noBus ? '¡A luchar!' : '¡La partida ha empezado! Salta cuando quieras');
+    this.hud.toast(this.mode.noBus ? '¡A luchar!' : '¡Todos los jugadores están listos! El autobús sale en 10 segundos');
     this.input.lock();
   }
 
@@ -337,6 +361,17 @@ export class Game {
     this.menu.hideAll();
     this.paused = false;
     this.infiniteMats = !!mode.infinite;
+    this.infiniteAmmo = !!mode.creative;
+    this.godMode = false;
+    this.speedMult = 1;
+    this.phase = 'match';
+    this.lobbyT = null;
+    this.lobbyJoin.length = 0;
+    this.thanksQueue = [];
+    this.clearPings();
+    this.waypoint = null;
+    this.creativePanel.hide();
+    this.creative.reset();
     if (this.player.vehicle) this.vehicles.exit(this.player);
     this.player.reset();
     this.player.name = 'Tú';
@@ -367,11 +402,20 @@ export class Game {
     this.hud.lastZone = null;
   }
 
-  // Coloca a todos: en el autobús o (modos con reaparición) directamente en el aire.
+  // Coloca a todos: en la isla de inicio (y luego el autobús), en el modo
+  // creativo o (modos con reaparición) directamente en el aire.
   beginMatch(o) {
     const mode = this.mode;
     const p = this.player;
-    if (mode.noBus) {
+    this.busOpts = o;
+    if (mode.creative) {
+      this.storm.active = false;
+      this.storm.mesh.visible = false;
+      this.creative.begin();
+    } else if (!mode.noBus) {
+      if (this.settings.skipLobby && !this.net) this.launchBus();
+      else this.enterLobby();
+    } else {
       this.bus.active = false;
       this.bus.model.visible = false;
       this.spawnAir(p, this.spawnPoint(p.team));
@@ -380,14 +424,130 @@ export class Game {
         const [x, z] = this.spawnPoint(b.team);
         b.respawnAt(x, z, this.botLoadout(), mode.arena ? this.world.terrain.heightAt(x, z) + 30 : 140);
       }
-    } else {
-      this.bus.launch(o.busAng, o.busOff);
-      p.mode = 'bus';
-      p.yaw = Math.atan2(-this.bus.dir.x, -this.bus.dir.z) + 0.6;
-      p.pitch = -0.35;
-      if (!this.net) this.audio.busHorn?.();
     }
     if (this.infiniteMats) p.mats = { wood: 999, stone: 999, metal: 999 };
+  }
+
+  // ------------------------------------------------------ ISLA DE INICIO
+  // Todos aparecen en la isla de inicio; cuando están todos los jugadores
+  // empieza una cuenta atrás de 10 s y se sube al autobús de batalla.
+  enterLobby() {
+    const p = this.player;
+    const L = this.world.lobby;
+    this.phase = 'lobby';
+    this.storm.active = false;
+    this.storm.mesh.visible = false;
+    this.bus.active = false;
+    this.bus.model.visible = false;
+    const sp = L.spawns[random.int(0, L.spawns.length - 1)];
+    p.resetBody();
+    p.mode = 'ground';
+    p.pos.set(sp.x, this.world.terrain.heightAt(sp.x, sp.z) + 0.6, sp.z);
+    p.yaw = sp.yaw;
+    p.pitch = -0.1;
+    p.model.root.visible = this.camMode !== 'fp';
+    this.infiniteMats = true;
+    this.infiniteAmmo = true;
+    p.mats = { wood: 999, stone: 999, metal: 999 };
+    // Armas de práctica en las mesas (sólo en este ordenador)
+    this.lobbyPickups = [];
+    const types = ['ar', 'burst', 'heavyar', 'smg', 'shotgun', 'tactical', 'sniper', 'pistol', 'revolver', 'rocket', 'grenadelauncher', 'minigun'];
+    L.loot.forEach((s, i) => {
+      const type = types[i % types.length];
+      const w = WEAPONS[type];
+      const it = makeWeapon(type, Math.max(w.minRarity ?? 0, Math.min(w.maxRarity ?? 4, 3)));
+      this.lobbyPickups.push(this.pickups.spawn(it, new THREE.Vector3(s.x, s.y, s.z), null, null));
+    });
+    // Los bots van llegando poco a poco (en online todos están ya)
+    const bots = this.bots.list;
+    bots.forEach((b, i) => {
+      const s = L.spawns[(i + 1) % L.spawns.length];
+      const a = random.float(0, Math.PI * 2);
+      b.enterLobby(s.x + Math.cos(a) * random.float(0, 3), s.z + Math.sin(a) * random.float(0, 3), s.yaw);
+      b.lobbyShown = !!this.net;
+      if (!this.net) this.lobbyJoin.push({ b, t: random.float(0.4, Math.min(9, 2.5 + bots.length * 0.18)) });
+    });
+    this.lobbyJoin.sort((a, b) => a.t - b.t);
+    this.lobbyElapsed = 0;
+    this.lobbyCount = this.net ? this.chars.length : 1;
+    this.lobbyT = null;
+    this.lobbyEndAt = 0;
+    this.hud.toast(`Bienvenido a la Isla de Inicio · ${this.key('build')} para construir · coge armas de las mesas para practicar`);
+  }
+
+  updateLobby(dt) {
+    this.lobbyElapsed += dt;
+    while (this.lobbyJoin.length && this.lobbyJoin[0].t <= this.lobbyElapsed) {
+      const { b } = this.lobbyJoin.shift();
+      b.lobbyShown = true;
+      this.lobbyCount++;
+    }
+    if (this.net) this.lobbyCount = this.chars.length;
+    if (this.lobbyT === null) {
+      if (!this.lobbyJoin.length && !this.waiting) {
+        this.lobbyT = 10;
+        // en online, con el reloj real para que todos salgan a la vez
+        this.lobbyEndAt = this.net ? performance.now() / 1000 + 10 : 0;
+        this.audio.busHorn?.();
+        this.hud.toast('¡Ya estáis todos! El autobús de batalla sale en 10 segundos');
+      }
+      return;
+    }
+    const before = Math.ceil(this.lobbyT);
+    this.lobbyT = this.lobbyEndAt ? this.lobbyEndAt - performance.now() / 1000 : this.lobbyT - dt;
+    const now = Math.ceil(this.lobbyT);
+    if (now !== before && now >= 0) this.audio.beep(now === 0);
+    if (this.lobbyT <= 0) this.launchBus();
+  }
+
+  // Sube a todos al autobús (desde la isla de inicio o directamente).
+  launchBus() {
+    const p = this.player;
+    const fromLobby = this.phase === 'lobby';
+    this.phase = 'match';
+    if (fromLobby) {
+      // Todo lo de la isla de inicio se reinicia
+      for (const pk of this.lobbyPickups || []) this.pickups.remove(pk);
+      for (const pk of this.pickups.items.slice()) if (Math.hypot(pk.pos.x, pk.pos.z) > ISLAND_RADIUS + 120) this.pickups.remove(pk);
+      this.lobbyPickups = [];
+      this.build.reset();
+      this.combat.reset();
+      p.inventory = [PICKAXE, null, null, null, null, null];
+      p.selected = 0;
+      p.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
+      p.mats = { wood: 0, stone: 0, metal: 0 };
+      p.health = 100;
+      p.shield = 0;
+      p.flying = false;
+      p.regen = null;
+      p.setHeld(PICKAXE);
+      this.hud.setProgress(null);
+      this.infiniteMats = !!this.mode.infinite;
+      this.infiniteAmmo = false;
+      for (const b of this.bots.list) b.reset(this.botDiff || 'normal');
+      if (this.infiniteMats) p.mats = { wood: 999, stone: 999, metal: 999 };
+    }
+    this.storm.active = true;
+    this.storm.mesh.visible = true;
+    const o = this.busOpts || {};
+    this.bus.launch(o.busAng, o.busOff);
+    p.mode = 'bus';
+    p.vel.set(0, 0, 0);
+    p.yaw = Math.atan2(-this.bus.dir.x, -this.bus.dir.z) + 0.6;
+    p.pitch = -0.35;
+    this.matchTime = 0;
+    this.audio.busHorn?.();
+    // Algunos bots dan las gracias al conductor
+    this.thanksQueue = this.bots.list.filter(() => random.chance(0.25)).map((b) => ({ b, t: random.float(1, 9) }));
+    this.thanksT = 0;
+  }
+
+  thankDriver() {
+    if (this.bus.thanked) return;
+    this.bus.thanked = true;
+    this.audio.thanks();
+    this.hud.killFeed('<b class="me">Tú</b> ha dado las gracias al conductor del autobús 🚌', true);
+    this.hud.toast('¡Gracias, conductor!');
   }
 
   spawnAir(c, [x, z]) {
@@ -421,7 +581,7 @@ export class Game {
         { kind: 'consumable', type: 'shieldpot', count: 2 }, { kind: 'consumable', type: 'medkit', count: 1 }];
       p.selected = 1;
     }
-    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60 };
+    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60, rockets: 4 };
     p.shield = this.mode.arena ? 100 : 50;
     this.combat.modelKey = null;
   }
@@ -437,6 +597,11 @@ export class Game {
     const wasOnline = !!this.net || this.mode.online;
     this.leaveOnline();
     this.state = 'menu';
+    this.phase = 'menu';
+    this.lobbyJoin.length = 0;
+    this.creativePanel.hide();
+    this.combat.reset();
+    this.clearPings();
     this.paused = false;
     this.waiting = false;
     this.spectating = null;
@@ -763,11 +928,12 @@ export class Game {
   }
 
   onJumpFromBus() {
-    this.hud.toast('¡Has saltado! Mira hacia abajo y pulsa W para caer más rápido');
+    if (this.settings.showHints) this.hud.toast(`¡Has saltado! Mira hacia abajo y pulsa ${this.key('forward')} para caer más rápido`);
   }
 
   onLanded() {
-    this.hud.toast(this.mode.build ? '¡Has aterrizado! Busca cofres y armas · Q para construir' : '¡Has aterrizado! Busca cofres y armas');
+    if (!this.settings.showHints) return;
+    this.hud.toast(this.mode.build ? `¡Has aterrizado! Busca cofres y armas · ${this.key('build')} para construir` : '¡Has aterrizado! Busca cofres y armas');
   }
 
   // ---------------------------------------------------------- RAYCAST
@@ -804,6 +970,10 @@ export class Game {
   // ---------------------------------------------------------- LOOP
   loop = (ts) => {
     requestAnimationFrame(this.loop);
+    // Límite de FPS (Opciones)
+    const lim = this.settings.fpsLimit | 0;
+    if (lim > 0 && ts - this.lastFrame < 1000 / lim - 1) return;
+    this.lastFrame = ts;
     this.timer.update(ts);
     const raw = this.timer.getDelta();
     this.hud.fps(raw);
@@ -830,7 +1000,7 @@ export class Game {
       input.endFrame();
       return;
     }
-    if (this.waiting) {
+    if (this.waiting && this.phase !== 'lobby') {
       this.net?.update(dt);
       this.updateCamera(dt);
       this.updateBanner();
@@ -841,11 +1011,25 @@ export class Game {
 
     const p = this.player;
     if (this.infiniteMats) p.mats.wood = p.mats.stone = p.mats.metal = 999;
+    if (this.phase === 'lobby' && this.state === 'playing') this.updateLobby(dt);
+    if (this.thanksQueue?.length && p.mode !== 'lobby') {
+      this.thanksT += dt;
+      while (this.thanksQueue.length && this.thanksQueue[0].t <= this.thanksT) {
+        const { b } = this.thanksQueue.shift();
+        if (b.mode === 'bus') this.hud.killFeed(`<b>${b.name}</b> ha dado las gracias al conductor del autobús 🚌`);
+      }
+    }
     if (this.state === 'playing' && p.alive) {
-      this.matchTime += dt;
+      if (this.phase !== 'lobby') this.matchTime += dt;
       if (!this.paused) this.handleGlobalKeys(input);
       const zoom = this.camera.fov / this.baseFov;
-      const sens = 0.0022 * zoom * this.settings.sensitivity;
+      const st = this.settings;
+      // Sensibilidad según el contexto (apuntando, con mira, construyendo, editando)
+      let mult = 1;
+      if (this.build.editing) mult = st.editSensitivity ?? 1;
+      else if (this.build.active) mult = st.buildSensitivity ?? 1;
+      else if (this.combat.adsBlend > 0.5) mult = this.hud.scoped ? st.scopeSensitivity ?? 0.6 : st.adsSensitivity ?? 0.8;
+      const sens = 0.0022 * zoom * st.sensitivity * mult * (this.creativePanel.open ? 0 : 1);
       p.yaw -= input.mouseDX * sens;
       p.pitch -= input.mouseDY * sens * (this.settings.invertY ? -1 : 1);
       p.pitch = clamp(p.pitch, -1.5, 1.5);
@@ -859,7 +1043,7 @@ export class Game {
     } else {
       if (this.state === 'playing') {
         this.matchTime += dt;
-        if (input.wasPressed('KeyM')) this.hud.toggleMap();
+        if (input.hit('map')) this.hud.toggleMap();
       }
       this.combat.update(dt, input);
       this.vehicles.update(dt, null);
@@ -878,6 +1062,8 @@ export class Game {
     this.containers.update(dt, t);
     this.dummies.update(dt);
     this.effects.update(dt);
+    this.updatePings(dt);
+    this.creative.update(dt);
     this.updateAudio();
     if (this.noises.length && t - this.noises[0].t > 1.5) this.noises = this.noises.filter((n) => t - n.t < 1.5);
     this.world.clouds.rotation.y = t * 0.003;
@@ -887,24 +1073,76 @@ export class Game {
 
   handleGlobalKeys(input) {
     const p = this.player;
-    if (input.wasPressed('KeyM')) this.hud.toggleMap();
-    if (input.wasPressed('KeyV')) {
+    if (input.hit('map')) this.hud.toggleMap();
+    if (input.hit('camera')) {
       this.camMode = this.camMode === 'fp' ? 'tp' : 'fp';
       this.hud.toast(this.camMode === 'fp' ? 'Cámara: primera persona' : 'Cámara: tercera persona');
     }
-    if (p.mode !== 'ground' || p.vehicle || p.knocked) return;
+    if (input.hit('catalog')) {
+      if (p.mode === 'bus') this.thankDriver();
+      else if (this.mode.creative) this.creativePanel.toggle();
+    }
+    if (input.hit('ping')) this.pingAim();
+    if (p.mode !== 'ground' || p.vehicle || p.knocked || this.build.editing) return;
     if (this.build.active) {
       for (let i = 4; i < 6; i++) {
-        if (input.wasPressed('Digit' + (i + 1))) {
+        if (input.hit('slot' + (i + 1))) {
           this.build.setActive(false);
           this.combat.select(i);
         }
       }
       return;
     }
-    for (let i = 0; i < 6; i++) if (input.wasPressed('Digit' + (i + 1))) this.combat.select(i);
+    for (let i = 0; i < 6; i++) if (input.hit('slot' + (i + 1))) this.combat.select(i);
     if (input.wheel) this.combat.cycle(input.wheel > 0 ? 1 : -1);
-    if (input.wasPressed('KeyG')) this.dropSelected();
+    if (input.hit('drop')) this.dropSelected();
+  }
+
+  // ------------------------------------------------------------ MARCADORES
+  // Marca el punto al que apuntas (lo ven tus compañeros en partidas online).
+  pingAim() {
+    const hit = this.raycast(this.aimOrigin, this.aimDir, 600, this.aimSkip, this.player);
+    if (!hit) return;
+    this.addPing(hit.point, 'Tú', true);
+    this.net?.sendPing(hit.point);
+  }
+
+  addPing(pos, who, mine) {
+    while (this.pings.length >= 4) this.removePing(this.pings[0]);
+    const g = new THREE.Group();
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 40, 8, 1, true).translate(0, 20, 0),
+      new THREE.MeshBasicMaterial({ color: mine ? 0xffd34d : 0x3fa9ff, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.6, 0.9, 24).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: mine ? 0xffd34d : 0x3fa9ff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    ring.position.y = 0.05;
+    g.add(beam, ring);
+    g.position.copy(pos);
+    this.scene.add(g);
+    this.pings.push({ pos: pos.clone(), mesh: g, t: 25, who, mine });
+    this.audio.ping();
+    if (!mine) this.hud.toast(`${who} ha marcado una ubicación`);
+  }
+
+  removePing(pg) {
+    this.scene.remove(pg.mesh);
+    const i = this.pings.indexOf(pg);
+    if (i >= 0) this.pings.splice(i, 1);
+  }
+
+  clearPings() {
+    for (const pg of this.pings.slice()) this.removePing(pg);
+  }
+
+  updatePings(dt) {
+    for (const pg of this.pings.slice()) {
+      pg.t -= dt;
+      pg.mesh.children[1].scale.setScalar(1 + Math.sin(this.time * 4) * 0.15);
+      if (pg.t <= 0 || pg.pos.distanceTo(this.player.pos) < 3) this.removePing(pg);
+    }
   }
 
   dropSelected() {
@@ -916,8 +1154,20 @@ export class Game {
     this.combat.cancelUse();
     const f = tmpF.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
     const pos = p.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
-    this.pickups.spawn(item, pos, f.clone().multiplyScalar(3).setY(3));
+    const pk = this.pickups.spawn(item, pos, f.clone().multiplyScalar(3).setY(3));
+    pk.noAuto = true;
     this.combat.modelKey = null;
+  }
+
+  // ¿Hay un hueco libre (o una pila sin llenar) para el objeto?
+  hasFreeSlot(item, strict = false) {
+    const p = this.player;
+    for (let i = 1; i < 6; i++) {
+      const s = p.inventory[i];
+      if (!s) return true;
+      if (!strict && item.kind === 'consumable' && s.kind === 'consumable' && s.type === item.type && s.count < CONSUMABLES[item.type].max) return true;
+    }
+    return false;
   }
 
   // ¿Cabe el objeto en el inventario (directamente o intercambiándolo)?
@@ -934,7 +1184,7 @@ export class Game {
 
   // En online el servidor confirma antes quién se queda el objeto.
   tryPickup(pk) {
-    if (this.net) {
+    if (this.net && pk.nid) {
       if (!this.canTake(pk.item)) this.hud.toast('Inventario lleno: selecciona un objeto para intercambiarlo');
       else this.net.requestPickup(pk);
       return;
@@ -964,7 +1214,7 @@ export class Game {
       const cur = p.inventory[p.selected];
       p.inventory[p.selected] = { ...item };
       this.pickups.remove(pk);
-      this.pickups.spawn(cur, pk.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), new THREE.Vector3(0, 2.5, 0));
+      this.pickups.spawn(cur, pk.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), new THREE.Vector3(0, 2.5, 0)).noAuto = true;
       this.combat.reloading = false;
       this.combat.cancelUse();
       this.combat.modelKey = null;
@@ -986,15 +1236,22 @@ export class Game {
       this.hud.setPrompt(null);
       return;
     }
+    const E = `<kbd>${this.key('interact')}</kbd>`;
     if (p.vehicle) {
-      this.hud.setPrompt('<kbd>E</kbd> Salir del coche');
-      if (input.wasPressed('KeyE')) this.vehicles.exit(p);
+      this.hud.setPrompt(`${E} Salir del coche`);
+      if (input.hit('interact')) this.vehicles.exit(p);
+      return;
+    }
+    if (this.build.editing) {
+      const pc = this.build.editing.piece;
+      const presets = pc.type === 'wall' ? ' · 1 puerta · 2 ventana · 3 arco · 4 arco grande · 5 media pared · 6 valla · 7 puerta lateral' : pc.type === 'ramp' ? ' · elige 2 casillas de un lado para girarla' : '';
+      this.hud.setPrompt(`EDITANDO · clic: quitar/poner casillas (arrastra) · ${keyName(this.settings.binds.editReset[0])}: restablecer · <kbd>${this.key('edit')}</kbd> confirmar${presets}`);
       return;
     }
     // Reanimar a un compañero derribado (mantener E)
     const downed = this.chars.find((c) => c !== p && c.team === p.team && c.alive && c.knocked && c.pos.distanceTo(p.pos) < 2.2);
     if (downed) {
-      if (input.down('KeyE')) {
+      if (input.held('interact')) {
         downed.reviveT += dt;
         this.hud.setProgress(downed.reviveT / 5, `Reanimando a ${downed.name}`);
         if (downed.reviveT >= 5) {
@@ -1003,7 +1260,7 @@ export class Game {
           this.hud.setProgress(null);
         }
       } else if (!this.combat.using) this.hud.setProgress(null);
-      this.hud.setPrompt(`Mantén <kbd>E</kbd> para reanimar a ${downed.name}`);
+      this.hud.setPrompt(`Mantén ${E} para reanimar a ${downed.name}`);
       return;
     }
     const eye = p.eye;
@@ -1014,16 +1271,28 @@ export class Game {
     if (c && (!k || c.score >= k.score)) target = c;
     else if (k) target = k;
 
+    const autoW = this.settings.autoPickupWeapons !== false;
     for (const pk of this.pickups.items.slice()) {
       const kind = pk.item.kind;
-      if ((kind === 'ammo' || kind === 'material') && pk.settled && pk.pos.distanceTo(p.pos) < 1.4) this.tryPickup(pk);
+      if (!pk.settled || pk.pending || pk.pos.distanceTo(p.pos) >= 1.4) continue;
+      if (kind === 'ammo' || kind === 'material') this.tryPickup(pk);
+      // Recogida automática de armas y curas si hay un hueco libre
+      else if (autoW && !pk.noAuto && (kind === 'weapon' || kind === 'consumable') && this.hasFreeSlot(pk.item, true)) this.tryPickup(pk);
+    }
+
+    // Puertas de las construcciones editadas
+    const door = !target || target.score < 1.2 ? this.build.findDoor(eye, dir) : null;
+    if (door) {
+      this.hud.setPrompt(`${E} ${door.doorOpen ? 'Cerrar' : 'Abrir'} puerta`);
+      if (input.hit('interact')) this.build.setDoor(door, !door.doorOpen);
+      return;
     }
 
     if (!target) {
       const car = this.vehicles.findNear(p.pos);
       if (car) {
-        this.hud.setPrompt('<kbd>E</kbd> Conducir coche');
-        if (input.wasPressed('KeyE')) {
+        this.hud.setPrompt(`${E} Conducir coche`);
+        if (input.hit('interact')) {
           this.build.setActive(false);
           this.vehicles.enter(p, car);
         }
@@ -1032,8 +1301,8 @@ export class Game {
     }
     if (target.container) {
       const ct = target.container;
-      this.hud.setPrompt(`<kbd>E</kbd> ${ct.kind === 'chest' ? 'Abrir cofre' : 'Abrir caja de munición'}`);
-      if (input.wasPressed('KeyE')) {
+      this.hud.setPrompt(`${E} ${ct.kind === 'chest' ? 'Abrir cofre' : 'Abrir caja de munición'}`);
+      if (input.hit('interact')) {
         this.containers.open(ct, p);
         if (ct.kind === 'chest') p.stats.chests++;
       }
@@ -1041,14 +1310,14 @@ export class Game {
       const it = target.pickup.item;
       const col = RARITIES[itemRarity(it)].color;
       const extra = it.kind === 'weapon' ? ` <small>${RARITIES[it.rarity].name}</small>` : it.count ? ` <small>x${it.count}</small>` : '';
-      this.hud.setPrompt(`<kbd>E</kbd> Recoger <span style="color:${col}">${itemName(it)}</span>${extra}`);
-      if (input.wasPressed('KeyE')) this.tryPickup(target.pickup);
+      this.hud.setPrompt(`${E} Recoger <span style="color:${col}">${itemName(it)}</span>${extra}`);
+      if (input.hit('interact')) this.tryPickup(target.pickup);
     }
   }
 
   updateStorm(dt) {
     const p = this.player;
-    if (!p.alive || p.mode === 'bus' || !this.storm.active) return;
+    if (!p.alive || p.mode === 'bus' || !this.storm.active || this.phase === 'lobby') return;
     if (this.storm.isOutside(p.pos.x, p.pos.z)) {
       this.stormTick += dt;
       if (this.stormTick >= 1) {
@@ -1062,15 +1331,21 @@ export class Game {
     const p = this.player;
     const hud = this.hud;
     if (this.state !== 'playing') return hud.banner('');
+    if (this.phase === 'lobby') {
+      if (this.waiting) return hud.banner('ISLA DE INICIO', 'Esperando a que estén listos todos los jugadores…');
+      if (this.lobbyT === null) return hud.banner('ISLA DE INICIO', `Reuniendo jugadores… <b>${this.lobbyCount}/${this.chars.length}</b>`);
+      return hud.banner(`EL AUTOBÚS SALE EN ${Math.max(0, Math.ceil(this.lobbyT))}`, `Jugadores <b>${this.chars.length}/${this.chars.length}</b> · todo lo de la isla de inicio se reinicia al subir`);
+    }
     if (this.waiting) return hud.banner('PARTIDA ONLINE', 'Esperando a que estén listos todos los jugadores…');
     if (this.net && !this.input.locked && !this.paused && p.alive && !this.spectating) return hud.banner('', 'Haz <b>clic</b> en la pantalla para jugar');
     if (!p.alive && this.mode.respawn) return hud.banner('ELIMINADO', `Reapareces en ${Math.max(1, Math.ceil(this.respawnT))}…`);
     if (this.spectating) return hud.banner('', `Espectando a <b>${this.spectating.name}</b> · Clic para cambiar · Esc: menú`);
     if (p.knocked) return hud.banner('¡DERRIBADO!', 'Arrástrate hacia un compañero para que te reanime');
     if (p.mode === 'bus') {
-      if (this.bus.doorsTime > 0) hud.banner('AUTOBÚS DE BATALLA', `Las puertas se abren en ${Math.ceil(this.bus.doorsTime)}…`);
-      else if (!this.bus.doorsOpen) hud.banner('AUTOBÚS DE BATALLA', 'Esperando a sobrevolar la isla…');
-      else hud.banner('PULSA <kbd>ESPACIO</kbd> PARA SALTAR', 'Mueve el ratón para mirar · M: mapa');
+      const thank = this.bus.thanked ? '' : ` · ${this.key('catalog')}: dar las gracias al conductor`;
+      if (this.bus.doorsTime > 0) hud.banner('AUTOBÚS DE BATALLA', `Las puertas se abren en ${Math.ceil(this.bus.doorsTime)}…${thank}`);
+      else if (!this.bus.doorsOpen) hud.banner('AUTOBÚS DE BATALLA', `Esperando a sobrevolar la isla…${thank}`);
+      else hud.banner(`PULSA <kbd>${this.key('jump').toUpperCase()}</kbd> PARA SALTAR`, `Mueve el ratón para mirar · ${this.key('map')}: mapa${this.bus.thanked ? '' : ` · ${this.key('catalog')}: dar las gracias al conductor`}`);
     } else hud.banner('');
   }
 

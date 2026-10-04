@@ -25,6 +25,7 @@ export const DIFF = {
 
 const RANGE = { shotgun: [3, 9], smg: [6, 16], pistol: [8, 22], ar: [14, 42], sniper: [35, 110] };
 const EFFECTIVE = { shotgun: 24, smg: 50, pistol: 60, ar: 120, sniper: 240 };
+const cat = (w) => WEAPONS[w.type]?.cat || 'ar';
 const THINK = 0.22;
 
 const tmpA = new THREE.Vector3();
@@ -41,7 +42,7 @@ function angDiff(a, b) {
 // Preferencia de arma según la distancia al objetivo.
 function weaponScore(item, d) {
   if (!item) return -1;
-  const t = item.type;
+  const t = WEAPONS[item.type]?.cat || item.type;
   let s;
   if (t === 'shotgun') s = d < 10 ? 3.2 : d < 18 ? 1.5 : 0.2;
   else if (t === 'smg') s = d < 20 ? 2.5 : d < 40 ? 1.6 : 0.6;
@@ -71,7 +72,7 @@ class Bot extends Character {
     this.mode = 'bus';
     this.weapons = [null, null, null];
     this.cur = 0;
-    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0 };
+    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0, flopper: 0, slurp: 0, chug: 0 };
     this.mats = { wood: random.int(0, 2) * 10, stone: 0, metal: 0 };
     this.cooldown = 0;
     this.reloadT = 0;
@@ -194,14 +195,16 @@ class Bot extends Character {
     if (!this.alive) return;
     const g = this.game;
     this.updateKnocked(dt);
+    this.tickCommon(dt);
     if (!this.alive) return;
     switch (this.mode) {
+      case 'lobby': this.updateLobby(dt); break;
       case 'bus': this.updateBus(); break;
       case 'freefall': this.updateAir(dt, false); break;
       case 'glide': this.updateAir(dt, true); break;
       case 'ground': this.updateGround(dt); break;
     }
-    if (this.mode !== 'bus' && g.storm.active && g.storm.isOutside(this.pos.x, this.pos.z)) {
+    if (this.mode !== 'bus' && this.mode !== 'lobby' && g.storm.active && g.storm.isOutside(this.pos.x, this.pos.z)) {
       this.stormTick += dt;
       if (this.stormTick >= 1) {
         this.stormTick -= 1;
@@ -210,8 +213,54 @@ class Bot extends Character {
     }
     if (!this.alive) return;
     const visible = this.mode !== 'bus' && this.pos.distanceToSquared(g.camera.position) < 330 * 330;
+    if (this.mode === 'lobby') {
+      this.model.root.visible = visible && this.lobbyShown;
+      if (this.model.root.visible) this.updateModel(dt, this.lobbyItem || PICKAXE, 0);
+      return;
+    }
     this.model.root.visible = visible;
     if (visible) this.updateModel(dt, this.weapon || PICKAXE, this.swingT);
+  }
+
+  // ----------------------------------------------------------- ISLA DE INICIO
+  // Paseo tranquilo por la isla de inicio mientras se reúnen los jugadores.
+  enterLobby(x, z, yaw) {
+    this.resetBody();
+    this.mode = 'lobby';
+    this.pos.set(x, this.game.world.terrain.heightAt(x, z) + 1, z);
+    this.yaw = yaw;
+    this.lobbyGoal = null;
+    this.lobbyWait = random.float(0.5, 4);
+    this.lobbyShown = true;
+    this.lobbyItem = random.chance(0.4) ? { kind: 'weapon', type: random.pick(['ar', 'shotgun', 'smg', 'pistol', 'burst']), rarity: random.int(0, 4) } : PICKAXE;
+    this.setHeld(this.lobbyItem);
+  }
+
+  updateLobby(dt) {
+    const g = this.game;
+    const L = g.world.lobby;
+    this.lobbyWait -= dt;
+    if (!this.lobbyGoal && this.lobbyWait <= 0) {
+      const a = random.float(0, Math.PI * 2), r = random.float(4, 38);
+      this.lobbyGoal = new THREE.Vector3(L.center.x + Math.cos(a) * r, 0, L.center.z + Math.sin(a) * r);
+    }
+    wish.set(0, 0, 0);
+    if (this.lobbyGoal) {
+      tmpA.set(this.lobbyGoal.x - this.pos.x, 0, this.lobbyGoal.z - this.pos.z);
+      const d = tmpA.length();
+      if (d < 1.5 || this.stuckT > 2) {
+        this.lobbyGoal = null;
+        this.lobbyWait = random.float(1, 5);
+        this.stuckT = 0;
+      } else {
+        wish.copy(tmpA).divideScalar(d);
+        this.yaw = Math.atan2(-wish.x, -wish.z);
+        if (this.hSpeed < 0.5) this.stuckT += dt;
+      }
+    }
+    const jump = this.onGround && random.chance(dt * 0.25);
+    this.sprinting = !!this.lobbyGoal && random.chance(0.5);
+    this.groundStep(dt, wish, this.lobbyGoal ? 5.4 : 0, jump || (this.lobbyGoal && this.stuckT > 0.6 && this.onGround));
   }
 
   // ----------------------------------------------------------- AUTOBÚS/AIRE
@@ -295,7 +344,7 @@ class Bot extends Character {
     this.resetBody();
     this.weapons = loadout.weapons.map((w) => (w ? { ...w } : null));
     this.cur = 0;
-    this.heals = { ...loadout.heals };
+    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0, flopper: 0, slurp: 0, chug: 0, ...loadout.heals };
     this.mats = { wood: 150, stone: 80, metal: 40 };
     this.memory.clear();
     this.target = null;
@@ -424,6 +473,9 @@ class Bot extends Character {
 
   healItem() {
     const h = this.heals;
+    if (this.health < 40 && this.shield < 40 && h.chug > 0) return 'chug';
+    if ((this.health < 70 || this.shield < 50) && h.slurp > 0) return 'slurp';
+    if (this.health < 65 && h.flopper > 0) return 'flopper';
     if (this.shield < 50 && h.smallshield > 0) return 'smallshield';
     if (this.shield < 75 && h.shieldpot > 0) return 'shieldpot';
     if (this.health < 50 && h.medkit > 0) return 'medkit';
@@ -434,7 +486,7 @@ class Bot extends Character {
   needsLoot() {
     if (!this.hasWeapon) return true;
     if (this.weapons.filter(Boolean).length < 2) return true;
-    const heals = this.heals.smallshield + this.heals.shieldpot + this.heals.medkit + this.heals.bandage;
+    const heals = this.heals.smallshield + this.heals.shieldpot + this.heals.medkit + this.heals.bandage + this.heals.flopper + this.heals.slurp + this.heals.chug;
     return heals < 2 || this.weapons.some((w) => w && w.rarity < 2);
   }
 
@@ -446,6 +498,8 @@ class Bot extends Character {
       if (!pk.settled || this.blacklist.has(pk)) continue;
       const it = pk.item;
       let want = false;
+      if (it.kind === 'weapon' && WEAPONS[it.type].explosive) continue;
+      if (it.kind === 'consumable' && !(it.type in this.heals)) continue;
       if (it.kind === 'weapon') want = it.rarity > worst || this.weapons.some((w) => !w) || !this.weapons.some((w) => w && w.type === it.type && w.rarity >= it.rarity) && it.rarity >= worst;
       else if (it.kind === 'consumable') want = (this.heals[it.type] || 0) < 4;
       if (!want) continue;
@@ -498,8 +552,8 @@ class Bot extends Character {
 
     if (storm === 2 && !(this.targetVisible && enemyClose)) return this.setTask('rotate', this.safePoint());
     if (this.targetVisible && this.target) {
-      const eff = this.def ? EFFECTIVE[this.weapon.type] : 0;
-      const bestW = this.weapons.reduce((m, w) => Math.max(m, w ? EFFECTIVE[w.type] : 0), 0);
+      const eff = this.def ? EFFECTIVE[cat(this.weapon)] ?? 60 : 0;
+      const bestW = this.weapons.reduce((m, w) => Math.max(m, w ? EFFECTIVE[cat(w)] ?? 60 : 0), 0);
       if (this.hasWeapon && tDist < Math.max(eff, bestW) * 1.1) return this.setTask('fight', null, this.target);
       // Sin arma sólo pelea a pico si le atacan o lo tiene encima
       const attacked = this.target === this.lastAttacker && now - this.lastHurt < 4;
@@ -738,7 +792,7 @@ class Bot extends Character {
     tmpA.set(m.pos.x - this.pos.x, 0, m.pos.z - this.pos.z);
     const d = tmpA.length() || 1;
     tmpA.divideScalar(d);
-    const [rmin, rmax] = this.weapon ? RANGE[this.weapon.type] : [0, 1.5];
+    const [rmin, rmax] = this.weapon ? RANGE[cat(this.weapon)] || RANGE.ar : [0, 1.5];
     wish.set(0, 0, 0);
     const low = this.health + this.shield < 50;
     if (!this.targetVisible) {
@@ -958,6 +1012,7 @@ class Bot extends Character {
       const def = CONSUMABLES[this.using];
       if (def.heal) this.health = Math.min(def.cap, this.health + def.heal);
       if (def.shield) this.shield = Math.min(def.cap, this.shield + def.shield);
+      if (def.over) this.regen = { left: def.over.total, rate: def.over.rate };
       this.heals[this.using]--;
       this.using = null;
       this.crouching = false;
@@ -1005,13 +1060,15 @@ class Bot extends Character {
     for (const pk of g.pickups.items) {
       if (!pk.settled || pk.pos.distanceToSquared(this.pos) > 3.2 || Math.abs(pk.pos.y - this.pos.y) > 1.6) continue;
       const it = pk.item;
+      if (it.kind === 'weapon' && WEAPONS[it.type].explosive) continue;
+      if (it.kind === 'consumable' && !(it.type in this.heals)) continue;
       if (it.kind === 'weapon') {
         let slot = this.weapons.findIndex((w) => !w);
         if (slot < 0) {
           // sustituir el peor arma si la nueva es mejor (o el mismo tipo peor)
           let worst = -1, wr = 99;
           this.weapons.forEach((w, i) => {
-            const r = w.rarity + (w.type === it.type ? -0.5 : 0) + (w.type === 'pistol' ? -1 : 0);
+            const r = w.rarity + (w.type === it.type ? -0.5 : 0) + (WEAPONS[w.type].cat === 'pistol' ? -1 : 0);
             if (r < wr) {
               wr = r;
               worst = i;
@@ -1067,6 +1124,29 @@ export class BotManager {
     let n = 0;
     for (const b of this.list) if (b.alive) n++;
     return n;
+  }
+
+  // Añade un bot durante la partida (modo creativo).
+  spawnExtra(team, diff, x, z, loadout) {
+    let b = this.pool.find((q) => !this.list.includes(q));
+    if (!b) {
+      b = new Bot(this.game, this.pool.length);
+      this.pool.push(b);
+    }
+    b.reset(diff);
+    b.team = team;
+    b.name = NAMES[random.int(0, NAMES.length - 1)];
+    b.respawnAt(x, z, loadout, this.game.world.terrain.heightAt(x, z) + 6);
+    this.list.push(b);
+    return b;
+  }
+
+  removeAll() {
+    for (const b of this.list) {
+      b.alive = false;
+      b.model.root.visible = false;
+    }
+    this.list = [];
   }
 
   update(dt) {

@@ -56,6 +56,20 @@ export class OnlineMatch {
         const piece = this.game.build.pieces.get(m.key);
         if (piece) this.game.build.damage(piece, m.d, true);
       },
+      'm.boom': (m) => {
+        if (Array.isArray(m.p)) this.game.combat.explode(new THREE.Vector3(m.p[0], m.p[1], m.p[2]), { radius: m.r || 5, knock: m.k ? 1 : 0 }, null, true);
+      },
+      'm.ping': (m) => {
+        if (Array.isArray(m.p) && m.team === this.myTeam) this.game.addPing(new THREE.Vector3(m.p[0], m.p[1], m.p[2]), this.name(m.from), false);
+      },
+      'm.bedit': (m) => {
+        const piece = this.game.build.pieces.get(m.key);
+        if (piece) this.game.build.applyEdit(piece, m.edit | 0, true, piece.type === 'ramp' ? m.dir : null);
+      },
+      'm.bdoor': (m) => {
+        const piece = this.game.build.pieces.get(m.key);
+        if (piece) this.game.build.setDoor(piece, !!m.open, true);
+      },
       'm.brm': (m) => {
         const piece = this.game.build.pieces.get(m.key);
         if (piece) this.game.build.remove(piece, true);
@@ -339,7 +353,23 @@ export class OnlineMatch {
   }
 
   sendBuild(piece) {
-    this.net.send('m.build', { key: piece.key, type: piece.type, cx: piece.cx, cz: piece.cz, base: piece.base, dir: piece.dir, mat: piece.mat });
+    this.net.send('m.build', { key: piece.key, type: piece.type, cx: piece.cx, cz: piece.cz, base: piece.base, dir: piece.dir, mat: piece.mat, edit: piece.edit, team: piece.team });
+  }
+
+  sendBoom(pos, b) {
+    this.net.send('m.boom', { p: [r2(pos.x), r2(pos.y), r2(pos.z)], r: b.radius, k: b.knock ? 1 : 0 });
+  }
+
+  sendPing(pos) {
+    this.net.send('m.ping', { p: [r2(pos.x), r2(pos.y), r2(pos.z)], team: this.myTeam });
+  }
+
+  sendBuildEdit(piece) {
+    this.net.send('m.bedit', { key: piece.key, edit: piece.edit, dir: piece.dir });
+  }
+
+  sendBuildDoor(piece) {
+    this.net.send('m.bdoor', { key: piece.key, open: piece.doorOpen });
   }
 
   sendBuildDamage(piece, d) {

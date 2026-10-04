@@ -22,7 +22,11 @@ export class Player extends Character {
     this.pitch = -0.2;
     this.inventory = [PICKAXE, null, null, null, null, null];
     this.selected = 0;
-    this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0 };
+    this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
+    this.flying = false;
+    this.autorun = false;
+    this.crouchToggled = false;
+    this.lastJumpT = -9;
     this.mats = { wood: 0, stone: 0, metal: 0 };
     this.stepTimer = 0;
     this.vehicle = null;
@@ -57,7 +61,10 @@ export class Player extends Character {
       }
       if (item.count <= 0) return true;
     }
-    for (let i = 1; i < 6; i++) {
+    // Las curas se ordenan a la derecha y las armas a la izquierda (Opciones)
+    const right = item.kind === 'consumable' && this.game.settings.autoSortConsumables !== false;
+    for (let k = 1; k < 6; k++) {
+      const i = right ? 6 - k : k;
       if (!this.inventory[i]) {
         this.inventory[i] = { ...item };
         if (this.selected === 0 && item.kind === 'weapon') this.game.combat.select(i);
@@ -69,6 +76,7 @@ export class Player extends Character {
 
   // -------------------------------------------------------------- UPDATE
   update(dt, input) {
+    this.tickCommon(dt);
     switch (this.mode) {
       case 'bus': this.updateBus(input); break;
       case 'freefall': this.updateFreefall(dt, input); break;
@@ -89,7 +97,7 @@ export class Player extends Character {
     const bus = this.game.bus;
     this.pos.copy(bus.pos);
     this.pos.y -= 2;
-    if ((bus.doorsOpen && input.wasPressed('Space')) || bus.mustEject || !bus.active) this.jumpFromBus();
+    if ((bus.doorsOpen && input.hit('jump')) || bus.mustEject || !bus.active) this.jumpFromBus();
   }
 
   jumpFromBus() {
@@ -108,19 +116,19 @@ export class Player extends Character {
     fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     right.set(-fwd.z, 0, fwd.x);
     wish.set(0, 0, 0);
-    if (input.down('KeyW')) wish.add(fwd);
-    if (input.down('KeyS')) wish.sub(fwd);
-    if (input.down('KeyD')) wish.add(right);
-    if (input.down('KeyA')) wish.sub(right);
+    if (input.held('forward') || this.autorun) wish.add(fwd);
+    if (input.held('back')) wish.sub(fwd);
+    if (input.held('right')) wish.add(right);
+    if (input.held('left')) wish.sub(right);
     if (wish.lengthSq() > 0) wish.normalize();
     return wish;
   }
 
   updateFreefall(dt, input) {
     const w = this.moveWish(input);
-    const dive = input.down('KeyW') ? clamp((-this.pitch - 0.25) / 0.9, 0, 1) : 0;
+    const dive = input.held('forward') ? clamp((-this.pitch - 0.25) / 0.9, 0, 1) : 0;
     this.freefallStep(dt, w, dive);
-    const manual = input.wasPressed('Space') && this.freefallTime > 1.0 && this.altitude > 20;
+    const manual = input.hit('jump') && this.freefallTime > 1.0 && this.altitude > 20;
     if (this.altitude < 90 || manual) {
       this.deployGlider();
       this.game.audio.glider();
@@ -134,7 +142,7 @@ export class Player extends Character {
       fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
       w.copy(fwd).multiplyScalar(0.35);
     }
-    const dive = input.down('KeyW') ? clamp((-this.pitch - 0.1) / 0.8, 0, 1) : 0;
+    const dive = input.held('forward') ? clamp((-this.pitch - 0.1) / 0.8, 0, 1) : 0;
     this.glideStep(dt, w, dive);
     if (this.onGround) this.land(true);
   }
@@ -144,7 +152,7 @@ export class Player extends Character {
     this.glider.visible = false;
     this.vel.set(0, 0, 0);
     this.game.audio.land();
-    if (!fromGlide) this.damage(30, 'fall');
+    if (!fromGlide && this.noFallT <= 0) this.damage(30, 'fall');
     this.game.onLanded();
   }
 
@@ -156,7 +164,35 @@ export class Player extends Character {
       this.groundStep(dt, w, 1.6, false);
       return;
     }
-    const wantCrouch = input.down('KeyC') || input.down('ControlLeft');
+    if (input.hit('autorun')) this.autorun = !this.autorun;
+    if (this.autorun && (input.hit('back') || input.hit('forward'))) this.autorun = false;
+    // Modo creativo: doble salto para volar
+    if (this.game.mode.creative && input.hit('jump')) {
+      const now = this.game.time;
+      if (now - this.lastJumpT < 0.3) {
+        this.flying = !this.flying;
+        this.vel.y = 0;
+        this.game.hud.toast(this.flying ? 'Volando: Espacio sube · Agacharse baja · doble salto para dejar de volar' : 'Has dejado de volar');
+      }
+      this.lastJumpT = now;
+    }
+    if (this.flying) {
+      this.updateFly(dt, input);
+      return;
+    }
+    // Plataforma de salto: al llegar arriba se abre el planeador
+    if (this.launched && this.launchT <= 0 && this.vel.y < 4 && !this.onGround) {
+      this.launched = false;
+      this.deployGlider();
+      this.game.audio.glider();
+      return;
+    }
+    let wantCrouch = input.held('crouch');
+    if (this.game.settings.toggleCrouch) {
+      if (input.hit('crouch')) this.crouchToggled = !this.crouchToggled;
+      if (input.hit('jump') || this.sprinting) this.crouchToggled = false;
+      wantCrouch = this.crouchToggled;
+    }
     if (wantCrouch && !this.crouching) {
       this.crouching = true;
       this.eyeOffset += 0.5;
@@ -169,8 +205,9 @@ export class Player extends Character {
     }
     const combat = this.game.combat;
     const w = this.moveWish(input);
-    const forwardHeld = input.down('KeyW') && !input.down('KeyS');
-    this.sprinting = input.down('ShiftLeft') && forwardHeld && !this.crouching && combat.adsBlend < 0.2 && !combat.using;
+    const forwardHeld = (input.held('forward') || this.autorun) && !input.held('back');
+    const sprintKey = this.game.settings.sprintDefault ? !input.held('sprint') : input.held('sprint');
+    this.sprinting = sprintKey && forwardHeld && !this.crouching && combat.adsBlend < 0.2 && !combat.using;
     let speed = 5.4;
     if (this.crouching) speed = 2.8;
     else if (this.sprinting) speed = 8.0;
@@ -181,8 +218,8 @@ export class Player extends Character {
     // Escaleras de mano: W para subir; sin pulsar, se baja despacio
     const ladder = this.game.world.ladderAt(this.pos.x, this.pos.y, this.pos.z);
     if (ladder) {
-      if (input.down('KeyW')) this.vel.y = 4.5 + 24 * dt;
-      else if (input.down('KeyS')) this.vel.y = -3 + 24 * dt;
+      if (input.held('forward')) this.vel.y = 4.5 + 24 * dt;
+      else if (input.held('back')) this.vel.y = -3 + 24 * dt;
       else this.vel.y = Math.max(this.vel.y, -1.5);
       this.onGround = false;
     }
@@ -194,7 +231,8 @@ export class Player extends Character {
       this.vel.x = 0;
       this.vel.z = 0;
     }
-    const landSpeed = this.groundStep(dt, w, ladder && !atTop ? speed * 0.02 : speed, input.wasPressed('Space') && !ladder);
+    if (this.game.speedMult) speed *= this.game.speedMult;
+    const landSpeed = this.groundStep(dt, w, ladder && !atTop ? speed * 0.02 : speed, input.hit('jump') && !ladder);
     this.stats.distance += Math.hypot(this.pos.x - before.x, this.pos.z - before.z);
     if (landSpeed > 17) {
       this.fallDamage(landSpeed);
@@ -208,6 +246,22 @@ export class Player extends Character {
         this.game.audio.step();
       }
     }
+  }
+
+  // Vuelo libre del modo creativo (atraviesa el aire, choca con paredes).
+  updateFly(dt, input) {
+    const w = this.moveWish(input);
+    const fast = input.held('sprint') ? 2.2 : 1;
+    const speed = 14 * fast * (this.game.speedMult || 1);
+    const k = Math.min(1, dt * 8);
+    this.vel.x += (w.x * speed - this.vel.x) * k;
+    this.vel.z += (w.z * speed - this.vel.z) * k;
+    const vy = input.held('jump') ? speed * 0.8 : input.held('crouch') ? -speed * 0.8 : 0;
+    this.vel.y += (vy - this.vel.y) * k; // move() no aplica gravedad
+    this.sprinting = false;
+    this.crouching = false;
+    this.move(dt);
+    if (this.onGround && input.held('crouch')) this.flying = false;
   }
 
   // ------------------------------------------------------------ DAÑO

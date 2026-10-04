@@ -149,9 +149,30 @@ export class ContainerManager {
       glow.position.set(s.x, s.y + 0.6, s.z);
       this.game.scene.add(glow);
     }
-    const c = { kind, model, glow, pos: model.position, rotY: s.rotY, opened: false, active: true, openT: 0, collider: null, index: this.list.length };
+    const c = {
+      kind, model, glow, pos: model.position, rotY: s.rotY, opened: false, active: true, openT: 0, collider: null,
+      index: this.list.length, chance: s.chance, forced: !!s.forced,
+    };
     this._setCollider(c, true);
     this.list.push(c);
+  }
+
+  // Cofre o caja de munición extra (modo creativo).
+  add(kind, s) {
+    this._create(kind, { ...s, forced: true }, getGlowTexture());
+    const c = this.list[this.list.length - 1];
+    c.extra = true;
+    return c;
+  }
+
+  clearExtra() {
+    for (const c of this.list.filter((x) => x.extra)) {
+      this.game.scene.remove(c.model);
+      if (c.glow) this.game.scene.remove(c.glow);
+      this._setCollider(c, false);
+      this.list.splice(this.list.indexOf(c), 1);
+    }
+    this.list.forEach((c, i) => (c.index = i));
   }
 
   _setCollider(c, on) {
@@ -173,7 +194,7 @@ export class ContainerManager {
       c.pending = null;
       c.pendingIds = null;
       c.requested = false;
-      c.active = rng.chance(c.kind === 'chest' ? 0.65 : 0.55);
+      c.active = c.forced || rng.chance(c.chance ?? (c.kind === 'chest' ? 0.5 : 0.55));
       c.model.visible = c.active;
       this._setCollider(c, c.active);
       c.model.userData.lid.rotation.x = 0;

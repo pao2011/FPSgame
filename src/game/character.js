@@ -78,6 +78,26 @@ export class Character {
     this.knocker = null;
     this.reviveT = 0;
     this.invuln = 0;
+    this.noFallT = 0; // sin daño de caída (impulso, plataforma de salto)
+    this.launchT = 0;
+    this.launched = false;
+    this.regen = null; // curación progresiva (Zumo Slurp)
+  }
+
+  // Temporizadores comunes y curación progresiva.
+  tickCommon(dt) {
+    this.noFallT = Math.max(0, this.noFallT - dt);
+    this.launchT = Math.max(0, this.launchT - dt);
+    const r = this.regen;
+    if (r && this.alive && !this.knocked) {
+      let amt = Math.min(r.left, r.rate * dt);
+      r.left -= amt;
+      const toHp = Math.min(amt, 100 - this.health);
+      this.health += toHp;
+      amt -= toHp;
+      if (amt > 0) this.shield = Math.min(100, this.shield + amt);
+      if (r.left <= 0 || (this.health >= 100 && this.shield >= 100)) this.regen = null;
+    }
   }
 
   get height() {
@@ -156,6 +176,7 @@ export class Character {
   }
 
   fallDamage(landSpeed) {
+    if (this.noFallT > 0) return;
     if (landSpeed > 17) this.damage(Math.round((landSpeed - 17) * 5), 'fall');
   }
 
@@ -195,7 +216,8 @@ export class Character {
       this.onGround = true;
       this.swimming = true;
     }
-    const lim = HALF + 150;
+    // Límite del mundo (incluye la isla de inicio, fuera del mapa)
+    const lim = HALF + 560;
     this.pos.x = clamp(this.pos.x, -lim, lim);
     this.pos.z = clamp(this.pos.z, -lim, lim);
     return landSpeed;
@@ -296,6 +318,8 @@ export class Character {
   damage(amount, type, attacker = null) {
     if (!this.alive || amount <= 0) return false;
     if (attacker && attacker !== this && attacker.team === this.team) return false;
+    // Isla de inicio y modo dios (creativo): sin daño
+    if (this.game.phase === 'lobby' || (this.isPlayer && this.game.godMode)) return false;
     if (this.invuln > 0 && type !== 'storm') return false;
     if (this.knocked) {
       this.knockHp -= amount;

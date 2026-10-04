@@ -34,9 +34,10 @@ export const MODES = {
     id: 'zerobuild', name: 'Construcción cero', icon: '🚫', teamSize: 1, build: false, online: true, maxPlayers: 24,
     desc: 'Solitario sin construir: sólo movimiento, coberturas del mapa y puntería.',
   },
-  practice: {
-    id: 'practice', name: 'Práctica libre', icon: '🎯', teamSize: 1, build: true, noBots: true, infinite: true,
-    desc: 'La isla para ti solo, con materiales infinitos y dianas para entrenar.',
+  creative: {
+    id: 'creative', name: 'Modo creativo', icon: '🎨', teamSize: 1, build: true, noBots: true, infinite: true,
+    creative: true, noBus: true, noStorm: true,
+    desc: 'La isla para ti solo: vuelo, catálogo con todas las armas y objetos, materiales y munición infinitos, bots y dianas a demanda, prefabricados, guardar construcciones y mucho más.',
   },
 };
 
@@ -56,17 +57,45 @@ export const DIFFICULTIES = {
 
 const KEY = 'islaRoyale.settings.v1';
 
+// Ajustes al estilo de Epic (Opciones). `binds` se completa con
+// src/core/binds.js al cargar.
 export const DEFAULT_SETTINGS = {
   mode: 'solo',
   difficulty: 'normal',
   players: 30,
   sensitivity: 1,
+  adsSensitivity: 0.8,
+  scopeSensitivity: 0.6,
+  buildSensitivity: 1,
+  editSensitivity: 1,
   fov: 80,
   volume: 70,
   invertY: false,
   showFps: false,
+  fpsLimit: 0,
   quality: 'normal',
   server: '',
+  // Construcción y edición
+  turboBuild: true,
+  turboDelay: 0.08,
+  autoMaterial: true,
+  editConfirmOnRelease: false,
+  editDragSelect: true,
+  buildPreview: true,
+  // Combate y movimiento
+  toggleAds: false,
+  toggleCrouch: false,
+  sprintDefault: false,
+  autoReload: true,
+  autoPickupWeapons: true,
+  autoSortConsumables: true,
+  // Interfaz
+  damageNumbers: true,
+  crosshairColor: '#ffffff',
+  hudScale: 1,
+  showHints: true,
+  skipLobby: false,
+  binds: null,
   online: { mode: 'duos', bots: true, difficulty: 'normal' },
 };
 
@@ -76,6 +105,7 @@ export function loadSettings() {
     if (raw) {
       const s = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
       s.online = { ...DEFAULT_SETTINGS.online, ...s.online };
+      if (!MODES[s.mode]) s.mode = s.mode === 'practice' ? 'creative' : 'solo';
       return s;
     }
   } catch {

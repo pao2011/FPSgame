@@ -3,17 +3,26 @@ import { MODES, DIFFICULTIES } from '../game/modes.js';
 import { OnlineUI } from './online.js';
 import { makeCharacter } from '../game/models.js';
 import { SKINS, SHIRTS, PANTS, HAIR, randomOutfit } from '../game/character.js';
+import { ACTIONS, keyName, defaultBinds } from '../core/binds.js';
+import { MAP_NAME } from '../world/constants.js';
 
 const $ = (id) => document.getElementById(id);
 
-const CONTROLS = [
-  ['W A S D', 'Moverse · W/S en una escalera de mano: trepar/bajar'], ['Ratón', 'Mirar'], ['Clic izquierdo', 'Disparar · usar · golpear · colocar pieza'],
-  ['Clic derecho', 'Apuntar · (construyendo) cambiar material'], ['Espacio', 'Saltar · salir del bus · planeador · freno de mano'],
-  ['Shift', 'Correr'], ['C', 'Agacharse'], ['E', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
-  ['R', 'Recargar'], ['1–6 / rueda', 'Inventario · (construyendo) 1–4 pieza'], ['Q', 'Modo construcción'],
-  ['G', 'Soltar objeto'], ['V', 'Cámara 1ª / 3ª persona'], ['M', 'Mapa'], ['Esc', 'Pausa'],
-  ['Intro', '(online) Chat de la partida · empieza con /e para hablar solo con tu equipo'],
+// Controles fijos (no reasignables); el resto sale de Opciones → Controles.
+const FIXED_CONTROLS = [
+  ['Ratón', 'Mirar'], ['Rueda', 'Cambiar de objeto · (construyendo) cambiar de pieza'],
+  ['Editando: 1–8', 'Piezas reales: puerta, ventana, arco, arco grande, media pared, valla, puerta lateral, ventana doble'],
+  ['Esc', 'Pausa · cerrar paneles'], ['Intro', '(online) Chat de la partida · empieza con /e para hablar solo con tu equipo'],
 ];
+
+const num = (v) => Number(v).toFixed(2);
+const pct = (v) => `${v}%`;
+const deg = (v) => `${v}°`;
+const mult = (v) => `${Number(v).toFixed(2)}×`;
+const ms = (v) => `${Math.round(v * 1000)} ms`;
+const FMT = { num, pct, deg, mult, ms };
+// Teclas que pueden repetirse sin problema (se usan en contextos distintos).
+const SHARED = new Set(['Mouse2', 'Mouse0', 'KeyB']);
 
 const OUTFIT_PARTS = [
   ['shirt', 'Camiseta', SHIRTS], ['pants', 'Pantalón', PANTS], ['hair', 'Pelo', HAIR], ['skin', 'Piel', SKINS],
@@ -85,13 +94,38 @@ class CharacterPreview {
 }
 
 const HOWTO = [
+  ['Isla de Inicio', 'Antes de cada partida apareces en la Isla de Inicio con el resto de jugadores. Practica con las armas de las mesas y construye; cuando estéis todos empieza una cuenta atrás de 10 s y subís al autobús.'],
   ['Salta del autobús', 'Pulsa Espacio cuando se abran las puertas. Mira hacia abajo y mantén W para caer más rápido; el planeador se abre solo.'],
   ['Equípate', 'Abre cofres dorados (E) y recoge armas, curas y munición. El color indica la rareza.'],
   ['Consigue materiales', 'Golpea árboles, rocas y coches abandonados con el pico para conseguir madera, piedra y metal.'],
-  ['Construye para cubrirte', 'Q entra en modo construcción: muros, suelos, rampas y techos. Clic derecho cambia el material.'],
+  ['Construye para cubrirte', 'Q entra en modo construcción: muros, suelos, rampas y techos. Clic derecho cambia el material y R gira la pieza.'],
+  ['Edita tus piezas', 'Apunta a una construcción y pulsa F: haz clic (o arrastra) sobre las casillas y vuelve a pulsar F. Con 1–8 aplicas piezas reales: puerta (se abre con E), ventana, arco, media pared, valla…'],
+  ['Cofres', 'Los cofres no están siempre en el mismo sitio: en cada partida cada cofre tiene una probabilidad de aparecer. ¡Escucha su zumbido!'],
   ['Vigila la tormenta', 'El círculo blanco del mapa (M) es la próxima zona segura. Fuera de ella pierdes vida.'],
   ['Juega en equipo', 'En Dúos y Escuadras, si te derriban arrástrate hacia un compañero. Mantén E para reanimar a los tuyos.'],
   ['Sé el último en pie', 'Elimina al resto de jugadores (o equipos) para conseguir la Victoria Magistral.'],
+];
+
+const NEWS = [
+  ['Un solo mapa', `${MAP_NAME} es siempre la misma isla, en local y online.`],
+  ['Cofres aleatorios', 'Cada cofre tiene una probabilidad de aparecer en cada partida: ya no están siempre en el mismo sitio.'],
+  ['Isla de Inicio', 'Sala de espera antes del autobús, con armas de práctica, dianas y construcción libre. Cuenta atrás de 10 s al reunir a todos.'],
+  ['Autobús de batalla detallado', 'Conductor, pasajeros, puertas, faros, equipaje, globo con quemador y llama… y puedes darle las gracias al conductor.'],
+  ['Edición de piezas', 'Puerta (que se abre y se cierra), ventana, arco, arco grande, media pared, valla, puerta lateral, suelos con hueco, rampas giradas y tejados inclinados o planos.'],
+  ['Ajustes al estilo de Epic', 'Construcción turbo, controles personalizados, sensibilidades separadas, apuntar/agacharse alternos, cambio automático de material, límite de FPS…'],
+  ['Modo creativo', 'Vuelo, catálogo con todas las armas y consumibles, bots y dianas a demanda, cofres, prefabricados, guardar/cargar, teletransporte, hora del día y tormenta.'],
+  ['Más armas', 'Fusil de ráfagas, fusil pesado, minigun, escopeta táctica y de dos cañones, rifle de caza, revólver, cañón de mano, lanzacohetes y lanzagranadas.'],
+  ['Más consumibles', 'Pez saltarín, Zumo Slurp, Jarra Chug, granadas, granada de impulso y plataforma de salto.'],
+  ['Calidad de vida', 'Marcadores (clic central), destino en el mapa, recogida automática, curación rápida (H), arma anterior (X), correr automático (=)…'],
+];
+
+const NEXT = [
+  'Sistema de progresión: niveles, pase de temporada y desafíos diarios',
+  'Tienda de objetos cosméticos (skins, picos, planeadores, gestos)',
+  'Mochila/inventario ampliado con arrastrar y soltar',
+  'Vehículos nuevos (barcas, quads) y NPCs con misiones',
+  'Repeticiones y modo espectador completo',
+  'Ajustes de accesibilidad: modo daltónico y visualización de sonidos',
 ];
 
 export class Menu {
@@ -122,20 +156,15 @@ export class Menu {
           <button data-panel="options" class="nav-btn">OPCIONES</button>
           <button data-panel="controls" class="nav-btn">CONTROLES</button>
           <button data-panel="howto" class="nav-btn">CÓMO JUGAR</button>
+          <button data-panel="news" class="nav-btn">NOVEDADES</button>
         </nav>
         <div class="island-row">
-          <span>Isla #${g.seed}</span>
-          <button id="new-island" class="small-btn">Nueva isla</button>
+          <span>🗺️ Mapa: <b>${MAP_NAME}</b> · siempre el mismo</span>
         </div>
         <div class="net-pill" id="net-pill"></div>
       </div>
       <div class="mm-right"><div id="mm-panel" class="mm-panel"></div></div>`;
     this.root.querySelectorAll('.nav-btn').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.panel)));
-    $('new-island').addEventListener('click', () => {
-      const q = new URLSearchParams(location.search);
-      q.set('seed', Math.floor(Math.random() * 1e9));
-      location.search = q.toString();
-    });
 
     $('pause').innerHTML = `
       <div class="menu-card pause-card">
@@ -208,11 +237,29 @@ export class Menu {
     if (panel === 'play') el.innerHTML = this.playHTML();
     else if (panel === 'modes') el.innerHTML = this.modesHTML();
     else if (panel === 'options') el.innerHTML = this.optionsHTML();
-    else if (panel === 'controls') el.innerHTML = `<h2>Controles</h2><table class="ctrl-table">${CONTROLS.map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>`;
+    else if (panel === 'controls') el.innerHTML = this.controlsHTML();
+    else if (panel === 'news') el.innerHTML = `<h2>Novedades</h2><ul class="howto roadmap-list">${NEWS.map(([t, d]) => `<li><b>${t}.</b> ${d}</li>`).join('')}</ul>
+      <h2>Próximamente</h2><ul class="howto roadmap-list">${NEXT.map((t) => `<li>${t}</li>`).join('')}</ul>
+      <p class="hint">El plan completo está en <code>ROADMAP.md</code>.</p>`;
     else el.innerHTML = `<h2>Cómo jugar</h2><ol class="howto">${HOWTO.map(([t, d]) => `<li><b>${t}.</b> ${d}</li>`).join('')}</ol>`;
     if (panel === 'play') this.bindPlay(el);
     if (panel === 'modes') this.bindModes(el);
     if (panel === 'options') this.bindOptions(el);
+    if (panel === 'controls') el.querySelector('[data-go-binds]')?.addEventListener('click', () => {
+      this.optTab = 'binds';
+      this.show('options');
+    });
+  }
+
+  controlsHTML() {
+    const b = this.s.binds || defaultBinds();
+    const rows = ACTIONS.map((a) => {
+      const keys = (b[a.id] || []).filter(Boolean).map((k) => `<kbd>${keyName(k)}</kbd>`).join(' / ') || '<i>sin asignar</i>';
+      return `<tr><td>${keys}</td><td>${a.name}</td></tr>`;
+    }).join('');
+    return `<h2>Controles</h2>
+      <p class="lead">Puedes cambiar cualquier tecla en <a href="#" data-go-binds>Opciones → Controles</a>.</p>
+      <table class="ctrl-table">${rows}${FIXED_CONTROLS.map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>`;
   }
 
   playHTML() {
@@ -280,39 +327,135 @@ export class Menu {
 
   optionsHTML() {
     const s = this.s;
+    const tab = this.optTab || 'game';
+    const tabs = [['game', 'Juego'], ['sens', 'Sensibilidad'], ['build', 'Construcción y edición'], ['binds', 'Controles'], ['hud', 'Interfaz'], ['video', 'Vídeo y sonido']];
+    const range = (k, label, min, max, step, fmt = (v) => v) =>
+      `<div class="opt-row"><label>${label} <b data-out="${k}">${fmt(s[k])}</b></label><input data-k="${k}" data-fmt="${fmt === pct ? 'pct' : fmt === deg ? 'deg' : fmt === mult ? 'mult' : fmt === ms ? 'ms' : 'num'}" type="range" min="${min}" max="${max}" step="${step}" value="${s[k]}"></div>`;
+    const check = (k, label, hint = '') => `<div class="opt-row check"><label><input data-k="${k}" type="checkbox" ${s[k] ? 'checked' : ''}> ${label}</label>${hint ? `<small class="hint">${hint}</small>` : ''}</div>`;
+    let body = '';
+    if (tab === 'game') {
+      body = `
+        ${check('autoPickupWeapons', 'Recoger armas y curas automáticamente', 'Al pasar por encima, si tienes un hueco libre.')}
+        ${check('autoSortConsumables', 'Ordenar las curas a la derecha del inventario')}
+        ${check('autoReload', 'Recargar automáticamente al vaciar el cargador')}
+        ${check('toggleAds', 'Apuntar: alternar (en vez de mantener)')}
+        ${check('toggleCrouch', 'Agacharse: alternar (en vez de mantener)')}
+        ${check('sprintDefault', 'Correr por defecto (Shift para andar)')}
+        ${check('skipLobby', 'Saltar la Isla de Inicio en partidas contra bots')}
+        ${check('showHints', 'Mostrar consejos en pantalla')}`;
+    } else if (tab === 'sens') {
+      body = `
+        ${range('sensitivity', 'Sensibilidad del ratón', 0.2, 3, 0.05, num)}
+        ${range('adsSensitivity', 'Multiplicador al apuntar', 0.2, 1.5, 0.05, mult)}
+        ${range('scopeSensitivity', 'Multiplicador con mira telescópica', 0.2, 1.5, 0.05, mult)}
+        ${range('buildSensitivity', 'Multiplicador en modo construcción', 0.2, 2, 0.05, mult)}
+        ${range('editSensitivity', 'Multiplicador en modo edición', 0.2, 2, 0.05, mult)}
+        ${check('invertY', 'Invertir eje vertical')}`;
+    } else if (tab === 'build') {
+      body = `
+        ${check('turboBuild', 'Construcción turbo', 'Mantén el clic para colocar piezas sin parar.')}
+        ${range('turboDelay', 'Retardo de la construcción turbo', 0.03, 0.25, 0.01, ms)}
+        ${check('autoMaterial', 'Cambio automático de material', 'Si se acaba el material elegido, usa otro.')}
+        ${check('buildPreview', 'Mostrar la silueta de la pieza')}
+        ${check('editConfirmOnRelease', 'Confirmar la edición al soltar la tecla de editar')}
+        ${check('editDragSelect', 'Seleccionar casillas arrastrando al editar')}`;
+    } else if (tab === 'binds') {
+      const b = s.binds || defaultBinds();
+      const used = new Map();
+      for (const a of ACTIONS) for (const k of b[a.id] || []) if (k) used.set(k, (used.get(k) || 0) + 1);
+      let last = '';
+      const rows = ACTIONS.map((a) => {
+        const head = a.group !== last ? `<tr><th colspan="3">${a.group}</th></tr>` : '';
+        last = a.group;
+        const btn = (i) => {
+          const k = b[a.id]?.[i] || '';
+          const dup = k && used.get(k) > 1 && !SHARED.has(k) ? ' dup' : '';
+          return `<button class="bind-btn${dup}" data-bind="${a.id}" data-i="${i}">${keyName(k)}</button>`;
+        };
+        return `${head}<tr><td>${a.name}</td><td>${btn(0)}</td><td>${btn(1)}</td></tr>`;
+      }).join('');
+      body = `<p class="lead">Haz clic en una tecla y pulsa la nueva (o un botón del ratón). Esc borra la asignación. En rojo: teclas repetidas.</p>
+        <table class="bind-table">${rows}</table>
+        <button class="small-btn" id="binds-reset">Restablecer controles</button>`;
+    } else if (tab === 'hud') {
+      body = `
+        ${check('damageNumbers', 'Mostrar números de daño')}
+        ${range('hudScale', 'Tamaño de la interfaz', 0.7, 1.4, 0.05, mult)}
+        <div class="opt-row"><label>Color de la mira</label><input type="color" data-k="crosshairColor" value="${s.crosshairColor || '#ffffff'}"></div>
+        ${check('showFps', 'Mostrar FPS')}`;
+    } else {
+      body = `
+        ${range('fov', 'Campo de visión', 65, 100, 1, deg)}
+        ${range('volume', 'Volumen', 0, 100, 5, pct)}
+        <div class="opt-row"><label>Límite de FPS</label>
+          <select data-k="fpsLimit">${[0, 30, 60, 120, 144, 240].map((v) => `<option value="${v}" ${Number(s.fpsLimit) === v ? 'selected' : ''}>${v ? v + ' FPS' : 'Sin límite'}</option>`).join('')}</select></div>
+        <div class="opt-row"><label>Calidad gráfica</label>
+          <div class="seg" data-seg="quality">
+            <button data-v="alta" class="${s.quality === 'alta' ? 'on' : ''}">Alta</button>
+            <button data-v="normal" class="${s.quality === 'normal' ? 'on' : ''}">Normal</button>
+            <button data-v="baja" class="${s.quality === 'baja' ? 'on' : ''}">Baja (PCs modestos)</button>
+          </div>
+          <small class="hint" id="quality-hint"></small>
+        </div>`;
+    }
     return `
       <h2>Opciones</h2>
-      <div class="opt-row"><label>Sensibilidad del ratón <b data-out="sensitivity">${s.sensitivity.toFixed(2)}</b></label>
-        <input data-k="sensitivity" type="range" min="0.2" max="3" step="0.05" value="${s.sensitivity}"></div>
-      <div class="opt-row"><label>Campo de visión <b data-out="fov">${s.fov}°</b></label>
-        <input data-k="fov" type="range" min="65" max="100" step="1" value="${s.fov}"></div>
-      <div class="opt-row"><label>Volumen <b data-out="volume">${s.volume}%</b></label>
-        <input data-k="volume" type="range" min="0" max="100" step="5" value="${s.volume}"></div>
-      <div class="opt-row check"><label><input data-k="invertY" type="checkbox" ${s.invertY ? 'checked' : ''}> Invertir eje vertical</label></div>
-      <div class="opt-row check"><label><input data-k="showFps" type="checkbox" ${s.showFps ? 'checked' : ''}> Mostrar FPS</label></div>
-      <div class="opt-row"><label>Calidad gráfica</label>
-        <div class="seg" data-seg="quality">
-          <button data-v="alta" class="${s.quality === 'alta' ? 'on' : ''}">Alta</button>
-          <button data-v="normal" class="${s.quality === 'normal' ? 'on' : ''}">Normal</button>
-          <button data-v="baja" class="${s.quality === 'baja' ? 'on' : ''}">Baja (PCs modestos)</button>
-        </div>
-        <small class="hint" id="quality-hint"></small>
-      </div>`;
+      <div class="opt-tabs">${tabs.map(([k, n]) => `<button data-opt-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="opt-body">${body}</div>`;
   }
 
   bindOptions(el) {
     const s = this.s;
+    const rerender = () => {
+      el.innerHTML = this.optionsHTML();
+      this.bindOptions(el);
+    };
+    el.querySelectorAll('[data-opt-tab]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.optTab = b.dataset.optTab;
+      rerender();
+    }));
     el.querySelectorAll('input[type=range]').forEach((inp) => inp.addEventListener('input', () => {
       const k = inp.dataset.k;
       s[k] = Number(inp.value);
       const out = el.querySelector(`[data-out="${k}"]`);
-      if (out) out.textContent = k === 'fov' ? `${s[k]}°` : k === 'volume' ? `${s[k]}%` : s[k].toFixed(2);
+      if (out) out.textContent = FMT[inp.dataset.fmt](s[k]);
       this.game.applySettings();
     }));
     el.querySelectorAll('input[type=checkbox]').forEach((inp) => inp.addEventListener('change', () => {
       s[inp.dataset.k] = inp.checked;
       this.game.applySettings();
     }));
+    el.querySelectorAll('input[type=color]').forEach((inp) => inp.addEventListener('input', () => {
+      s[inp.dataset.k] = inp.value;
+      this.game.applySettings();
+    }));
+    el.querySelectorAll('select[data-k]').forEach((sel) => sel.addEventListener('change', () => {
+      s[sel.dataset.k] = Number(sel.value);
+      this.game.applySettings();
+    }));
+    // Reasignar teclas
+    el.querySelectorAll('.bind-btn').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      b.classList.add('wait');
+      b.textContent = 'Pulsa una tecla…';
+      const input = this.game.input;
+      // el clic que abre la captura no debe contar como tecla
+      setTimeout(() => {
+        input.capture = (code) => {
+          input.capture = null;
+          s.binds[b.dataset.bind][Number(b.dataset.i)] = code || '';
+          this.game.applySettings();
+          rerender();
+        };
+      }, 0);
+    }));
+    el.querySelector('#binds-reset')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.binds = defaultBinds();
+      this.game.applySettings();
+      rerender();
+    });
     el.querySelectorAll('[data-seg="quality"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       if (s.quality === b.dataset.v) return;
@@ -325,7 +468,6 @@ export class Menu {
         ev.preventDefault();
         const q = new URLSearchParams(location.search);
         q.delete('calidad');
-        q.set('seed', this.game.seed);
         location.search = q.toString();
       });
     }));

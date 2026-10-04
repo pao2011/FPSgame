@@ -115,11 +115,11 @@ class Vehicle {
     const driving = !!this.driver;
     let throttle = 0, steerIn = 0, brake = false;
     if (driving && input) {
-      if (input.down('KeyW')) throttle += 1;
-      if (input.down('KeyS')) throttle -= 1;
-      if (input.down('KeyA')) steerIn += 1;
-      if (input.down('KeyD')) steerIn -= 1;
-      brake = input.down('Space');
+      if (input.held('forward')) throttle += 1;
+      if (input.held('back')) throttle -= 1;
+      if (input.held('left')) steerIn += 1;
+      if (input.held('right')) steerIn -= 1;
+      brake = input.held('jump');
     }
     if (throttle > 0) this.speed += (this.speed < 0 ? 26 : 13) * dt;
     else if (throttle < 0) this.speed -= (this.speed > 0 ? 26 : 9) * dt;

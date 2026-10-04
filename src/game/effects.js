@@ -126,6 +126,7 @@ export class Effects {
     this.flashT = 0.05;
     this.flashLight.position.copy(worldPos);
     this.flashLight.intensity = 30;
+    this.flashLight.distance = 12;
     if (viewPos) {
       this.flashSprite.position.copy(viewPos);
       this.flashSprite.visible = true;
@@ -136,7 +137,30 @@ export class Effects {
     }
   }
 
+  // Explosión: bola de fuego (sprite), destello, humo y escombros.
+  explosion(pos, radius = 5, impulse = false) {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: getGlowTexture(), color: impulse ? 0x7fe0ff : 0xffa040, blending: THREE.AdditiveBlending,
+        depthWrite: false, transparent: true,
+      }),
+    );
+    if (this.game.composer) sprite.material.color.multiplyScalar(2);
+    sprite.position.copy(pos);
+    sprite.scale.setScalar(radius * 0.6);
+    this.scene.add(sprite);
+    this.booms = this.booms || [];
+    this.booms.push({ sprite, life: 0.55, max: 0.55, size: radius * (impulse ? 2.4 : 2.0) });
+    this.flashLight.position.copy(pos);
+    this.flashLight.intensity = impulse ? 40 : 120;
+    this.flashLight.distance = radius * 6;
+    this.flashT = 0.15;
+    if (!impulse) this.debris(pos, 0x3a3530);
+    if (!impulse) this.debris(pos, 0xff8a30);
+  }
+
   damageNumber(pos, amount, kind) {
+    if (this.game.settings && this.game.settings.damageNumbers === false && kind !== 'mat') return;
     const el = document.createElement('div');
     el.className = 'dmg-num ' + kind;
     el.textContent = typeof amount === 'number' ? Math.round(amount) : amount;
@@ -147,6 +171,20 @@ export class Effects {
   }
 
   update(dt) {
+    if (this.booms?.length) {
+      for (let i = this.booms.length - 1; i >= 0; i--) {
+        const b = this.booms[i];
+        b.life -= dt;
+        const k = 1 - b.life / b.max;
+        b.sprite.scale.setScalar(b.size * (0.3 + 0.7 * Math.sqrt(k)));
+        b.sprite.material.opacity = Math.max(0, 1 - k);
+        if (b.life <= 0) {
+          this.scene.remove(b.sprite);
+          b.sprite.material.dispose();
+          this.booms.splice(i, 1);
+        }
+      }
+    }
     for (const t of this.tracers) {
       if (t.life <= 0) continue;
       t.life -= dt;

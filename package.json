@@ -1,7 +1,7 @@
 {
   "name": "isla-royale",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Battle royale 3D estilo Fortnite en el navegador (Three.js), con modo online",
   "type": "module",
   "engines": {

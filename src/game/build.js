@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MATERIALS, BUILD_COST } from './items.js';
 import { R } from './character.js';
 
@@ -14,7 +15,55 @@ export const PIECES = [
   { id: 'cone', name: 'Techo', key: '4' },
 ];
 export const MAT_ORDER = ['wood', 'stone', 'metal'];
-const NET_OWNER = { mats: { wood: 999, stone: 999, metal: 999 }, isPlayer: false };
+const NET_OWNER = { mats: { wood: 999, stone: 999, metal: 999 }, isPlayer: false, team: -1 };
+export const FREE_OWNER = NET_OWNER;
+
+// ------------------------------------------------------------- EDICIÓN
+// Muros: rejilla 3×3 (bit = fila*3 + columna, fila 0 arriba). Suelos, rampas
+// y techos: rejilla 2×2 alineada con el mundo (bit = fila*2 + columna; fila 0
+// = norte, columna 0 = oeste). Un bit a 1 = casilla quitada.
+const W = (cells) => cells.reduce((m, [r, c]) => m | (1 << (r * 3 + c)), 0);
+export const WALL_PRESETS = [
+  { name: 'Puerta', mask: W([[1, 1], [2, 1]]) },
+  { name: 'Ventana', mask: W([[1, 1]]) },
+  { name: 'Arco', mask: W([[2, 0], [2, 1], [2, 2], [1, 1]]) },
+  { name: 'Arco grande', mask: W([[1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]]) },
+  { name: 'Media pared', mask: W([[0, 0], [0, 1], [0, 2]]) },
+  { name: 'Valla (muro bajo)', mask: W([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]) },
+  { name: 'Puerta lateral', mask: W([[1, 0], [2, 0]]) },
+  { name: 'Ventana doble', mask: W([[1, 0], [1, 2]]) },
+];
+const FULL = { wall: 511, floor: 15, ramp: 15, cone: 15 };
+const EDIT_NAMES = new Map(WALL_PRESETS.map((p) => [p.mask, p.name]));
+
+// Casillas de 2×2 a dirección de subida (2 casillas del mismo lado).
+function sideOf(mask) {
+  if (mask === 0b0011) return 0; // fila norte
+  if (mask === 0b1100) return 2; // fila sur
+  if (mask === 0b1010) return 1; // columna este
+  if (mask === 0b0101) return 3; // columna oeste
+  return -1;
+}
+
+// Columnas de un muro editado que forman una puerta (hueco de 1×2 abajo).
+function doorColumns(mask) {
+  const out = [];
+  const off = (r, c) => c < 0 || c > 2 || (mask >> (r * 3 + c)) & 1;
+  for (let c = 0; c < 3; c++) {
+    const hole = off(1, c) && off(2, c) && !off(0, c);
+    const nb = (cc) => cc < 0 || cc > 2 || (!off(1, cc) && !off(2, cc));
+    if (hole && nb(c - 1) && nb(c + 1)) out.push(c);
+  }
+  return out;
+}
+
+export function editName(type, mask) {
+  if (!mask) return '';
+  if (type === 'wall') return EDIT_NAMES.get(mask) || 'Muro editado';
+  if (type === 'floor') return 'Suelo con hueco';
+  if (type === 'cone') return sideOf(mask) >= 0 ? 'Tejado inclinado' : 'Tejado plano';
+  return 'Rampa girada';
+}
 
 // Direcciones: 0 = norte (-Z), 1 = este (+X), 2 = sur (+Z), 3 = oeste (-X)
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -63,17 +112,23 @@ function texture(kind) {
   return t;
 }
 
-// Sistema de construcción por rejilla al estilo Fortnite.
+// Sistema de construcción por rejilla al estilo Fortnite, con edición de
+// piezas (puertas, ventanas, arcos, medias paredes, vallas, suelos con hueco,
+// rampas giradas y tejados inclinados o planos).
 export class BuildSystem {
   constructor(game) {
     this.game = game;
     this.active = false;
     this.piece = 0;
     this.mat = 0;
+    this.rot = 0; // giro manual (R) para rampas y tejados
     this.cooldown = 0;
     this.pieces = new Map();
+    this.editing = null;
     this.materials = {};
     for (const m of MAT_ORDER) this.materials[m] = new THREE.MeshLambertMaterial({ map: texture(m) });
+    this.doorMat = new THREE.MeshLambertMaterial({ color: 0x7a4f2a });
+    this.geoCache = new Map();
 
     const rampLen = Math.hypot(G, H);
     this.geos = {
@@ -93,6 +148,14 @@ export class BuildSystem {
       game.scene.add(g);
       this.ghosts[id] = g;
     }
+    // Rejilla de edición
+    this.tileOn = new THREE.MeshBasicMaterial({ color: 0x5ab4ff, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide });
+    this.tileOff = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
+    this.tileHover = new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+    this.overlay = new THREE.Group();
+    this.overlay.visible = false;
+    game.scene.add(this.overlay);
+    this.raycaster = new THREE.Raycaster();
     this.target = null;
   }
 
@@ -104,16 +167,23 @@ export class BuildSystem {
     return MAT_ORDER[this.mat];
   }
 
+  get settings() {
+    return this.game.settings;
+  }
+
   setActive(on) {
     this.active = on;
     if (!on) for (const id in this.ghosts) this.ghosts[id].visible = false;
+    if (on) this.cancelEdit();
     this.game.combat.cancelUse();
     this.game.combat.reloading = false;
   }
 
   reset() {
+    this.cancelEdit();
     for (const p of [...this.pieces.values()]) this.remove(p, false);
     this.setActive(false);
+    this.rot = 0;
   }
 
   // ---------------------------------------------------------- OBJETIVO
@@ -139,24 +209,25 @@ export class BuildSystem {
     const d = yawToDir(yaw);
     const [dx, dz] = DIRS[d];
     const cx = Math.floor(p.pos.x / G), cz = Math.floor(p.pos.z / G);
-    let base = this.levelBase(p.pos.y, p.pos.x, p.pos.z);
+    const base = this.levelBase(p.pos.y, p.pos.x, p.pos.z);
     const id = this.pieceId;
-    let t = { type: id, cx: cx + dx, cz: cz + dz, base, dir: d };
+    const rd = (d + this.rot) % 4;
+    let t = { type: id, cx: cx + dx, cz: cz + dz, base, dir: rd, edit: 0 };
     if (id === 'wall') {
-      t = { type: 'wall', cx, cz, base: pitch > 0.7 ? base + H : base, dir: d };
+      t = { type: 'wall', cx, cz, base: pitch > 0.7 ? base + H : base, dir: d, edit: 0 };
     } else if (id === 'floor') {
-      if (pitch > 0.35) t = { type: 'floor', cx, cz, base: base + H, dir: d };
-      else if (pitch < -1.0) t = { type: 'floor', cx, cz, base, dir: d };
+      if (pitch > 0.35) t = { type: 'floor', cx, cz, base: base + H, dir: d, edit: 0 };
+      else if (pitch < -1.0) t = { type: 'floor', cx, cz, base, dir: d, edit: 0 };
     } else if (id === 'ramp') {
       // Si estamos sobre una rampa mirando en su sentido, la continuamos.
       for (const q of this.pieces.values()) {
         if (q.type === 'ramp' && q.cx === cx && q.cz === cz && q.dir === d && p.pos.y > q.base - 0.3 && p.pos.y < q.base + H + 0.3) {
-          t = { type: 'ramp', cx: cx + dx, cz: cz + dz, base: q.base + H, dir: d };
+          t = { type: 'ramp', cx: cx + dx, cz: cz + dz, base: q.base + H, dir: d, edit: 0 };
           break;
         }
       }
     } else if (id === 'cone') {
-      if (pitch > 0.2) t = { type: 'cone', cx, cz, base: base + H, dir: d };
+      if (pitch > 0.2) t = { type: 'cone', cx, cz, base: base + H, dir: rd, edit: 0 };
     }
     t.key = this.key(t.type, t.cx, t.cz, t.base, t.dir);
     return t;
@@ -176,18 +247,71 @@ export class BuildSystem {
     return `${type}:${cx}:${cz}:${lv}`;
   }
 
-  // Cajas de colisión de una pieza.
+  // ------------------------------------------------------- GEOMETRÍA
+  // Transforma una caja local de muro (centrado en el origen, X a lo largo
+  // del muro) a coordenadas del mundo según su dirección.
+  wallBox(t, x0, y0, z0, x1, y1, z1) {
+    const [dx, dz] = DIRS[t.dir];
+    const cxw = t.cx * G + G / 2 + (dx * G) / 2, czw = t.cz * G + G / 2 + (dz * G) / 2;
+    const yb = t.base + H / 2;
+    if (dx === 0) return [cxw + x0, yb + y0, czw + z0, cxw + x1, yb + y1, czw + z1];
+    // giro de 90°: x' = z, z' = -x
+    return [cxw + z0, yb + y0, czw - x1, cxw + z1, yb + y1, czw - x0];
+  }
+
+  // Filas de casillas de un muro (tramos horizontales seguidos) en local.
+  wallRuns(mask) {
+    const out = [];
+    const tw = G / 3, th = H / 3;
+    for (let r = 0; r < 3; r++) {
+      let c = 0;
+      while (c < 3) {
+        if ((mask >> (r * 3 + c)) & 1) { c++; continue; }
+        let e = c;
+        while (e + 1 < 3 && !((mask >> (r * 3 + e + 1)) & 1)) e++;
+        out.push([-G / 2 + c * tw, H / 2 - (r + 1) * th, -T / 2, -G / 2 + (e + 1) * tw, H / 2 - r * th, T / 2]);
+        c = e + 1;
+      }
+    }
+    return out;
+  }
+
+  floorTiles(mask) {
+    const out = [];
+    for (let i = 0; i < 4; i++) {
+      if ((mask >> i) & 1) continue;
+      const xi = i % 2, zi = i >> 1;
+      out.push([-G / 2 + xi * (G / 2), -G / 2 + zi * (G / 2), -G / 2 + (xi + 1) * (G / 2), -G / 2 + (zi + 1) * (G / 2)]);
+    }
+    return out;
+  }
+
+  coneVariant(t) {
+    if (t.type !== 'cone' || !t.edit) return 'pyramid';
+    return sideOf(t.edit) >= 0 ? 'slope' : 'flat';
+  }
+
+  // Cajas de colisión de una pieza (en coordenadas del mundo).
   boxesFor(t) {
     const x0 = t.cx * G, z0 = t.cz * G, b = t.base;
     if (t.type === 'wall') {
-      const d = t.dir;
-      if (d === 0) return [[x0, b, z0 - T / 2, x0 + G, b + H, z0 + T / 2]];
-      if (d === 2) return [[x0, b, z0 + G - T / 2, x0 + G, b + H, z0 + G + T / 2]];
-      if (d === 3) return [[x0 - T / 2, b, z0, x0 + T / 2, b + H, z0 + G]];
-      return [[x0 + G - T / 2, b, z0, x0 + G + T / 2, b + H, z0 + G]];
+      const out = this.wallRuns(t.edit || 0).map((r) => this.wallBox(t, ...r));
+      // puertas cerradas
+      if (t.edit && !t.doorOpen) {
+        for (const c of doorColumns(t.edit)) {
+          out.push(this.wallBox(t, -G / 2 + c * (G / 3), -H / 2, -T / 4, -G / 2 + (c + 1) * (G / 3), -H / 2 + (2 * H) / 3, T / 4));
+        }
+      }
+      return out;
     }
-    if (t.type === 'floor') return [[x0, b - T, z0, x0 + G, b, z0 + G]];
+    if (t.type === 'floor') {
+      const cxw = x0 + G / 2, czw = z0 + G / 2;
+      return this.floorTiles(t.edit || 0).map(([ax, az, bx, bz]) => [cxw + ax, b - T, czw + az, cxw + bx, b, czw + bz]);
+    }
     if (t.type === 'cone') {
+      const v = this.coneVariant(t);
+      if (v === 'flat') return [[x0, b - T, z0, x0 + G, b + 0.25, z0 + G]];
+      if (v === 'slope') return this.stairBoxes(x0, z0, b, sideOf(t.edit), 1.6, 6);
       return [
         [x0, b - T, z0, x0 + G, b + 0.4, z0 + G],
         [x0 + 0.7, b, z0 + 0.7, x0 + G - 0.7, b + 0.9, z0 + G - 0.7],
@@ -195,12 +319,16 @@ export class BuildSystem {
       ];
     }
     // Rampa: escalones (la física sube escalones de hasta 0.55 m)
+    return this.stairBoxes(x0, z0, b, t.dir, H, RAMP_STEPS);
+  }
+
+  stairBoxes(x0, z0, b, dir, height, steps) {
     const out = [];
-    const sd = G / RAMP_STEPS, sh = H / RAMP_STEPS;
-    for (let k = 0; k < RAMP_STEPS; k++) {
+    const sd = G / steps, sh = height / steps;
+    for (let k = 0; k < steps; k++) {
       const top = b + (k + 1) * sh;
       const a = k * sd, c = (k + 1) * sd;
-      switch (t.dir) {
+      switch (dir) {
         case 0: out.push([x0, b, z0 + G - c, x0 + G, top, z0 + G - a]); break;
         case 2: out.push([x0, b, z0 + a, x0 + G, top, z0 + c]); break;
         case 1: out.push([x0 + a, b, z0, x0 + c, top, z0 + G]); break;
@@ -208,6 +336,27 @@ export class BuildSystem {
       }
     }
     return out;
+  }
+
+  // Geometría (en caché) de una pieza editada.
+  geoFor(t) {
+    if (!t.edit) return this.geos[t.type];
+    const key = `${t.type}:${t.type === 'cone' ? this.coneVariant(t) : t.edit}`;
+    let g = this.geoCache.get(key);
+    if (g) return g;
+    if (t.type === 'wall') {
+      const parts = this.wallRuns(t.edit).map(([a, b, c, d, e, f]) => new THREE.BoxGeometry(d - a, e - b, f - c).translate((a + d) / 2, (b + e) / 2, (c + f) / 2));
+      g = parts.length ? mergeGeometries(parts) : new THREE.BufferGeometry();
+    } else if (t.type === 'floor') {
+      const parts = this.floorTiles(t.edit).map(([ax, az, bx, bz]) => new THREE.BoxGeometry(bx - ax, T, bz - az).translate((ax + bx) / 2, 0, (az + bz) / 2));
+      g = parts.length ? mergeGeometries(parts) : new THREE.BufferGeometry();
+    } else if (t.type === 'cone') {
+      const v = this.coneVariant(t);
+      if (v === 'flat') g = new THREE.BoxGeometry(G, T, G).translate(0, -0.7, 0);
+      else g = new THREE.BoxGeometry(G, T, Math.hypot(G, 1.6));
+    } else g = this.geos[t.type];
+    this.geoCache.set(key, g);
+    return g;
   }
 
   // Posición/rotación de la malla de una pieza.
@@ -222,6 +371,11 @@ export class BuildSystem {
       obj.position.set(cxw, t.base - T / 2, czw);
     } else if (t.type === 'cone') {
       obj.position.set(cxw, t.base + 0.8, czw);
+      if (this.coneVariant(t) === 'slope') {
+        obj.rotation.order = 'YXZ';
+        obj.rotation.y = [0, -Math.PI / 2, Math.PI, Math.PI / 2][sideOf(t.edit)];
+        obj.rotation.x = Math.atan2(1.6, G);
+      }
     } else {
       obj.position.set(cxw, t.base + H / 2 + 0.12, czw);
       const ang = Math.atan2(H, G);
@@ -230,6 +384,40 @@ export class BuildSystem {
       obj.rotation.y = [0, -Math.PI / 2, Math.PI, Math.PI / 2][t.dir];
       obj.rotation.x = ang;
     }
+  }
+
+  // Malla de una pieza: grupo con la pieza y, si tiene, las hojas de puerta.
+  buildMesh(piece) {
+    const group = piece.mesh || new THREE.Group();
+    while (group.children.length) group.remove(group.children[0]);
+    const mesh = new THREE.Mesh(this.geoFor(piece), this.materials[piece.mat]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    this.placeMesh(group, piece);
+    piece.doors = [];
+    if (piece.type === 'wall' && piece.edit) {
+      for (const c of doorColumns(piece.edit)) {
+        const hinge = new THREE.Group();
+        hinge.position.set(-G / 2 + c * (G / 3) + 0.04, -H / 2, 0);
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(G / 3 - 0.08, (2 * H) / 3 - 0.05, T * 0.5), this.doorMat);
+        leaf.position.set((G / 3 - 0.08) / 2, (2 * H) / 6, 0);
+        leaf.castShadow = true;
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), new THREE.MeshLambertMaterial({ color: 0xd9b44a }));
+        knob.position.set(G / 3 - 0.25, (2 * H) / 6 - 0.1, T * 0.35);
+        hinge.add(leaf, knob);
+        hinge.rotation.y = piece.doorOpen ? -Math.PI / 2 * 0.95 : 0;
+        group.add(hinge);
+        piece.doors.push({ hinge, col: c });
+      }
+    }
+    return group;
+  }
+
+  setColliders(piece) {
+    const col = this.game.world.collision;
+    if (piece.colliders) for (const c of piece.colliders) col.remove(c);
+    piece.colliders = this.boxesFor(piece).map((b) => col.add(b[0], b[1], b[2], b[3], b[4], b[5], { type: 'build', piece }));
   }
 
   canPlace(t, owner = this.game.player, matId = this.matId) {
@@ -262,6 +450,7 @@ export class BuildSystem {
     else if (kind === 'ramp') t = { type: 'ramp', cx: cx + dx, cz: cz + dz, base: opts.base ?? base, dir };
     else if (kind === 'cone') t = { type: 'cone', cx, cz, base: base + H, dir };
     else t = { type: 'floor', cx: cx + dx, cz: cz + dz, base, dir };
+    t.edit = 0;
     t.key = this.key(t.type, t.cx, t.cz, t.base, t.dir);
     // material: el que más tenga
     let matId = 'wood';
@@ -272,22 +461,18 @@ export class BuildSystem {
 
   place(t, owner = this.game.player, matId = this.matId, fromNet = false) {
     const def = MATERIALS[matId];
-    const mesh = new THREE.Mesh(this.geos[t.type], this.materials[matId]);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.placeMesh(mesh, t);
-    mesh.scale.setScalar(0.3);
-    this.game.scene.add(mesh);
     const piece = {
-      ...t, mat: matId, mesh, maxHp: def.hp, hp: def.hp * 0.3, buildT: 0, buildTime: def.buildTime, grow: 0,
+      ...t, edit: t.edit || 0, doorOpen: !!t.doorOpen, mat: matId, maxHp: def.hp, hp: def.hp * 0.3, buildT: 0, buildTime: def.buildTime, grow: 0,
+      team: t.team ?? owner.team ?? -1, mesh: null, colliders: null,
     };
-    piece.colliders = this.boxesFor(t).map((b) =>
-      this.game.world.collision.add(b[0], b[1], b[2], b[3], b[4], b[5], { type: 'build', piece }),
-    );
+    piece.mesh = this.buildMesh(piece);
+    piece.mesh.scale.setScalar(0.3);
+    this.game.scene.add(piece.mesh);
+    this.setColliders(piece);
     this.pieces.set(t.key, piece);
     if (!fromNet && (!this.game.infiniteMats || !owner.isPlayer)) owner.mats[matId] = Math.max(0, owner.mats[matId] - BUILD_COST);
     if (owner.isPlayer) owner.stats.built++;
-    if (owner.isPlayer || mesh.position.distanceTo(this.game.player.pos) < 40) this.game.audio.build();
+    if (owner.isPlayer || piece.mesh.position.distanceTo(this.game.player.pos) < 40) this.game.audio.build();
     if (!fromNet) this.game.net?.sendBuild(piece);
     return piece;
   }
@@ -295,7 +480,7 @@ export class BuildSystem {
   // Pieza colocada por otro jugador (partida online).
   netPlace(m) {
     if (this.pieces.has(m.key) || !this.geos[m.type] || !MATERIALS[m.mat]) return;
-    const t = { type: m.type, cx: m.cx, cz: m.cz, base: m.base, dir: m.dir, key: m.key };
+    const t = { type: m.type, cx: m.cx, cz: m.cz, base: m.base, dir: m.dir, key: m.key, edit: m.edit | 0, team: m.team ?? -1 };
     this.place(t, NET_OWNER, m.mat, true);
   }
 
@@ -314,12 +499,256 @@ export class BuildSystem {
     for (const c of piece.colliders) this.game.world.collision.remove(c);
     this.game.scene.remove(piece.mesh);
     this.pieces.delete(piece.key);
+    if (this.editing?.piece === piece) this.cancelEdit();
     if (fx) {
       this.game.effects.debris(piece.mesh.position.clone(), MATERIALS[piece.mat].hex);
       this.game.audio.breakPiece();
     }
   }
 
+  // ------------------------------------------------------------ EDICIÓN
+  canEdit(piece) {
+    const p = this.game.player;
+    return piece.team === -1 || piece.team === p.team || !!this.game.mode.creative;
+  }
+
+  // Aplica una edición (local o recibida por red).
+  applyEdit(piece, mask, fromNet = false, dir = null) {
+    if (piece.type === 'ramp') {
+      const side = dir ?? sideOf(mask);
+      if (side < 0) return;
+      piece.dir = side;
+      piece.edit = 0;
+    } else {
+      piece.edit = mask & FULL[piece.type];
+      if (piece.edit === FULL[piece.type]) return;
+    }
+    piece.doorOpen = false;
+    piece.mesh = this.buildMesh(piece);
+    piece.mesh.scale.setScalar(Math.max(0.3, piece.grow ? 0.3 + 0.7 * piece.grow : 1));
+    this.setColliders(piece);
+    if (!fromNet) this.game.net?.sendBuildEdit(piece);
+  }
+
+  setDoor(piece, open, fromNet = false) {
+    if (!piece.doors?.length || piece.doorOpen === open) return;
+    piece.doorOpen = open;
+    this.setColliders(piece);
+    if (piece.mesh.position.distanceTo(this.game.player.pos) < 40) this.game.audio.door();
+    if (!fromNet) this.game.net?.sendBuildDoor(piece);
+  }
+
+  // Puerta más cercana delante del jugador (para el aviso "E Abrir puerta").
+  findDoor(eye, forward, maxDist = 3.2) {
+    let best = null, bd = maxDist;
+    const v = new THREE.Vector3();
+    for (const piece of this.pieces.values()) {
+      if (!piece.doors?.length) continue;
+      for (const d of piece.doors) {
+        d.hinge.getWorldPosition(v);
+        v.y += H / 3;
+        const dist = v.distanceTo(eye);
+        if (dist > bd) continue;
+        const dot = v.sub(eye).normalize().dot(forward);
+        if (dot < 0.5) continue;
+        bd = dist;
+        best = piece;
+      }
+    }
+    return best;
+  }
+
+  // Pieza a la que apunta el jugador (para entrar en edición).
+  aimedPiece(maxDist = 7) {
+    const g = this.game;
+    const hit = g.raycast(g.aimOrigin, g.aimDir, maxDist + g.aimSkip, g.aimSkip, g.player);
+    const piece = hit?.box?.data?.type === 'build' ? hit.box.data.piece : null;
+    return piece && this.pieces.has(piece.key) ? piece : null;
+  }
+
+  startEdit(piece) {
+    if (!this.canEdit(piece)) {
+      this.game.hud.toast('Solo puedes editar las construcciones de tu equipo');
+      return;
+    }
+    const fromBuild = this.active;
+    if (this.active) {
+      this.active = false;
+      for (const id in this.ghosts) this.ghosts[id].visible = false;
+    }
+    this.game.combat.cancelUse();
+    this.game.combat.reloading = false;
+    const n = piece.type === 'wall' ? 9 : 4;
+    const mask = piece.type === 'ramp' ? 0 : piece.edit || 0;
+    this.editing = { piece, mask, start: mask, n, drag: null, hover: -1, fromBuild };
+    this.buildOverlay();
+    this.game.audio.editTile();
+  }
+
+  buildOverlay() {
+    const e = this.editing;
+    const o = this.overlay;
+    while (o.children.length) o.remove(o.children[0]);
+    const piece = e.piece;
+    e.tiles = [];
+    if (piece.type === 'wall') {
+      this.placeMesh(o, piece);
+      const tw = G / 3, th = H / 3;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(tw - 0.08, th - 0.08), this.tileOn);
+          m.position.set(-G / 2 + (c + 0.5) * tw, H / 2 - (r + 0.5) * th, 0);
+          m.userData.bit = r * 3 + c;
+          o.add(m);
+          e.tiles.push(m);
+        }
+      }
+      // caja fina que envuelve el muro para que se vea por ambos lados
+      o.children.forEach((m) => (m.renderOrder = 3));
+    } else {
+      o.rotation.set(0, 0, 0);
+      const y = piece.type === 'floor' ? piece.base + 0.06 : piece.type === 'ramp' ? piece.base + H / 2 + 0.3 : piece.base + 1.0;
+      o.position.set(piece.cx * G + G / 2, y, piece.cz * G + G / 2);
+      for (let i = 0; i < 4; i++) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(G / 2 - 0.12, G / 2 - 0.12).rotateX(-Math.PI / 2), this.tileOn);
+        m.position.set(-G / 4 + (i % 2) * (G / 2), 0, -G / 4 + (i >> 1) * (G / 2));
+        m.userData.bit = i;
+        m.renderOrder = 3;
+        o.add(m);
+        e.tiles.push(m);
+      }
+    }
+    o.visible = true;
+    this.paintOverlay();
+  }
+
+  paintOverlay() {
+    const e = this.editing;
+    for (const m of e.tiles) {
+      const off = (e.mask >> m.userData.bit) & 1;
+      m.material = m.userData.bit === e.hover ? this.tileHover : off ? this.tileOff : this.tileOn;
+    }
+  }
+
+  cancelEdit() {
+    if (!this.editing) return;
+    this.editing = null;
+    this.overlay.visible = false;
+  }
+
+  confirmEdit() {
+    const e = this.editing;
+    if (!e) return;
+    const piece = e.piece;
+    const full = FULL[piece.type];
+    if (e.mask === full) this.game.hud.toast('No puedes quitar todas las casillas');
+    else if (piece.type === 'ramp') {
+      if (e.mask) {
+        if (sideOf(e.mask) < 0) this.game.hud.toast('Rampa: selecciona las 2 casillas del lado hacia el que quieres que suba');
+        else this.applyEdit(piece, e.mask);
+      }
+    } else if (e.mask !== (piece.edit || 0)) this.applyEdit(piece, e.mask);
+    const back = e.fromBuild;
+    this.cancelEdit();
+    if (back) this.setActive(true);
+  }
+
+  updateEdit(input) {
+    const e = this.editing;
+    const g = this.game;
+    const p = g.player;
+    const piece = e.piece;
+    if (!this.pieces.has(piece.key) || piece.mesh.position.distanceTo(p.eye) > 9) {
+      this.cancelEdit();
+      return;
+    }
+    // casilla bajo la mira
+    this.raycaster.set(g.aimOrigin, g.aimDir);
+    this.raycaster.far = 12;
+    const hit = this.raycaster.intersectObjects(e.tiles, false)[0];
+    const bit = hit ? hit.object.userData.bit : -1;
+    if (bit !== e.hover) {
+      e.hover = bit;
+      this.paintOverlay();
+    }
+    const fire = input.held('fire');
+    if (input.hit('fire') && bit >= 0) {
+      e.drag = !((e.mask >> bit) & 1);
+      e.mask ^= 1 << bit;
+      g.audio.editTile();
+      this.paintOverlay();
+    } else if (fire && e.drag !== null && bit >= 0 && this.settings.editDragSelect) {
+      const want = e.drag ? 1 : 0;
+      if (((e.mask >> bit) & 1) !== want) {
+        e.mask = want ? e.mask | (1 << bit) : e.mask & ~(1 << bit);
+        g.audio.editTile();
+        this.paintOverlay();
+      }
+    }
+    if (!fire) e.drag = null;
+    if (input.hit('editReset')) {
+      e.mask = 0;
+      this.paintOverlay();
+    }
+    // Presets de muro con las teclas de hueco (1-6) y 7-8
+    if (piece.type === 'wall') {
+      for (let i = 0; i < WALL_PRESETS.length; i++) {
+        if ((i < 6 && input.hit('slot' + (i + 1))) || (i >= 6 && input.wasPressed('Digit' + (i + 1)))) {
+          e.mask = WALL_PRESETS[i].mask;
+          this.paintOverlay();
+          this.confirmEdit();
+          return;
+        }
+      }
+    }
+    if (input.hit('edit') || (this.settings.editConfirmOnRelease && input.up('edit'))) this.confirmEdit();
+    else if (input.hit('build')) {
+      this.cancelEdit();
+      this.setActive(true);
+    }
+  }
+
+  // ------------------------------------------------------------ PREFABRICADOS
+  // Coloca una lista de piezas relativas a una casilla (modo creativo).
+  placeRelative(list, cx, cz, base, dirOff = 0, matId = this.matId) {
+    let n = 0;
+    for (const q of list) {
+      // giro de la plantilla en pasos de 90°
+      let x = q.x, z = q.z;
+      for (let k = 0; k < dirOff; k++) [x, z] = [-z, x];
+      const t = { type: q.type, cx: cx + x, cz: cz + z, base: base + (q.y || 0) * H, dir: (q.dir + dirOff) % 4, edit: q.edit || 0 };
+      t.key = this.key(t.type, t.cx, t.cz, t.base, t.dir);
+      if (this.pieces.has(t.key)) continue;
+      const piece = this.place(t, FREE_OWNER, q.mat || matId);
+      piece.buildT = piece.buildTime;
+      piece.hp = piece.maxHp;
+      piece.team = this.game.player.team;
+      n++;
+    }
+    return n;
+  }
+
+  serialize() {
+    return [...this.pieces.values()].map((p) => ({ type: p.type, cx: p.cx, cz: p.cz, base: Math.round(p.base * 100) / 100, dir: p.dir, mat: p.mat, edit: p.edit }));
+  }
+
+  load(list) {
+    let n = 0;
+    for (const q of list) {
+      if (!this.geos[q.type] || !MATERIALS[q.mat]) continue;
+      const t = { type: q.type, cx: q.cx, cz: q.cz, base: q.base, dir: q.dir, edit: q.edit | 0 };
+      t.key = this.key(t.type, t.cx, t.cz, t.base, t.dir);
+      if (this.pieces.has(t.key)) continue;
+      const piece = this.place(t, FREE_OWNER, q.mat);
+      piece.buildT = piece.buildTime;
+      piece.hp = piece.maxHp;
+      piece.team = this.game.player.team;
+      n++;
+    }
+    return n;
+  }
+
+  // ------------------------------------------------------------ UPDATE
   update(dt, input) {
     // Animación de crecimiento y ganancia de vida mientras se construye.
     for (const p of this.pieces.values()) {
@@ -332,41 +761,79 @@ export class BuildSystem {
         p.buildT += step;
         p.hp = Math.min(p.maxHp, p.hp + (p.maxHp * 0.7 * step) / p.buildTime);
       }
+      if (p.doors?.length) {
+        const want = p.doorOpen ? -Math.PI / 2 * 0.95 : 0;
+        for (const d of p.doors) d.hinge.rotation.y += (want - d.hinge.rotation.y) * Math.min(1, dt * 10);
+      }
     }
-    const player = this.game.player;
+    const g = this.game;
+    const player = g.player;
     if (player.mode !== 'ground' || !player.alive || player.vehicle || player.knocked) {
       if (this.active) this.setActive(false);
+      this.cancelEdit();
       return;
     }
-    if (input.wasPressed('KeyQ') && !this.game.mode.build) {
-      this.game.hud.toast('La construcción está desactivada en este modo');
+    if (this.editing) {
+      this.updateEdit(input);
       return;
     }
-    if (input.wasPressed('KeyQ')) {
+    // Entrar en edición (desde combate o construcción)
+    if (input.hit('edit')) {
+      const piece = this.aimedPiece();
+      if (piece) {
+        this.startEdit(piece);
+        return;
+      }
+      if (!g.mode.build) g.hud.toast('No hay ninguna construcción que editar');
+    }
+    const quick = ['pieceWall', 'pieceFloor', 'pieceRamp', 'pieceCone'].findIndex((a) => input.hit(a));
+    if ((input.hit('build') || quick >= 0) && !g.mode.build) {
+      g.hud.toast('La construcción está desactivada en este modo');
+      return;
+    }
+    if (quick >= 0) {
+      if (!this.active) this.setActive(true);
+      this.piece = quick;
+    } else if (input.hit('build')) {
       this.setActive(!this.active);
-      this.game.hud.toast(this.active ? 'Modo construcción: 1-4 pieza · clic der. material · Q salir' : 'Modo combate');
+      if (this.settings.showHints) g.hud.toast(this.active ? 'Construcción: 1-4 pieza · clic der. material · R girar · F editar · Q salir' : 'Modo combate');
     }
     if (!this.active) return;
-    for (let i = 0; i < PIECES.length; i++) if (input.wasPressed('Digit' + (i + 1))) this.piece = i;
+    for (let i = 0; i < PIECES.length; i++) if (input.hit('slot' + (i + 1))) this.piece = i;
     if (input.wheel) this.piece = (this.piece + (input.wheel > 0 ? 1 : -1) + PIECES.length) % PIECES.length;
-    if (input.mouseClicked(2)) this.mat = (this.mat + 1) % MAT_ORDER.length;
+    if (input.hit('ads')) this.mat = (this.mat + 1) % MAT_ORDER.length;
+    if (input.hit('reload')) this.rot = (this.rot + 1) % 4;
 
     const t = this.computeTarget();
-    const status = this.canPlace(t);
+    let status = this.canPlace(t);
+    // Cambio automático de material si se acaba el elegido
+    if (status === 'nomats' && this.settings.autoMaterial) {
+      for (let k = 1; k < MAT_ORDER.length; k++) {
+        const m = (this.mat + k) % MAT_ORDER.length;
+        if (player.mats[MAT_ORDER[m]] >= BUILD_COST) {
+          this.mat = m;
+          status = this.canPlace(t);
+          break;
+        }
+      }
+    }
     this.target = t;
     this.status = status;
-    for (const id in this.ghosts) this.ghosts[id].visible = id === t.type;
+    const preview = this.settings.buildPreview !== false;
+    for (const id in this.ghosts) this.ghosts[id].visible = preview && id === t.type;
     const ghost = this.ghosts[t.type];
     this.placeMesh(ghost, t);
     this.ghostMat.color.setHex(status === 'ok' ? 0x5ab4ff : 0xff5050);
 
     this.cooldown -= dt;
-    if (input.mouseDown(0) && this.cooldown <= 0) {
+    const turbo = this.settings.turboBuild;
+    const want = turbo ? input.held('fire') : input.hit('fire');
+    if (want && this.cooldown <= 0) {
       if (status === 'ok') {
         this.place(t);
-        this.cooldown = 0.12;
-      } else if (input.mouseClicked(0)) {
-        if (status === 'nomats') this.game.hud.toast(`Te faltan materiales (${BUILD_COST} de ${MATERIALS[this.matId].name}). Usa el pico en árboles, rocas o coches.`);
+        this.cooldown = turbo ? Math.max(0.03, this.settings.turboDelay ?? 0.08) : 0;
+      } else if (input.hit('fire')) {
+        if (status === 'nomats') g.hud.toast(`Te faltan materiales (${BUILD_COST} de ${MATERIALS[this.matId].name}). Usa el pico en árboles, rocas o coches.`);
         this.cooldown = 0.2;
       }
     }

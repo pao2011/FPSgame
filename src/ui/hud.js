@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, CONSUMABLES, AMMO, RARITIES, MATERIALS, BUILD_COST, itemRarity } from '../game/items.js';
-import { PIECES, MAT_ORDER } from '../game/build.js';
+import { PIECES, MAT_ORDER, WALL_PRESETS } from '../game/build.js';
 import { makeItemModel, makeWeaponModel } from '../game/models.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,7 +25,7 @@ class IconRenderer {
     this.camera = new THREE.PerspectiveCamera(30, 160 / 96, 0.01, 10);
   }
   get(item) {
-    const key = item.kind === 'weapon' ? `${item.type}_${item.rarity}` : item.kind === 'consumable' ? item.type : item.kind === 'ammo' ? 'ammo_' + item.ammo : 'pickaxe';
+    const key = item.kind === 'weapon' ? `${item.type}_${item.rarity}` : item.kind === 'consumable' ? item.type : item.kind === 'ammo' ? 'ammo_' + item.ammo : item.kind === 'material' ? 'mat_' + item.mat : 'pickaxe';
     if (this.cache.has(key)) return this.cache.get(key);
     try {
       if (!this.renderer) this._init();
@@ -94,6 +94,7 @@ export class HUD {
       tags: $('name-tags'),
       score: $('score-bar'),
       fps: $('fps'),
+      marks: $('compass-marks'),
     };
     this.tagEls = new Map();
     this.fpsAcc = 0;
@@ -102,6 +103,21 @@ export class HUD {
     this.fullCtx = this.el.fullmapCanvas.getContext('2d');
     this.buildSlots();
     this.buildCompass();
+    // Clic en el mapa grande: marcar destino (clic derecho: quitarlo)
+    const fc = this.el.fullmapCanvas;
+    const toWorld = (e) => {
+      const r = fc.getBoundingClientRect();
+      return [((e.clientX - r.left) / r.width) * 1600 - 800, ((e.clientY - r.top) / r.height) * 1600 - 800];
+    };
+    fc.addEventListener('click', (e) => {
+      const [x, z] = toWorld(e);
+      game.waypoint = { x, z };
+      game.audio.ping();
+    });
+    fc.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      game.waypoint = null;
+    });
     this.last = {};
     this.hitT = 0;
     this.toastT = 0;
@@ -111,6 +127,24 @@ export class HUD {
     this.mapOpen = false;
     this.feed = [];
     this.dirs = [];
+  }
+
+  // Marcadores (pings y punto del mapa) en la brújula.
+  updateMarkers(p) {
+    const g = this.game;
+    const list = g.pings.map((pg) => ({ pos: pg.pos, cls: pg.mine ? 'mine' : 'mate' }));
+    if (g.waypoint) list.push({ pos: g.waypoint, cls: 'wp' });
+    let html = '';
+    for (const m of list) {
+      const ang = Math.atan2(m.pos.x - p.pos.x, -(m.pos.z - p.pos.z)); // 0 = norte
+      let rel = ((ang * 180) / Math.PI - ((-p.yaw * 180) / Math.PI)) % 360;
+      if (rel > 180) rel -= 360;
+      if (rel < -180) rel += 360;
+      if (Math.abs(rel) > 50) continue;
+      const d = Math.round(Math.hypot(m.pos.x - p.pos.x, m.pos.z - p.pos.z));
+      html += `<span class="cmark ${m.cls}" style="left:${200 + rel * 4}px">▼<small>${d} m</small></span>`;
+    }
+    this.set('marks', this.el.marks, 'html', html);
   }
 
   fps(dt) {
@@ -272,6 +306,7 @@ export class HUD {
   }
 
   setScope(on) {
+    this.scoped = on;
     this.set('scope', this.el.scope, 'display', on ? 'block' : 'none');
   }
 
@@ -281,8 +316,13 @@ export class HUD {
   }
 
   toggleMap(force) {
+    const was = this.mapOpen;
     this.mapOpen = force ?? !this.mapOpen;
     this.el.fullmap.style.display = this.mapOpen ? 'flex' : 'none';
+    // Con el mapa abierto se libera el ratón para poder marcar un destino
+    const g = this.game;
+    if (this.mapOpen && !was && g.state === 'playing') document.exitPointerLock?.();
+    else if (!this.mapOpen && was && g.state === 'playing' && force === undefined && g.player.alive) g.input.lock();
   }
 
   update(dt) {
@@ -329,17 +369,22 @@ export class HUD {
     if (it && it.kind === 'weapon') {
       const def = WEAPONS[it.type];
       const reloading = g.combat.reloading ? ' <span class="reloading">RECARGANDO</span>' : '';
-      ammoTxt = `<span class="mag">${it.mag}</span><span class="res"> / ${p.ammo[def.ammo]}</span>${reloading}`;
-      wname = `<span style="color:${RARITIES[it.rarity].color}">${def.name}</span> · ${RARITIES[it.rarity].name}`;
+      const low = !g.combat.reloading && it.mag <= Math.ceil(def.mag * 0.25) && def.mag > 2 ? ' low' : '';
+      const reserve = g.infiniteAmmo ? '∞' : p.ammo[def.ammo];
+      const out = !g.infiniteAmmo && p.ammo[def.ammo] <= 0 && it.mag <= 0 ? ' <span class="reloading">SIN MUNICIÓN</span>' : '';
+      ammoTxt = `<span class="mag${low}">${it.mag}</span><span class="res"> / ${reserve}</span>${reloading}${out}`;
+      const spin = def.spinUp && g.combat.spin > 0 && g.combat.spin < def.spinUp ? ' · girando…' : '';
+      wname = `<span style="color:${RARITIES[it.rarity].color}">${def.name}</span> · ${RARITIES[it.rarity].name}${spin}`;
     } else if (it && it.kind === 'consumable') {
-      wname = `<span style="color:${RARITIES[CONSUMABLES[it.type].rarity].color}">${CONSUMABLES[it.type].name}</span> · Clic para usar`;
+      const cdef = CONSUMABLES[it.type];
+      wname = `<span style="color:${RARITIES[cdef.rarity].color}">${cdef.name}</span> · ${cdef.throw ? 'Clic para lanzar' : cdef.deploy ? 'Clic para colocar' : 'Clic para usar'}`;
     } else {
       wname = 'Pico';
     }
     this.set('ammo', e.ammo, 'html', ammoTxt);
     this.set('wname', e.weaponName, 'html', p.mode === 'ground' ? wname : '');
     const al = Object.keys(AMMO).map((k) => `<span style="--c:#${AMMO[k].color.toString(16).padStart(6, '0')}">${AMMO[k].short} <b>${p.ammo[k]}</b></span>`).join('');
-    this.set('ammoList', e.ammoList, 'html', al);
+    this.set('ammoList', e.ammoList, 'html', g.infiniteAmmo ? '<span>Munición infinita</span>' : al);
 
     // Mira
     const def = it && it.kind === 'weapon' ? WEAPONS[it.type] : null;
@@ -349,7 +394,7 @@ export class HUD {
       const fovR = THREE.MathUtils.degToRad(g.camera.fov / 2);
       gap = Math.max(3, (Math.tan(spread) / Math.tan(fovR)) * (innerHeight / 2));
     }
-    const showCross = p.mode === 'ground' && !p.vehicle && !(def?.scope && g.combat.adsBlend > 0.9);
+    const showCross = p.mode === 'ground' && !p.vehicle && !(def?.scope && g.combat.adsBlend > 0.9) && !g.creativePanel?.open;
     this.set('cross', e.crosshair, 'display', showCross ? 'block' : 'none');
     e.crosshair.style.setProperty('--gap', `${gap.toFixed(1)}px`);
     e.crosshair.classList.toggle('shotgun', !!def?.pellets);
@@ -370,6 +415,7 @@ export class HUD {
     const hd = (heading + 360) % 360;
     e.compass.style.transform = `translateX(${-(hd * 4) + 200}px)`;
     this.set('heading', e.heading, 'text', `${Math.round(hd)}°`);
+    this.updateMarkers(p);
 
     // Minimapa
     const mm = e.mini;
@@ -417,7 +463,7 @@ export class HUD {
     }
 
     const teamsTxt = (g.mode.teamSize || 1) > 1 ? `<span title="Equipos vivos">🚩 ${g.teamsAlive().size}</span>` : '';
-    const aliveTxt = g.mode.respawn ? '' : `<span title="Jugadores vivos">👤 ${g.aliveCount}</span>`;
+    const aliveTxt = g.mode.respawn || g.mode.creative ? '' : `<span title="Jugadores vivos">👤 ${g.phase === 'lobby' ? `${g.lobbyCount}/${g.chars.length}` : g.aliveCount}</span>`;
     const pingTxt = g.net ? `<span class="ping" title="Ping con el servidor">📶 ${g.netClient.ping || '–'}</span>` : '';
     this.set('stats', e.stats, 'html', `${aliveTxt}${teamsTxt}<span title="Eliminaciones">💀 ${p.stats.kills}</span><span title="Cofres">📦 ${p.stats.chests}</span>${pingTxt}`);
 
@@ -431,13 +477,20 @@ export class HUD {
     this.set('mats', e.mats, 'html', mats);
 
     // Barra de construcción
-    this.set('buildShow', e.buildBar, 'display', b.active ? 'flex' : 'none');
-    if (b.active) {
+    const showBar = b.active || !!b.editing;
+    this.set('buildShow', e.buildBar, 'display', showBar ? 'flex' : 'none');
+    if (b.editing) {
+      const pc = b.editing.piece;
+      const presets = pc.type === 'wall' ? WALL_PRESETS.map((w, i) => `<div class="piece"><span class="key">${i + 1}</span>${w.name}</div>`).join('') : '';
+      this.set('buildBar', e.buildBar, 'html', `<div class="piece sel">✏️ EDITANDO ${{ wall: 'MURO', floor: 'SUELO', ramp: 'RAMPA', cone: 'TECHO' }[pc.type]}</div>${presets}`);
+    } else if (b.active) {
       const html = PIECES.map((pc, i) => `<div class="piece ${i === b.piece ? 'sel' : ''}"><span class="key">${pc.key}</span><span class="ico ${pc.id}"></span>${pc.name}</div>`).join('') +
-        `<div class="piece-mat" style="color:${MATERIALS[b.matId].color}">${MATERIALS[b.matId].name}<small>clic der.</small></div>`;
+        `<div class="piece-mat" style="color:${MATERIALS[b.matId].color}">${MATERIALS[b.matId].name}<small>clic der.</small></div>` +
+        (b.rot ? `<div class="piece-mat">↻ ${b.rot * 90}°<small>${g.key('reload')}</small></div>` : '') +
+        (g.settings.turboBuild ? '<div class="piece-mat">TURBO<small>construcción</small></div>' : '');
       this.set('buildBar', e.buildBar, 'html', html);
     }
-    this.set('slotsShow', e.slots, 'display', b.active ? 'none' : 'flex');
+    this.set('slotsShow', e.slots, 'display', showBar ? 'none' : 'flex');
 
     // Velocímetro
     this.set('speedShow', e.speed, 'display', p.vehicle ? 'block' : 'none');
