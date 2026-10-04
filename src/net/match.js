@@ -39,6 +39,7 @@ export class OnlineMatch {
       'm.st': (m) => this.ents.get(m.from)?.isRemote && this.ents.get(m.from).applyState(m, this.now),
       'm.bots': (m) => this.onBots(m),
       'm.fx': (m) => this.onFx(m),
+      'm.ex': (m) => this.game.explosives.onNet(this.ents.get(m.s), m),
       'm.hit': (m) => this.onHit(m),
       'm.revive': (m) => this.onRevive(m),
       'm.down': (m) => this.onDown(m),
@@ -52,19 +53,13 @@ export class OnlineMatch {
       },
       'm.drop': (m) => this.onDrop(m),
       'm.build': (m) => this.game.build.netPlace(m),
+      'm.bedit': (m) => this.game.build.netEdit(m),
       'm.bdmg': (m) => {
         const piece = this.game.build.pieces.get(m.key);
         if (piece) this.game.build.damage(piece, m.d, true);
       },
-      'm.boom': (m) => {
-        if (Array.isArray(m.p)) this.game.combat.explode(new THREE.Vector3(m.p[0], m.p[1], m.p[2]), { radius: m.r || 5, knock: m.k ? 1 : 0 }, null, true);
-      },
       'm.ping': (m) => {
         if (Array.isArray(m.p) && m.team === this.myTeam) this.game.addPing(new THREE.Vector3(m.p[0], m.p[1], m.p[2]), this.name(m.from), false);
-      },
-      'm.bedit': (m) => {
-        const piece = this.game.build.pieces.get(m.key);
-        if (piece) this.game.build.applyEdit(piece, m.edit | 0, true, piece.type === 'ramp' ? m.dir : null);
       },
       'm.bdoor': (m) => {
         const piece = this.game.build.pieces.get(m.key);
@@ -223,11 +218,23 @@ export class OnlineMatch {
     const o = tmp.set(m.o[0], m.o[1], m.o[2]);
     const from = shooter?.isRemote && shooter.model.root.visible ? shooter.muzzleWorld(new THREE.Vector3()) : o.clone();
     const d = from.distanceTo(g.camera.position);
-    if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), 0xffe0a0, 0.02);
+    const beam = m.w === 'plasma';
+    if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), beam ? 0x3ff0e0 : 0xffe0a0, beam ? 0.045 : 0.02, beam ? 0.14 : 0.07);
     const vol = clamp(1 - d / 260, 0, 1);
     if (vol > 0.03) g.audio.shot(m.w, vol * vol * 0.9);
-    if (d < 150) g.effects.muzzleFlash(null, from);
-    if (shooter) g.noise(shooter.pos, m.w === 'sniper' ? 160 : 90, shooter);
+    if (d < 150 && m.w !== 'bow') g.effects.muzzleFlash(null, from);
+    if (shooter) g.noise(shooter.pos, m.w === 'sniper' || m.w === 'dmr' ? 160 : 90, shooter);
+  }
+
+  // Lanzamiento de un explosivo (granada, C4, cohete…) o detonación de C4.
+  sendEx(owner, data) {
+    if (!this.started || !this.isLocal(owner)) return;
+    const msg = { t: 'm.ex', s: owner.netId, a: data.a };
+    if (data.k) msg.k = data.k;
+    if (data.r !== undefined) msg.r = data.r;
+    if (data.o) msg.o = [r2(data.o.x), r2(data.o.y), r2(data.o.z)];
+    if (data.v) msg.v = [r2(data.v.x), r2(data.v.y), r2(data.v.z)];
+    this.net.sendRaw(JSON.stringify(msg));
   }
 
   // ------------------------------------------------------------ COMBATE
@@ -356,20 +363,17 @@ export class OnlineMatch {
     this.net.send('m.build', { key: piece.key, type: piece.type, cx: piece.cx, cz: piece.cz, base: piece.base, dir: piece.dir, mat: piece.mat, edit: piece.edit, team: piece.team });
   }
 
-  sendBoom(pos, b) {
-    this.net.send('m.boom', { p: [r2(pos.x), r2(pos.y), r2(pos.z)], r: b.radius, k: b.knock ? 1 : 0 });
-  }
-
   sendPing(pos) {
     this.net.send('m.ping', { p: [r2(pos.x), r2(pos.y), r2(pos.z)], team: this.myTeam });
   }
 
-  sendBuildEdit(piece) {
-    this.net.send('m.bedit', { key: piece.key, edit: piece.edit, dir: piece.dir });
-  }
-
   sendBuildDoor(piece) {
     this.net.send('m.bdoor', { key: piece.key, open: piece.doorOpen });
+  }
+
+  sendBuildEdit(piece) {
+    // mask = casillas quitadas (src/game/build.js)
+    this.net.send('m.bedit', { key: piece.key, mask: piece.edit | 0, dir: piece.dir });
   }
 
   sendBuildDamage(piece, d) {

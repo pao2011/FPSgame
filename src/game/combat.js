@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { WEAPONS, CONSUMABLES, MATERIALS } from './items.js';
-import { makeItemModel, makeWeaponModel, makeProjectileModel, makeLaunchPad, mat } from './models.js';
+import { WEAPONS, CONSUMABLES, MATERIALS, THROWABLES } from './items.js';
+import { makeItemModel, makeWeaponModel, makeLaunchPad, mat, outfitColors, itemKey } from './models.js';
 import { lerp } from '../core/rng.js';
 
 const tmpV = new THREE.Vector3();
@@ -35,12 +35,13 @@ export class Combat {
     this.bobPhase = 0;
     this.sway = new THREE.Vector2();
     this.projectiles = [];
-    this.throwables = [];
-    this.pads = [];
     this.autoReloadT = -1;
     this.burstLeft = 0;
     this.burstT = 0;
     this.spin = 0;
+    this.charge = 0;
+    this.throwCd = 0;
+    this.pads = [];
     this.adsToggled = false;
     this.lastSlot = 0;
     this.quickHealPending = false;
@@ -53,13 +54,13 @@ export class Combat {
     this.adsBlend = 0;
     this.bloom = 0;
     this.projectiles.length = 0;
-    for (const t of this.throwables) this.game.scene.remove(t.mesh);
-    this.throwables.length = 0;
-    for (const pad of this.pads) this.game.scene.remove(pad.mesh);
-    this.pads.length = 0;
     this.modelKey = null;
     this.burstLeft = 0;
     this.spin = 0;
+    this.charge = 0;
+    this.throwCd = 0;
+    for (const pad of this.pads) this.game.scene.remove(pad.mesh);
+    this.pads.length = 0;
     this.adsToggled = false;
     this.lastSlot = 0;
   }
@@ -73,13 +74,15 @@ export class Combat {
     if (i === p.selected) return;
     this.lastSlot = p.selected;
     p.selected = i;
-    this.burstLeft = 0;
-    this.spin = 0;
     this.adsToggled = false;
     this.reloading = false;
     this.cancelUse();
     this.swapT = 0.3;
     this.autoReloadT = -1;
+    this.burstLeft = 0;
+    this.spin = 0;
+    if (this.charge > 0) this.game.hud.setProgress(null);
+    this.charge = 0;
   }
 
   cycle(dir) {
@@ -122,17 +125,23 @@ export class Combat {
   }
 
   ensureModel(item) {
-    const key = item.kind === 'weapon' ? `w_${item.type}_${item.rarity}` : item.kind === 'consumable' ? `c_${item.type}` : 'pickaxe';
+    const camo = item.kind === 'weapon' ? this.player.outfit?.camo || null : null;
+    const look = `${this.player.outfitSig}`;
+    const key = (item.kind === 'weapon' ? `w_${item.type}_${item.rarity}_${camo || ''}` : itemKey(item)) + look;
     if (key === this.modelKey) return;
     this.modelKey = key;
     if (this.vm) this.viewmodel.remove(this.vm);
     const vm = new THREE.Group();
-    const model = item.kind === 'pickaxe' ? makeWeaponModel('pickaxe') : makeItemModel(item);
+    const model = item.kind === 'pickaxe' ? makeWeaponModel('pickaxe') : makeItemModel(item, camo);
+    if (item.kind === 'throwable') {
+      model.scale.setScalar(0.55);
+      model.position.set(0.02, 0.0, -0.06);
+    }
     vm.add(model);
     // Manos simples
-    const skin = mat(0xe0b48a);
-    const sleeve = mat(0x2f6fd6);
-    const isPistol = item.kind === 'weapon' && WEAPONS[item.type].cat === 'pistol';
+    const oc = outfitColors(this.player.outfit);
+    const skin = mat(oc.skin);
+    const sleeve = mat(oc.shirt);
     const hand = (x, y, z, rx = 0) => {
       const g = new THREE.Group();
       const h = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.11), skin);
@@ -144,8 +153,9 @@ export class Combat {
       vm.add(g);
     };
     if (item.kind === 'weapon') {
+      const oneHand = item.type === 'pistol' || item.type === 'revolver' || item.type === 'handcannon';
       hand(0.0, -0.07, 0.07, 0.4);
-      hand(-0.02, -0.05, isPistol ? 0.0 : -0.28, 0.2);
+      hand(-0.02, -0.05, oneHand ? 0.0 : item.type === 'boombow' ? -0.05 : -0.28, 0.2);
     } else if (item.kind === 'pickaxe') {
       hand(0, 0.0, 0, 0);
     } else {
@@ -153,6 +163,7 @@ export class Combat {
     }
     vm.userData.sightY = model.userData.sightY ?? 0.08;
     vm.userData.muzzle = model.userData.muzzle;
+    vm.userData.spin = model.userData.spin;
     this.vm = vm;
     this.viewmodel.add(vm);
     this.player.setHeld(item);
@@ -214,12 +225,16 @@ export class Combat {
     const g = this.game;
     const p = this.player;
     this.updateProjectiles(dt);
-    this.updateThrowables(dt);
     this.updatePads(dt);
-    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.active || g.build.editing || p.knocked || g.spectating) {
+    this.throwCd = Math.max(0, this.throwCd - dt);
+    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.busy || g.creative?.busy || p.knocked || g.spectating) {
       this.viewmodel.visible = false;
       this.adsBlend = 0;
       g.hud.setScope(false);
+      g.explosives.hidePreview();
+      if (this.charge > 0) g.hud.setProgress(null);
+      this.charge = 0;
+      this.burstLeft = 0;
       return;
     }
     const item = p.item || p.inventory[0];
@@ -247,6 +262,8 @@ export class Combat {
     if (def) this.updateWeapon(dt, input, item, def);
     else if (item.kind === 'pickaxe') this.updatePickaxe(dt, input);
     else if (item.kind === 'consumable') this.updateConsumable(dt, input, item);
+    if (item.kind === 'throwable') this.updateThrowable(dt, input, item);
+    else g.explosives.hidePreview();
 
     this.animate(dt, input, item, def);
   }
@@ -256,8 +273,8 @@ export class Combat {
     if (this.reloading) {
       this.reloadT -= dt;
       if (this.reloadT <= 0) {
-        const inf = this.game.infiniteAmmo;
         if (def.shellReload) {
+          const inf = this.game.infiniteAmmo;
           if (p.ammo[def.ammo] > 0 || inf) {
             item.mag++;
             if (!inf) p.ammo[def.ammo]--;
@@ -267,6 +284,7 @@ export class Combat {
             this.game.audio.reload();
           } else this.reloading = false;
         } else {
+          const inf = this.game.infiniteAmmo;
           const n = inf ? def.mag - item.mag : Math.min(def.mag - item.mag, p.ammo[def.ammo]);
           item.mag += n;
           if (!inf) p.ammo[def.ammo] -= n;
@@ -278,21 +296,42 @@ export class Combat {
       this.autoReloadT -= dt;
       if (this.autoReloadT <= 0) this.startReload();
     }
-    // Ráfagas: los disparos pendientes salen solos
+    // Ráfaga en curso
     if (this.burstLeft > 0) {
       this.burstT -= dt;
-      if (this.burstT <= 0 && item.mag > 0) {
-        this.burstLeft--;
-        this.burstT = 1 / def.burstRate;
-        this.fire(item, def, true);
+      if (this.burstT <= 0) {
+        if (item.mag > 0 && !this.reloading) {
+          this.fire(item, def);
+          this.burstLeft--;
+          this.burstT = def.burstDelay;
+        } else this.burstLeft = 0;
       }
-      if (item.mag <= 0) this.burstLeft = 0;
       return;
     }
-    // Minigun: hay que girar el cañón antes de disparar
+    // Minigun: hay que hacer girar los cañones antes de disparar
     if (def.spinUp) {
-      this.spin = input.held('fire') && !this.reloading ? Math.min(def.spinUp, this.spin + dt) : Math.max(0, this.spin - dt * 2);
-      if (this.spin < def.spinUp) return;
+      const spinning = input.held('fire') && !this.reloading && this.swapT <= 0 && item.mag > 0;
+      this.spin = Math.max(0, Math.min(1, this.spin + (spinning ? dt / def.spinUp : -dt / (def.spinUp * 0.8))));
+      if (spinning && this.spin < 1) {
+        this.game.audio.spin?.(this.spin);
+        return;
+      }
+    }
+    // Arco: mantener para tensar, soltar para disparar
+    if (def.charge) {
+      const can = this.cooldown <= 0 && this.swapT <= 0 && !this.reloading && item.mag > 0;
+      if (input.held('fire') && can) {
+        this.charge = Math.min(1, this.charge + dt / def.charge);
+        this.game.hud.setProgress(this.charge, this.charge >= 1 ? 'Arco tensado · suelta para disparar' : 'Tensando el arco…');
+        return;
+      }
+      if (this.charge > 0) {
+        const power = Math.max(0.15, this.charge);
+        this.charge = 0;
+        this.game.hud.setProgress(null);
+        if (can) this.fire(item, def, power);
+        return;
+      }
     }
     const wantFire = def.auto ? input.held('fire') : input.hit('fire');
     if (!wantFire || this.cooldown > 0 || this.swapT > 0) return;
@@ -309,18 +348,19 @@ export class Combat {
       this.cooldown = 0.2;
       return;
     }
+    if (def.charge) return;
+    this.fire(item, def);
     if (def.burst) {
       this.burstLeft = def.burst - 1;
-      this.burstT = 1 / def.burstRate;
+      this.burstT = def.burstDelay;
     }
-    this.fire(item, def);
   }
 
-  fire(item, def, inBurst = false) {
+  fire(item, def, power = 1) {
     const g = this.game;
     const p = this.player;
     item.mag--;
-    if (!inBurst) this.cooldown = 1 / def.rate;
+    this.cooldown = 1 / def.rate;
     const origin = g.aimOrigin;
     const dir = g.aimDir;
     const skip = g.aimSkip;
@@ -333,13 +373,16 @@ export class Combat {
     for (let i = 0; i < pellets; i++) {
       this.coneDir(dir, spread, d);
       if (def.explosive) {
-        const start = origin.clone().addScaledVector(d, skip + 0.6);
-        this.spawnThrowable({
-          pos: start, vel: d.clone().multiplyScalar(def.projectile.speed), gravity: def.projectile.gravity,
-          model: def.projectile.model, fuse: def.projectile.fuse ?? 6, bounce: !!def.projectile.bounce, impact: !def.projectile.bounce,
-          boom: { radius: def.explosive.radius, damage: def.damage[item.rarity], build: def.explosive.build }, owner: p,
-        });
-        ends.push(origin.clone().addScaledVector(d, 30));
+        // Se apunta desde la cámara y el proyectil sale del cañón hacia ese punto
+        const aim = g.raycast(origin, d, 300, skip, p);
+        const target = aim ? aim.point : origin.clone().addScaledVector(d, 300);
+        const from = muzzle.distanceTo(target) > 2.5 ? muzzle : origin.clone().addScaledVector(d, skip + 0.5);
+        const ld = target.clone().sub(from).normalize();
+        g.explosives.launch(p, item.type, item.rarity, from, ld, power);
+        continue;
+      }
+      if (def.pierce) {
+        this.pierceShot(origin, d, skip, def, item, hits, muzzle, ends);
         continue;
       }
       if (def.projectile) {
@@ -358,20 +401,47 @@ export class Combat {
       if (hit) this.collectHit(hit, def, item, hits);
     }
     this.applyHits(hits);
-    g.net?.shotFx(p, def.sound, muzzle, ends);
+    if (!def.explosive) g.net?.shotFx(p, def.sound, muzzle, ends);
+    else g.net?.shotFx(p, def.sound, muzzle, []);
     this.bloom = Math.min(def.maxBloom, this.bloom + def.bloom);
     const rec = def.recoil * (1 - 0.45 * this.adsBlend);
     p.pitch += rec;
     p.yaw += (Math.random() - 0.5) * rec * 0.6;
     this.kick = Math.min(1.5, this.kick + (def.pellets || def.scope ? 1.2 : 0.55));
     g.audio.shot(def.sound);
-    g.noise(p.pos, def.sound === 'sniper' ? 160 : 90, p);
+    g.noise(p.pos, def.sound === 'sniper' || def.sound === 'dmr' ? 160 : 90, p);
     let viewPos = null;
     if (g.camMode === 'fp' && this.vm?.userData.muzzle && this.viewmodel.visible) {
       viewPos = this.vm.userData.muzzle.getWorldPosition(new THREE.Vector3());
     }
-    g.effects.muzzleFlash(viewPos, muzzle);
+    if (def.sound !== 'bow') g.effects.muzzleFlash(viewPos, muzzle);
     if (item.mag === 0 && (p.ammo[def.ammo] > 0 || g.infiniteAmmo) && g.settings.autoReload !== false) this.autoReloadT = Math.min(0.35, this.cooldown);
+  }
+
+  // Disparo que atraviesa construcciones y personajes (rifle de plasma).
+  pierceShot(origin, d, skip, def, item, hits, muzzle, ends) {
+    const g = this.game;
+    let from = origin.clone();
+    let left = def.range;
+    let ignore = this.player;
+    let sk = skip;
+    let end = null;
+    for (let k = 0; k <= def.pierce; k++) {
+      const hit = g.raycast(from, d, left, sk, ignore);
+      if (!hit) break;
+      end = hit.point;
+      this.collectHit(hit, def, item, hits);
+      const build = hit.box?.data?.type === 'build';
+      if (hit.kind !== 'character' && hit.kind !== 'dummy' && !build) break;
+      left -= hit.t + 0.35;
+      if (left <= 0) break;
+      from = hit.point.clone().addScaledVector(d, build ? 0.35 : 0.05);
+      ignore = hit.kind === 'character' ? hit.entity : null;
+      sk = 0;
+    }
+    const e = end || origin.clone().addScaledVector(d, def.range);
+    g.effects.tracer(muzzle, e, def.beam, 0.05, 0.14);
+    ends.push(e);
   }
 
   collectHit(hit, def, item, hits) {
@@ -402,6 +472,7 @@ export class Combat {
       if (e.kind === 'dummy') killed = g.dummies.damage(target, e.dmg, e.head, e.point);
       else killed = this.damageCharacter(target, e.dmg, e.head, e.point, 'bullet');
       g.player.stats.damage += e.dmg;
+      if (e.head && e.kind !== 'dummy') g.player.stats.heads++;
       g.hud.hitMarker(e.head, killed);
       g.audio.hit(e.head);
     }
@@ -480,28 +551,30 @@ export class Combat {
     const g = this.game;
     const p = this.player;
     const def = CONSUMABLES[item.type];
-    // Arrojadizos y desplegables: un clic los lanza / coloca
-    if (def.throw || def.deploy) {
-      this.swingT = Math.max(0, this.swingT - dt);
-      if ((input.hit('fire') || this.quickHealPending) && this.swapT <= 0 && this.swingT <= 0) {
-        this.quickHealPending = false;
-        if (def.deploy ? this.deployPad() : this.throwItem(item.type, def)) {
-          this.swingT = 0.6;
-          this.consumeOne(item);
-        }
-      }
-      return;
-    }
     const start = (input.hit('fire') || this.quickHealPending) && this.swapT <= 0;
     this.quickHealPending = false;
+    // Plataforma de salto: un clic la coloca en el suelo
+    if (def.deploy) {
+      if (start && this.deployPad()) this.consumeOne(item);
+      return;
+    }
     if (!this.using && start) {
       const healFull = !def.heal || p.health >= def.cap;
       const shieldFull = !def.shield || p.shield >= def.cap;
-      const overFull = def.over ? p.health >= 100 && p.shield >= 100 : true;
-      if (healFull && shieldFull && overFull) {
-        if (def.heal && !def.shield) g.hud.toast(def.cap < 100 ? `Las vendas solo curan hasta ${def.cap}` : 'Ya tienes la salud al máximo');
-        else if (def.shield && !def.heal) g.hud.toast(def.cap < 100 ? `Solo puedes usarlas hasta ${def.cap} de escudo` : 'Ya tienes el escudo al máximo');
-        else g.hud.toast('Ya tienes la salud y el escudo al máximo');
+      if (def.over && p.health >= 100 && p.shield >= 100) {
+        g.hud.toast('Ya tienes la salud y el escudo al máximo');
+        return;
+      }
+      if (def.heal && def.shield && healFull && shieldFull) {
+        g.hud.toast('Ya tienes la salud y el escudo al máximo');
+        return;
+      }
+      if (def.heal && !def.shield && healFull) {
+        g.hud.toast(def.cap < 100 ? `Las vendas solo curan hasta ${def.cap}` : 'Ya tienes la salud al máximo');
+        return;
+      }
+      if (def.shield && !def.heal && shieldFull) {
+        g.hud.toast(def.cap < 100 ? `Solo puedes usarlas hasta ${def.cap} de escudo` : 'Ya tienes el escudo al máximo');
         return;
       }
       this.using = item;
@@ -532,144 +605,12 @@ export class Combat {
     }
   }
 
-  // ------------------------------------------------------- ARROJADIZOS
-  throwItem(type, def) {
-    const g = this.game;
-    const p = this.player;
-    const dir = g.aimDir.clone();
-    dir.y += 0.12;
-    dir.normalize();
-    const start = p.eye.addScaledVector(dir, 0.6);
-    this.spawnThrowable({
-      pos: start, vel: dir.multiplyScalar(def.throw.speed).add(tmpV.copy(p.vel).multiplyScalar(0.5)), gravity: 20,
-      model: type === 'impulse' ? 'impulse' : 'grenade', fuse: def.throw.fuse, bounce: true, impact: type === 'impulse',
-      boom: def.throw.knock ? { radius: def.throw.radius, knock: def.throw.knock } : { radius: def.throw.radius, damage: def.throw.damage, build: def.throw.build },
-      owner: p,
-    });
-    g.audio.throwItem();
-    return true;
-  }
-
-  spawnThrowable(o) {
-    const mesh = makeProjectileModel(o.model);
-    mesh.position.copy(o.pos);
-    this.game.scene.add(mesh);
-    this.throwables.push({ ...o, mesh, life: 0 });
-  }
-
-  updateThrowables(dt) {
-    const g = this.game;
-    for (let i = this.throwables.length - 1; i >= 0; i--) {
-      const t = this.throwables[i];
-      t.life += dt;
-      t.vel.y -= t.gravity * dt;
-      const step = tmpV.copy(t.vel).multiplyScalar(dt);
-      const len = step.length();
-      let boom = t.life >= t.fuse;
-      if (len > 1e-4 && !boom) {
-        const dir = step.clone().divideScalar(len);
-        const hit = g.raycast(t.pos, dir, len + 0.1, 0, t.owner);
-        if (hit) {
-          if (t.impact || hit.kind === 'character' || hit.kind === 'dummy') {
-            t.pos.copy(hit.point).addScaledVector(dir, -0.2);
-            boom = true;
-          } else if (t.bounce) {
-            const n = hit.normal || tmpU.set(0, 1, 0);
-            t.pos.copy(hit.point).addScaledVector(n, 0.12);
-            const vn = t.vel.dot(n);
-            t.vel.addScaledVector(n, -1.6 * vn).multiplyScalar(0.45);
-            if (t.vel.lengthSq() < 0.5) t.vel.set(0, 0, 0);
-          }
-        } else t.pos.add(step);
-      }
-      t.mesh.position.copy(t.pos);
-      if (t.model === 'rocket' && t.vel.lengthSq() > 1) {
-        t.mesh.lookAt(tmpR.copy(t.pos).add(t.vel));
-        g.effects.tracer(t.pos.clone().addScaledVector(t.vel, -0.03), t.pos, 0xffa040, 0.08, 0.25);
-      } else t.mesh.rotation.x += dt * 8;
-      if (boom) {
-        g.scene.remove(t.mesh);
-        this.throwables.splice(i, 1);
-        this.explode(t.pos, t.boom, t.owner);
-      }
-    }
-  }
-
-  // Explosión: daño en área a personajes, dianas y construcciones, o empuje
-  // (granada de impulso). owner = quien la lanzó (jugador o bot).
-  explode(pos, b, owner, fromNet = false) {
-    const g = this.game;
-    const r = b.radius;
-    g.effects.explosion(pos, r, !!b.knock);
-    const dCam = pos.distanceTo(g.camera.position);
-    g.audio.explosion(Math.max(0, 1 - dCam / 220));
-    if (!fromNet) g.net?.sendBoom(pos, b);
-    if (fromNet) return;
-    g.noise(pos, 140, owner);
-    if (b.knock) {
-      // empuje: también al propio jugador (movilidad)
-      for (const c of g.chars) {
-        if (!c.alive || c.isRemote || c.mode !== 'ground') continue;
-        const d = tmpV.copy(c.pos).setY(c.pos.y + 0.9).sub(pos);
-        const dist = d.length();
-        if (dist > r) continue;
-        d.normalize();
-        d.y = Math.max(d.y, 0.55);
-        d.normalize();
-        const k = b.knock * (0.6 + 0.4 * (1 - dist / r));
-        c.vel.addScaledVector(d, k);
-        c.vel.y = Math.max(c.vel.y, k * 0.75);
-        c.onGround = false;
-        c.noFallT = 4;
-      }
-      return;
-    }
-    let hitAny = false;
-    let killed = false;
-    for (const c of g.chars) {
-      if (!c.alive || c.mode === 'bus') continue;
-      const dist = tmpV.copy(c.pos).setY(c.pos.y + 0.9).distanceTo(pos);
-      if (dist > r) continue;
-      const dmg = b.damage * (1 - 0.5 * (dist / r));
-      if (c === owner) {
-        if (c.isPlayer) c.damage(dmg * 0.5, 'explosion', null);
-        continue;
-      }
-      if (owner?.isPlayer) {
-        const k = this.damageCharacter(c, dmg, false, tmpR.copy(c.pos).setY(c.pos.y + 1.2), 'explosion');
-        g.player.stats.damage += dmg;
-        hitAny = true;
-        killed = killed || k;
-      } else c.damage(dmg, 'explosion', owner);
-    }
-    for (const d of g.dummies.list) {
-      if (!d.alive) continue;
-      const dist = tmpV.copy(d.pos).setY(d.pos.y + 1.2).distanceTo(pos);
-      if (dist < r) {
-        g.dummies.damage(d, b.damage * (1 - 0.5 * (dist / r)), false, tmpR.copy(d.pos).setY(d.pos.y + 1.5));
-        hitAny = true;
-      }
-    }
-    if (hitAny && owner?.isPlayer) {
-      g.hud.hitMarker(false, killed);
-      g.audio.hit(false);
-    }
-    if (b.build) {
-      const center = new THREE.Vector3();
-      for (const piece of [...g.build.pieces.values()]) {
-        piece.mesh.getWorldPosition(center);
-        const dist = center.distanceTo(pos);
-        if (dist < r + 2) g.build.damage(piece, b.build * Math.max(0.3, 1 - dist / (r + 2)));
-      }
-    }
-  }
-
   // --------------------------------------------------- PLATAFORMA DE SALTO
   deployPad() {
     const g = this.game;
     const p = this.player;
-    const f = tmpV.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
-    const x = p.pos.x + f.x * 2.2, z = p.pos.z + f.z * 2.2;
+    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+    const x = p.pos.x + fx * 2.2, z = p.pos.z + fz * 2.2;
     const y = g.world.groundBelow(x, z, p.pos.y + 1.5);
     if (Math.abs(y - p.pos.y) > 1.6 || y < 0.2) {
       g.hud.toast('No se puede colocar aquí: busca suelo plano');
@@ -679,28 +620,54 @@ export class Combat {
     mesh.position.set(x, y, z);
     mesh.rotation.y = p.yaw;
     g.scene.add(mesh);
-    this.pads.push({ mesh, pos: mesh.position, cd: 0 });
+    this.pads.push({ mesh, pos: mesh.position });
     g.audio.build();
     g.hud.toast('Plataforma de salto colocada: písala para salir disparado');
     return true;
   }
 
-  updatePads(dt) {
+  updatePads() {
     const g = this.game;
+    const c = g.player;
+    if (!this.pads.length || !c.alive || c.mode !== 'ground' || c.vehicle || c.launchT > 0) return;
     for (const pad of this.pads) {
-      pad.cd = Math.max(0, pad.cd - dt);
-      for (const c of g.chars) {
-        if (!c.alive || !c.isPlayer || c.mode !== 'ground' || c.vehicle) continue;
-        if (Math.abs(c.pos.x - pad.pos.x) > 1.25 || Math.abs(c.pos.z - pad.pos.z) > 1.25) continue;
-        if (c.pos.y < pad.pos.y - 0.3 || c.pos.y > pad.pos.y + 0.9) continue;
-        if (c.launchT > 0) continue;
-        c.vel.y = 46;
-        c.onGround = false;
-        c.launchT = 0.6;
-        c.launched = true;
-        c.noFallT = 8;
-        if (c.isPlayer || c.pos.distanceTo(g.camera.position) < 50) g.audio.launch();
-      }
+      if (Math.abs(c.pos.x - pad.pos.x) > 1.25 || Math.abs(c.pos.z - pad.pos.z) > 1.25) continue;
+      if (c.pos.y < pad.pos.y - 0.3 || c.pos.y > pad.pos.y + 0.9) continue;
+      c.vel.y = 46;
+      c.onGround = false;
+      c.launchT = 0.6;
+      c.padLaunch = true;
+      c.noFallT = 8;
+      g.audio.launch();
+      break;
+    }
+  }
+
+  // Granadas, C4, humo, molotov… Clic izq.: lanzar · clic der. (C4): detonar.
+  updateThrowable(dt, input, item) {
+    const g = this.game;
+    const p = this.player;
+    const def = THROWABLES[item.type];
+    const placed = def.remote ? g.explosives.charges(p) : 0;
+    if (item.count > 0 && this.swapT <= 0) g.explosives.showPreview(p, item.type, g.aimDir);
+    else g.explosives.hidePreview();
+    if (def.remote && input.hit('ads')) {
+      if (g.explosives.detonate(p)) g.audio.detonator?.();
+      else g.hud.toast('No has colocado ningún C4');
+    }
+    if (input.hit('fire') && item.count > 0 && this.throwCd <= 0 && this.swapT <= 0) {
+      if (g.explosives.throwItem(p, item.type, g.aimDir)) {
+        item.count--;
+        this.throwCd = 0.5;
+        this.kick = 1.2;
+      } else g.hud.toast('Ya tienes 10 C4 colocados: detónalos con clic derecho');
+    }
+    // Sin unidades (y sin C4 pendientes de detonar) se libera la casilla
+    if (item.count <= 0 && !(def.remote && (placed > 0 || g.explosives.charges(p) > 0))) {
+      p.inventory[p.selected] = null;
+      this.modelKey = null;
+      g.explosives.hidePreview();
+      this.select(0);
     }
   }
 
@@ -714,6 +681,7 @@ export class Combat {
     this.viewmodel.visible = g.camMode === 'fp' && !scoped;
 
     const hip = item.kind === 'pickaxe' ? HIP_PICK : item.kind === 'weapon' ? HIP : HIP_ITEM;
+    if (vm.userData.spin) vm.userData.spin.rotation.z += dt * (this.spin * 28 + (this.cooldown > 0 ? 6 : 0));
     const ads = tmpV.set(0, -vm.userData.sightY - 0.022, -0.42);
     const pos = new THREE.Vector3().lerpVectors(hip, ads, this.adsBlend);
     const hs = p.hSpeed;
@@ -756,6 +724,15 @@ export class Combat {
         rx += s * -1.6;
         pos.x -= Math.sin(k * Math.PI) * 0.15;
       }
+    }
+    if (this.charge > 0) {
+      pos.z += this.charge * 0.06;
+      rz -= this.charge * 0.05;
+    }
+    if (item.kind === 'throwable' && this.throwCd > 0) {
+      const k = this.throwCd / 0.5;
+      pos.y -= Math.sin(k * Math.PI) * 0.12;
+      rx += Math.sin(k * Math.PI) * 0.8;
     }
     if (this.using) {
       pos.y += Math.sin(performance.now() / 120) * 0.01;

@@ -1,5 +1,5 @@
 import { Character } from '../game/character.js';
-import { PICKAXE, makeWeapon, WEAPONS, CONSUMABLES } from '../game/items.js';
+import { PICKAXE, WEAPONS, CONSUMABLES, THROWABLES, makeWeapon } from '../game/items.js';
 
 const INTERP_DELAY = 0.12; // s de retraso para interpolar entre estados
 const MODES = ['lobby', 'bus', 'freefall', 'glide', 'ground'];
@@ -10,6 +10,7 @@ export function heldCode(item) {
   if (!item) return '';
   if (item.kind === 'weapon') return `w${item.type}:${item.rarity}`;
   if (item.kind === 'consumable') return `c${item.type}`;
+  if (item.kind === 'throwable') return `t${item.type}`;
   return 'p';
 }
 
@@ -18,9 +19,10 @@ function heldFromCode(code) {
   if (code === 'p') return PICKAXE;
   if (code[0] === 'w') {
     const [type, r] = code.slice(1).split(':');
-    return WEAPONS[type] ? makeWeapon(type, Number(r) || 0) : PICKAXE;
+    return WEAPONS[type] ? makeWeapon(type, Number(r) || 0) : null;
   }
-  if (code[0] === 'c') return CONSUMABLES[code.slice(1)] ? { kind: 'consumable', type: code.slice(1), count: 1 } : PICKAXE;
+  if (code[0] === 'c') return CONSUMABLES[code.slice(1)] ? { kind: 'consumable', type: code.slice(1), count: 1 } : null;
+  if (code[0] === 't') return THROWABLES[code.slice(1)] ? { kind: 'throwable', type: code.slice(1), count: 1 } : null;
   return null;
 }
 

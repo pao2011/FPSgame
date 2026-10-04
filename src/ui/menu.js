@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { MODES, DIFFICULTIES } from '../game/modes.js';
 import { OnlineUI } from './online.js';
+import { ProgressionUI } from './progression.js';
 import { makeCharacter } from '../game/models.js';
-import { SKINS, SHIRTS, PANTS, HAIR, randomOutfit } from '../game/character.js';
 import { ACTIONS, keyName, defaultBinds } from '../core/binds.js';
 import { MAP_NAME } from '../world/constants.js';
 
@@ -20,12 +20,23 @@ const pct = (v) => `${v}%`;
 const deg = (v) => `${v}°`;
 const mult = (v) => `${Number(v).toFixed(2)}×`;
 const ms = (v) => `${Math.round(v * 1000)} ms`;
-const FMT = { num, pct, deg, mult, ms };
+const pct100 = (v) => `${Math.round(v * 100)}%`;
+const FMT = { num, pct, pct100, deg, mult, ms };
 // Teclas que pueden repetirse sin problema (se usan en contextos distintos).
 const SHARED = new Set(['Mouse2', 'Mouse0', 'KeyB']);
 
-const OUTFIT_PARTS = [
-  ['shirt', 'Camiseta', SHIRTS], ['pants', 'Pantalón', PANTS], ['hair', 'Pelo', HAIR], ['skin', 'Piel', SKINS],
+const TOUCH_CONTROLS = [
+  ['Joystick (izquierda)', 'Moverse · a tope hacia delante: correr · en una escalera: trepar'],
+  ['Arrastrar (derecha)', 'Mirar · también arrastrando el botón de disparo'],
+  ['◎ Disparar', 'Disparar · usar curas · golpear con el pico · colocar pieza (hay otro a la izquierda)'],
+  ['Mira', 'Apuntar (toca para activar/desactivar) · construyendo: cambiar material'],
+  ['▲ Saltar', 'Saltar · salir del autobús · abrir el planeador · freno de mano'],
+  ['▼', 'Agacharse (activar/desactivar)'], ['↻', 'Recargar'], ['Ladrillos', 'Modo construcción / volver al combate'],
+  ['USAR', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
+  ['✎', 'Editar la construcción a la que miras (otra vez: confirmar) · Mira: reiniciar'],
+  ['🏠', '(creativo) Catálogo de edificios · ↻ girar · ✕ cancelar · doble SALTAR: volar'],
+  ['Inventario', 'Toca un hueco para elegir · mantenlo pulsado para soltar el objeto'],
+  ['Minimapa', 'Tócalo para abrir el mapa'], ['⏸', 'Pausa'], ['👁', 'Cámara 1ª / 3ª persona'], ['💬', '(online) Chat de la partida'],
 ];
 
 // Vista previa 3D del personaje (pantalla Personaje).
@@ -95,12 +106,14 @@ class CharacterPreview {
 
 const HOWTO = [
   ['Isla de Inicio', 'Antes de cada partida apareces en la Isla de Inicio con el resto de jugadores. Practica con las armas de las mesas y construye; cuando estéis todos empieza una cuenta atrás de 10 s y subís al autobús.'],
-  ['Salta del autobús', 'Pulsa Espacio cuando se abran las puertas. Mira hacia abajo y mantén W para caer más rápido; el planeador se abre solo.'],
-  ['Equípate', 'Abre cofres dorados (E) y recoge armas, curas y munición. El color indica la rareza.'],
+  ['Salta del autobús', 'Pulsa Espacio (en el móvil, SALTAR) cuando se abran las puertas. Mira hacia abajo y mantén W o el joystick hacia delante para caer más rápido; el planeador se abre solo.'],
+  ['Equípate', 'Abre cofres dorados (E) y recoge armas, curas, munición y granadas. El color indica la rareza: gris, verde, azul, morado, naranja, dorado (Mítico) y turquesa (Exótico).'],
+  ['Explosivos', 'Granadas, granadas lapa, molotov, humo, C4 y granadas de impulso: clic para lanzar (verás la trayectoria). El C4 se detona con clic derecho (en el móvil, con el botón de apuntar) y el impulso te lanza por los aires sin daño por caída.'],
   ['Consigue materiales', 'Golpea árboles, rocas y coches abandonados con el pico para conseguir madera, piedra y metal.'],
   ['Construye para cubrirte', 'Q entra en modo construcción: muros, suelos, rampas y techos. Clic derecho cambia el material y R gira la pieza.'],
-  ['Edita tus piezas', 'Apunta a una construcción y pulsa F: haz clic (o arrastra) sobre las casillas y vuelve a pulsar F. Con 1–8 aplicas piezas reales: puerta (se abre con E), ventana, arco, media pared, valla…'],
+  ['Edita tus piezas', 'Apunta a una construcción de tu equipo y pulsa F: haz clic (o arrastra) sobre las casillas y vuelve a pulsar F. Con 1–8 aplicas piezas reales: puerta (se abre con E), ventana, arco, media pared, valla…'],
   ['Cofres', 'Los cofres no están siempre en el mismo sitio: en cada partida cada cofre tiene una probabilidad de aparecer. ¡Escucha su zumbido!'],
+  ['Sube el pase de batalla', 'Cada partida da XP (eliminaciones, daño, cofres, puesto…) y los logros dan más. Cada nivel desbloquea camuflajes, accesorios, skins o tokens para la Tienda.'],
   ['Vigila la tormenta', 'El círculo blanco del mapa (M) es la próxima zona segura. Fuera de ella pierdes vida.'],
   ['Juega en equipo', 'En Dúos y Escuadras, si te derriban arrástrate hacia un compañero. Mantén E para reanimar a los tuyos.'],
   ['Sé el último en pie', 'Elimina al resto de jugadores (o equipos) para conseguir la Victoria Magistral.'],
@@ -114,14 +127,16 @@ const NEWS = [
   ['Edición de piezas', 'Puerta (que se abre y se cierra), ventana, arco, arco grande, media pared, valla, puerta lateral, suelos con hueco, rampas giradas y tejados inclinados o planos.'],
   ['Ajustes al estilo de Epic', 'Construcción turbo, controles personalizados, sensibilidades separadas, apuntar/agacharse alternos, cambio automático de material, límite de FPS…'],
   ['Modo creativo', 'Vuelo, catálogo con todas las armas y consumibles, bots y dianas a demanda, cofres, prefabricados, guardar/cargar, teletransporte, hora del día y tormenta.'],
-  ['Más armas', 'Fusil de ráfagas, fusil pesado, minigun, escopeta táctica y de dos cañones, rifle de caza, revólver, cañón de mano, lanzacohetes y lanzagranadas.'],
-  ['Más consumibles', 'Pez saltarín, Zumo Slurp, Jarra Chug, granadas, granada de impulso y plataforma de salto.'],
+  ['Más armas', 'Fusil de ráfagas, fusil pesado, minigun, escopeta táctica y de dos cañones, rifle de tirador, rifle de caza, revólver, cañón de mano, lanzacohetes, lanzagranadas, rifle de plasma y arco explosivo, con rarezas Mítico y Exótico.'],
+  ['Más consumibles', 'Pez saltarín, Zumo Slurp, barril de poción y plataforma de salto, además de granadas, lapa, C4, humo, molotov e impulso.'],
+  ['Pase de batalla y tienda', '40 niveles con XP por partida y logros, skins, accesorios y camuflajes de armas.'],
+  ['Versión móvil', 'Controles táctiles, calidad Móvil con resolución dinámica y APK de Android, con juego cruzado con PC.'],
   ['Calidad de vida', 'Marcadores (clic central), destino en el mapa, recogida automática, curación rápida (H), arma anterior (X), correr automático (=)…'],
 ];
 
 const NEXT = [
-  'Sistema de progresión: niveles, pase de temporada y desafíos diarios',
-  'Tienda de objetos cosméticos (skins, picos, planeadores, gestos)',
+  'Desafíos diarios y semanales',
+  'Más cosméticos: picos, planeadores, estelas y gestos',
   'Mochila/inventario ampliado con arrastrar y soltar',
   'Vehículos nuevos (barcas, quads) y NPCs con misiones',
   'Repeticiones y modo espectador completo',
@@ -136,6 +151,7 @@ export class Menu {
     this.preview = new CharacterPreview();
     this.build();
     this.online = new OnlineUI(game, this);
+    this.prog = new ProgressionUI(game, this);
   }
 
   get s() {
@@ -148,9 +164,12 @@ export class Menu {
       <div class="mm-left">
         <div class="logo">ISLA<span>ROYALE</span></div>
         <div class="tagline">Battle royale en 3D en tu navegador</div>
+        <button class="pass-pill" id="pass-pill" data-panel="pass"></button>
         <nav class="mm-nav">
           <button data-panel="online" class="nav-btn online">🌐 ONLINE <span class="badge" id="online-badge"></span></button>
           <button data-panel="play" class="nav-btn">▶ JUGAR CON BOTS</button>
+          <button data-panel="pass" class="nav-btn pass">⭐ PASE DE BATALLA</button>
+          <button data-panel="shop" class="nav-btn">🛒 TIENDA</button>
           <button data-panel="locker" class="nav-btn">PERSONAJE</button>
           <button data-panel="modes" class="nav-btn">MODOS DE JUEGO</button>
           <button data-panel="options" class="nav-btn">OPCIONES</button>
@@ -164,7 +183,7 @@ export class Menu {
         <div class="net-pill" id="net-pill"></div>
       </div>
       <div class="mm-right"><div id="mm-panel" class="mm-panel"></div></div>`;
-    this.root.querySelectorAll('.nav-btn').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.panel)));
+    this.root.querySelectorAll('.nav-btn, .pass-pill').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.panel)));
 
     $('pause').innerHTML = `
       <div class="menu-card pause-card">
@@ -197,6 +216,7 @@ export class Menu {
         <div id="end-title" class="logo small"></div>
         <div id="end-cause" class="subtitle"></div>
         <div id="end-stats" class="stats-grid"></div>
+        <div id="end-xp"></div>
         <div class="pause-buttons row">
           <button id="again-btn">JUGAR OTRA VEZ</button>
           <button id="menu-btn" class="secondary">MENÚ PRINCIPAL</button>
@@ -233,11 +253,21 @@ export class Menu {
     void el.offsetWidth;
     el.classList.add('anim');
     if (panel === 'online') return this.online.render(el);
-    if (panel === 'locker') return this.renderLocker(el);
+    if (panel === 'locker') return this.prog.renderLocker(el);
+    if (panel === 'pass') return this.prog.renderPass(el);
+    if (panel === 'shop') return this.prog.renderShop(el);
     if (panel === 'play') el.innerHTML = this.playHTML();
     else if (panel === 'modes') el.innerHTML = this.modesHTML();
     else if (panel === 'options') el.innerHTML = this.optionsHTML();
-    else if (panel === 'controls') el.innerHTML = this.controlsHTML();
+    else if (panel === 'controls') {
+      const table = (list) => `<table class="ctrl-table">${list.map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>`;
+      el.innerHTML = this.game.touch ? `<h2>Controles táctiles</h2>${table(TOUCH_CONTROLS)}${this.controlsHTML().replace('<h2>Controles</h2>', '<h3>Con teclado y ratón</h3>')}` : this.controlsHTML();
+      el.querySelector('[data-go-binds]')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.optTab = 'binds';
+        this.show('options');
+      });
+    }
     else if (panel === 'news') el.innerHTML = `<h2>Novedades</h2><ul class="howto roadmap-list">${NEWS.map(([t, d]) => `<li><b>${t}.</b> ${d}</li>`).join('')}</ul>
       <h2>Próximamente</h2><ul class="howto roadmap-list">${NEXT.map((t) => `<li>${t}</li>`).join('')}</ul>
       <p class="hint">El plan completo está en <code>ROADMAP.md</code>.</p>`;
@@ -245,10 +275,6 @@ export class Menu {
     if (panel === 'play') this.bindPlay(el);
     if (panel === 'modes') this.bindModes(el);
     if (panel === 'options') this.bindOptions(el);
-    if (panel === 'controls') el.querySelector('[data-go-binds]')?.addEventListener('click', () => {
-      this.optTab = 'binds';
-      this.show('options');
-    });
   }
 
   controlsHTML() {
@@ -328,9 +354,9 @@ export class Menu {
   optionsHTML() {
     const s = this.s;
     const tab = this.optTab || 'game';
-    const tabs = [['game', 'Juego'], ['sens', 'Sensibilidad'], ['build', 'Construcción y edición'], ['binds', 'Controles'], ['hud', 'Interfaz'], ['video', 'Vídeo y sonido']];
+    const tabs = [['game', 'Juego'], ['sens', 'Sensibilidad'], ['build', 'Construcción y edición'], ['binds', 'Controles'], ['hud', 'Interfaz'], ['video', 'Vídeo y sonido'], ['mobile', 'Móvil y táctil']];
     const range = (k, label, min, max, step, fmt = (v) => v) =>
-      `<div class="opt-row"><label>${label} <b data-out="${k}">${fmt(s[k])}</b></label><input data-k="${k}" data-fmt="${fmt === pct ? 'pct' : fmt === deg ? 'deg' : fmt === mult ? 'mult' : fmt === ms ? 'ms' : 'num'}" type="range" min="${min}" max="${max}" step="${step}" value="${s[k]}"></div>`;
+      `<div class="opt-row"><label>${label} <b data-out="${k}">${fmt(s[k])}</b></label><input data-k="${k}" data-fmt="${fmt === pct ? 'pct' : fmt === pct100 ? 'pct100' : fmt === deg ? 'deg' : fmt === mult ? 'mult' : fmt === ms ? 'ms' : 'num'}" type="range" min="${min}" max="${max}" step="${step}" value="${s[k]}"></div>`;
     const check = (k, label, hint = '') => `<div class="opt-row check"><label><input data-k="${k}" type="checkbox" ${s[k] ? 'checked' : ''}> ${label}</label>${hint ? `<small class="hint">${hint}</small>` : ''}</div>`;
     let body = '';
     if (tab === 'game') {
@@ -383,6 +409,19 @@ export class Menu {
         ${range('hudScale', 'Tamaño de la interfaz', 0.7, 1.4, 0.05, mult)}
         <div class="opt-row"><label>Color de la mira</label><input type="color" data-k="crosshairColor" value="${s.crosshairColor || '#ffffff'}"></div>
         ${check('showFps', 'Mostrar FPS')}`;
+    } else if (tab === 'mobile') {
+      const seg = (k, opts) => `<div class="seg" data-seg="${k}">${opts.map(([v, label]) => `<button data-v="${v}" class="${String(s[k]) === String(v) ? 'on' : ''}">${label}</button>`).join('')}</div>`;
+      body = `
+        <div class="opt-row"><label>Controles táctiles</label>${seg('touchControls', [['auto', 'Automático'], ['on', 'Siempre'], ['off', 'Nunca']])}
+          <small class="hint" data-hint="touchControls"></small></div>
+        ${range('touchSens', 'Sensibilidad táctil', 0.3, 3, 0.05, num)}
+        ${range('touchSize', 'Tamaño de los botones', 0.7, 1.4, 0.05, pct100)}
+        ${range('touchOpacity', 'Opacidad de los botones', 0.3, 1, 0.05, pct100)}
+        ${check('vibration', 'Vibración')}
+        ${check('touchFullscreen', 'Pantalla completa al jugar (navegador)')}
+        ${range('resScale', 'Resolución (calidad Móvil)', 40, 100, 5, pct)}
+        ${check('autoRes', 'Resolución dinámica (baja la resolución si van lentos los FPS)')}
+        <div class="opt-row"><label>Ahorro de batería</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS']])}</div>`;
     } else {
       body = `
         ${range('fov', 'Campo de visión', 65, 100, 1, deg)}
@@ -394,8 +433,9 @@ export class Menu {
             <button data-v="alta" class="${s.quality === 'alta' ? 'on' : ''}">Alta</button>
             <button data-v="normal" class="${s.quality === 'normal' ? 'on' : ''}">Normal</button>
             <button data-v="baja" class="${s.quality === 'baja' ? 'on' : ''}">Baja (PCs modestos)</button>
+            <button data-v="movil" class="${s.quality === 'movil' ? 'on' : ''}">Móvil</button>
           </div>
-          <small class="hint" id="quality-hint"></small>
+          <small class="hint" data-hint="quality"></small>
         </div>`;
     }
     return `
@@ -456,62 +496,30 @@ export class Menu {
       this.game.applySettings();
       rerender();
     });
-    el.querySelectorAll('[data-seg="quality"] button').forEach((b) => b.addEventListener('click', (e) => {
+    // Ajustes que necesitan recargar la página: calidad y controles táctiles
+    for (const k of ['quality', 'touchControls']) {
+      el.querySelectorAll(`[data-seg="${k}"] button`).forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (s[k] === b.dataset.v) return;
+        s[k] = b.dataset.v;
+        this.game.applySettings();
+        el.querySelectorAll(`[data-seg="${k}"] button`).forEach((x) => x.classList.toggle('on', x === b));
+        const hint = el.querySelector(`[data-hint="${k}"]`);
+        hint.innerHTML = 'Se aplicará al recargar. <a href="#" class="reload-now">Recargar ahora</a>';
+        hint.querySelector('.reload-now').addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const q = new URLSearchParams(location.search);
+          q.delete('calidad');
+          location.search = q.toString();
+        });
+      }));
+    }
+    el.querySelectorAll('[data-seg="fpsCap"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (s.quality === b.dataset.v) return;
-      s.quality = b.dataset.v;
+      s.fpsCap = Number(b.dataset.v);
       this.game.applySettings();
-      el.querySelectorAll('[data-seg="quality"] button').forEach((x) => x.classList.toggle('on', x === b));
-      const hint = el.querySelector('#quality-hint');
-      hint.innerHTML = 'Se aplicará al recargar. <a href="#" id="reload-now">Recargar ahora</a>';
-      hint.querySelector('#reload-now').addEventListener('click', (ev) => {
-        ev.preventDefault();
-        const q = new URLSearchParams(location.search);
-        q.delete('calidad');
-        location.search = q.toString();
-      });
+      el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
-  }
-
-  // ---------------------------------------------------------- PERSONAJE
-  renderLocker(el) {
-    const o = { ...(this.s.outfit || this.game.player.outfit || randomOutfit()) };
-    const hex = (n) => '#' + n.toString(16).padStart(6, '0');
-    el.innerHTML = `
-      <h2>Personaje</h2>
-      <p class="lead">Elige tu aspecto. En las partidas online los demás jugadores te verán así.</p>
-      <div class="locker">
-        <div class="preview-box" id="preview-box"></div>
-        <div class="swatches">${OUTFIT_PARTS.map(([k, label, list]) => `
-          <div class="sw-row"><label>${label}</label><div class="sw">${list.map((c) => `<button data-k="${k}" data-c="${c}" class="${o[k] === c ? 'on' : ''}" style="--c:${hex(c)}"></button>`).join('')}</div></div>`).join('')}
-          <button class="small-btn" id="outfit-random">🎲 Aleatorio</button>
-        </div>
-      </div>`;
-    el.querySelector('#preview-box').appendChild(this.preview.canvas);
-    this.preview.set(o);
-    this.preview.start();
-    const save = () => {
-      this.s.outfit = { ...o };
-      this.game.applySettings();
-      this.game.player.setOutfit(o);
-      this.game.combat.modelKey = null;
-      const n = this.game.netClient;
-      if (n.authed) {
-        n.user.outfit = { ...o };
-        n.send('outfit', { outfit: o });
-      }
-      this.preview.set(o);
-    };
-    el.querySelectorAll('.sw button').forEach((b) => b.addEventListener('click', () => {
-      o[b.dataset.k] = Number(b.dataset.c);
-      el.querySelectorAll(`.sw button[data-k="${b.dataset.k}"]`).forEach((x) => x.classList.toggle('on', x === b));
-      save();
-    }));
-    el.querySelector('#outfit-random').addEventListener('click', () => {
-      Object.assign(o, randomOutfit());
-      save();
-      this.renderLocker(el);
-    });
   }
 
   showMain(panel = null) {
@@ -519,6 +527,7 @@ export class Menu {
     this.root.style.display = 'flex';
     this.show(panel || (this.panel === 'online' ? 'online' : 'play'));
     this.updateBadge();
+    this.prog.updatePill();
   }
 
   hideAll() {
@@ -532,7 +541,8 @@ export class Menu {
     if (!on) $('pause-options').innerHTML = '';
   }
 
-  showEnd(win, cause, stats, online = false) {
+  showEnd(win, cause, stats, online = false, xp = null) {
+    $('end-xp').innerHTML = this.prog.endHTML(xp);
     this.endOnline = online;
     $('again-btn').textContent = online ? 'VOLVER AL GRUPO' : 'JUGAR OTRA VEZ';
     $('menu-btn').style.display = online ? 'none' : '';

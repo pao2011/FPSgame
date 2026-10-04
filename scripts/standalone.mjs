@@ -13,8 +13,15 @@ html = html.replace(/<script type="module" crossorigin src="\.\/(assets\/[^"]+\.
   return `<script type="module">\n${js}\n</script>`;
 });
 html = html.replace(/<link rel="stylesheet" crossorigin href="\.\/(assets\/[^"]+\.css)">/, (_, file) => {
-  return `<style>\n${readFileSync(join(dist, file), 'utf8')}\n</style>`;
+  // Las fuentes van dentro del CSS (base64) para que funcione sin internet
+  const css = readFileSync(join(dist, file), 'utf8').replace(/url\((?:\.\/)?([^)'"]+\.woff2)\)/g, (m, font) => {
+    const data = readFileSync(join(dist, 'assets', font.replace(/^.*\//, ''))).toString('base64');
+    return `url(data:font/woff2;base64,${data})`;
+  });
+  return `<style>\n${css}\n</style>`;
 });
+// Manifest e iconos de la web instalable: con doble clic no hacen falta
+html = html.replace(/\s*<link rel="(manifest|icon|apple-touch-icon)"[^>]*>/g, '');
 if (/src="\.\/assets|href="\.\/assets/.test(html)) {
   console.error('No se pudieron incrustar todos los recursos en jugar.html');
   process.exit(1);

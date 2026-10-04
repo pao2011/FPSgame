@@ -39,7 +39,7 @@ export class Character {
   // (Re)construye el modelo con los colores indicados.
   setOutfit(outfit) {
     const o = { ...randomOutfit(), ...outfit };
-    const sig = `${o.skin}|${o.shirt}|${o.pants}|${o.hair}`;
+    const sig = `${o.skin}|${o.shirt}|${o.pants}|${o.hair}|${o.suit || ''}|${o.acc || ''}|${o.camo || ''}`;
     if (sig === this.outfitSig) return;
     this.outfitSig = sig;
     this.outfit = o;
@@ -80,7 +80,8 @@ export class Character {
     this.invuln = 0;
     this.noFallT = 0; // sin daño de caída (impulso, plataforma de salto)
     this.launchT = 0;
-    this.launched = false;
+    this.launched = false; // lanzado por una explosión (sin daño al caer)
+    this.padLaunch = false; // plataforma de salto (abre el planeador)
     this.regen = null; // curación progresiva (Zumo Slurp)
   }
 
@@ -172,7 +173,13 @@ export class Character {
       }
     }
     this.vel.y -= GRAVITY * dt;
-    return this.move(dt);
+    const land = this.move(dt);
+    // Lanzado por una explosión: al caer no se hace daño
+    if (this.launched && this.onGround && this.vel.y <= 0) {
+      this.launched = false;
+      return 0;
+    }
+    return land;
   }
 
   fallDamage(landSpeed) {
@@ -398,17 +405,18 @@ export class Character {
 
   // ------------------------------------------------------------ MODELO
   setHeld(item) {
-    const key = !item ? 'none' : item.kind === 'weapon' ? `w${item.type}${item.rarity}` : item.kind === 'consumable' ? `c${item.type}` : 'pick';
+    const key = item ? itemKey(item) : 'none';
     if (key === this.heldKey) return;
     this.heldKey = key;
     const hand = this.model.hand;
     while (hand.children.length) hand.remove(hand.children[0]);
     if (!item) return;
     // Malla fusionada (1 draw call) + punto de boca de cañón para trazadoras.
-    const mk = itemKey(item);
+    const camo = item.kind === 'weapon' ? this.outfit?.camo || null : null;
+    const mk = itemKey(item) + (camo ? '_' + camo : '');
     if (!MUZZLES.has(mk)) MUZZLES.set(mk, makeItemModel(item).userData.muzzle?.position.clone() ?? new THREE.Vector3());
     const m = new THREE.Group();
-    m.add(mergedMesh(mk, () => makeItemModel(item)));
+    m.add(mergedMesh(mk, () => makeItemModel(item, camo)));
     const muzzle = new THREE.Object3D();
     muzzle.position.copy(MUZZLES.get(mk));
     m.add(muzzle);

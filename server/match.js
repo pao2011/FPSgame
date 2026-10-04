@@ -6,7 +6,7 @@ import { RNG } from '../src/core/rng.js';
 import { lootForChest, lootForAmmoBox } from '../src/game/items.js';
 
 let nextMatch = 1;
-const RELAY = new Set(['m.st', 'm.fx', 'm.down', 'm.drop', 'm.bdmg', 'm.bedit', 'm.bdoor', 'm.harv', 'm.veh', 'm.emote', 'm.boom', 'm.ping']);
+const RELAY = new Set(['m.st', 'm.fx', 'm.ex', 'm.down', 'm.drop', 'm.bdmg', 'm.bdoor', 'm.harv', 'm.veh', 'm.emote', 'm.ping']);
 
 export class Match {
   constructor(lobby, mode, roster, opts) {
@@ -131,6 +131,10 @@ export class Match {
         this.builds.add(m.key);
         m.from = me.id;
         this.broadcast(m, c);
+        break;
+      case 'm.bedit':
+        if (typeof m.key !== 'string' || !this.builds.has(m.key)) return;
+        this.broadcast({ t: 'm.bedit', key: m.key, mask: m.mask | 0, dir: (m.dir | 0) & 3 }, c);
         break;
       case 'm.brm':
         if (!this.builds.delete(m.key)) return;

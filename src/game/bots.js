@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Character } from './character.js';
-import { WEAPONS, CONSUMABLES, PICKAXE, MATERIALS } from './items.js';
+import { WEAPONS, CONSUMABLES, PICKAXE, MATERIALS, THROWABLES } from './items.js';
 import { random, clamp } from '../core/rng.js';
 import { ISLAND_RADIUS } from '../world/constants.js';
 import { yawToDir } from './build.js';
@@ -17,15 +17,28 @@ const NAMES = [
 // Parámetros por dificultad: reacción (s), error de puntería (rad), velocidad
 // de seguimiento (rad/s), probabilidad de apuntar a la cabeza, de construir...
 export const DIFF = {
-  facil: { react: [0.8, 1.3], err: 0.075, track: 2.2, head: 0.04, build: 0, burst: [2, 3], pause: [0.6, 1.0], jump: 0, strafe: 0.4, see: 70, heal: 0.5 },
-  normal: { react: [0.45, 0.8], err: 0.048, track: 3.6, head: 0.1, build: 0.35, burst: [3, 5], pause: [0.35, 0.7], jump: 0.12, strafe: 0.8, see: 95, heal: 0.85 },
-  dificil: { react: [0.28, 0.5], err: 0.032, track: 5.5, head: 0.2, build: 0.65, burst: [4, 7], pause: [0.2, 0.45], jump: 0.25, strafe: 1, see: 115, heal: 1 },
-  experto: { react: [0.15, 0.32], err: 0.022, track: 8, head: 0.3, build: 0.9, burst: [5, 9], pause: [0.12, 0.3], jump: 0.4, strafe: 1, see: 135, heal: 1 },
+  facil: { react: [0.8, 1.3], err: 0.075, track: 2.2, head: 0.04, build: 0, burst: [2, 3], pause: [0.6, 1.0], jump: 0, strafe: 0.4, see: 70, heal: 0.5, nade: 0.15 },
+  normal: { react: [0.45, 0.8], err: 0.048, track: 3.6, head: 0.1, build: 0.35, burst: [3, 5], pause: [0.35, 0.7], jump: 0.12, strafe: 0.8, see: 95, heal: 0.85, nade: 0.35 },
+  dificil: { react: [0.28, 0.5], err: 0.032, track: 5.5, head: 0.2, build: 0.65, burst: [4, 7], pause: [0.2, 0.45], jump: 0.25, strafe: 1, see: 115, heal: 1, nade: 0.55 },
+  experto: { react: [0.15, 0.32], err: 0.022, track: 8, head: 0.3, build: 0.9, burst: [5, 9], pause: [0.12, 0.3], jump: 0.4, strafe: 1, see: 135, heal: 1, nade: 0.7 },
 };
 
-const RANGE = { shotgun: [3, 9], smg: [6, 16], pistol: [8, 22], ar: [14, 42], sniper: [35, 110] };
-const EFFECTIVE = { shotgun: 24, smg: 50, pistol: 60, ar: 120, sniper: 240 };
+// Distancia ideal de combate y alcance efectivo de cada arma (o de su familia).
+const RANGE = {
+  shotgun: [3, 9], tactical: [3, 10], doublebarrel: [2, 7], smg: [6, 16], minigun: [8, 26], pistol: [8, 22], revolver: [10, 35],
+  handcannon: [10, 35], ar: [14, 42], burst: [14, 45], heavyar: [12, 40], dmr: [30, 90], sniper: [35, 110], hunting: [30, 90],
+  rocket: [12, 50], glauncher: [10, 30], plasma: [14, 50], boombow: [15, 60],
+};
+const EFFECTIVE = {
+  shotgun: 24, tactical: 24, doublebarrel: 18, smg: 50, minigun: 70, pistol: 60, revolver: 90, handcannon: 90, ar: 120, burst: 120,
+  heavyar: 110, dmr: 200, sniper: 240, hunting: 200, rocket: 110, glauncher: 45, plasma: 140, boombow: 130,
+};
 const cat = (w) => WEAPONS[w.type]?.cat || 'ar';
+const rangeOf = (w) => RANGE[w.type] || RANGE[cat(w)] || RANGE.ar;
+const effectiveOf = (w) => EFFECTIVE[w.type] ?? EFFECTIVE[cat(w)] ?? 60;
+// Arrojadizos que los bots saben usar
+const BOT_NADES = ['grenade', 'sticky', 'molotov', 'c4', 'smoke'];
+const emptyNades = () => ({ grenade: 0, sticky: 0, impulse: 0, c4: 0, smoke: 0, molotov: 0 });
 const THINK = 0.22;
 
 const tmpA = new THREE.Vector3();
@@ -40,14 +53,22 @@ function angDiff(a, b) {
 }
 
 // Preferencia de arma según la distancia al objetivo.
+const SCORED = new Set(['shotgun', 'tactical', 'smg', 'minigun', 'ar', 'burst', 'plasma', 'dmr', 'sniper', 'rocket', 'glauncher', 'boombow', 'revolver']);
 function weaponScore(item, d) {
   if (!item) return -1;
-  const t = WEAPONS[item.type]?.cat || item.type;
+  const t = SCORED.has(item.type) ? item.type : WEAPONS[item.type]?.cat || item.type;
   let s;
-  if (t === 'shotgun') s = d < 10 ? 3.2 : d < 18 ? 1.5 : 0.2;
+  if (t === 'shotgun' || t === 'tactical') s = d < 10 ? 3.2 : d < 18 ? 1.5 : 0.2;
   else if (t === 'smg') s = d < 20 ? 2.5 : d < 40 ? 1.6 : 0.6;
-  else if (t === 'ar') s = d < 10 ? 1.5 : d < 90 ? 2.7 : 1.9;
+  else if (t === 'minigun') s = d < 35 ? 2.7 : d < 60 ? 1.8 : 0.7;
+  else if (t === 'ar' || t === 'burst') s = d < 10 ? 1.5 : d < 90 ? 2.7 : 1.9;
+  else if (t === 'plasma') s = d < 10 ? 1.8 : d < 120 ? 3 : 2.2;
+  else if (t === 'dmr') s = d > 40 ? 3 : d > 20 ? 2 : 0.8;
   else if (t === 'sniper') s = d > 50 ? 3.3 : d > 25 ? 1.6 : 0.3;
+  else if (t === 'rocket') s = d < 6 ? 0.2 : d < 60 ? 2.6 : 1.2;
+  else if (t === 'glauncher') s = d < 6 ? 0.2 : d < 35 ? 2.4 : 0.4;
+  else if (t === 'boombow') s = d < 8 ? 0.6 : d < 80 ? 2.8 : 1.5;
+  else if (t === 'revolver') s = d < 60 ? 1.8 : 1.1;
   else s = d < 50 ? 1.3 : 0.6;
   return s + item.rarity * 0.15;
 }
@@ -72,7 +93,11 @@ class Bot extends Character {
     this.mode = 'bus';
     this.weapons = [null, null, null];
     this.cur = 0;
-    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0, flopper: 0, slurp: 0, chug: 0 };
+    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0, chugjug: 0, flopper: 0, slurp: 0 };
+    this.nades = emptyNades();
+    this.nadeCd = random.float(2, 5);
+    this.c4T = 0;
+    this.burstShot = 0;
     this.mats = { wood: random.int(0, 2) * 10, stone: 0, metal: 0 };
     this.cooldown = 0;
     this.reloadT = 0;
@@ -177,11 +202,12 @@ class Bot extends Character {
       if (!w) continue;
       drops.push({ ...w, mag: WEAPONS[w.type].mag });
       const a = WEAPONS[w.type].ammo;
-      drops.push({ kind: 'ammo', ammo: a, count: a === 'heavy' ? 8 : a === 'shells' ? 12 : 40 });
+      drops.push({ kind: 'ammo', ammo: a, count: a === 'heavy' ? 8 : a === 'shells' ? 12 : a === 'rockets' ? 4 : 40 });
     }
     for (const h in this.heals) if (this.heals[h] > 0) drops.push({ kind: 'consumable', type: h, count: this.heals[h] });
+    for (const t in this.nades) if (this.nades[t] > 0) drops.push({ kind: 'throwable', type: t, count: this.nades[t] });
     for (const m in this.mats) if (this.mats[m] > 0) drops.push({ kind: 'material', mat: m, count: Math.min(999, this.mats[m]) });
-    if (!g.mode.respawn) g.pickups.burst(drops.slice(0, 8), at);
+    if (!g.mode.respawn) g.pickups.burst(drops.slice(0, 10), at);
     if (at.distanceTo(g.camera.position) < 200) g.effects.debris(at, 0x9b5cff);
   }
 
@@ -344,7 +370,8 @@ class Bot extends Character {
     this.resetBody();
     this.weapons = loadout.weapons.map((w) => (w ? { ...w } : null));
     this.cur = 0;
-    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0, flopper: 0, slurp: 0, chug: 0, ...loadout.heals };
+    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0, chugjug: 0, flopper: 0, slurp: 0, ...loadout.heals };
+    this.nades = { ...emptyNades(), ...(loadout.nades || {}) };
     this.mats = { wood: 150, stone: 80, metal: 40 };
     this.memory.clear();
     this.target = null;
@@ -364,6 +391,7 @@ class Bot extends Character {
     const eye = this.eye;
     const to = tmpB.copy(other.pos);
     to.y += other.height * 0.7;
+    if (this.game.explosives.smokeBlocks(eye, to)) return false;
     const dir = to.sub(eye);
     const dist = dir.length();
     if (dist < 0.01) return true;
@@ -473,7 +501,7 @@ class Bot extends Character {
 
   healItem() {
     const h = this.heals;
-    if (this.health < 40 && this.shield < 40 && h.chug > 0) return 'chug';
+    if (this.health + this.shield < 110 && h.chugjug > 0) return 'chugjug';
     if ((this.health < 70 || this.shield < 50) && h.slurp > 0) return 'slurp';
     if (this.health < 65 && h.flopper > 0) return 'flopper';
     if (this.shield < 50 && h.smallshield > 0) return 'smallshield';
@@ -486,7 +514,7 @@ class Bot extends Character {
   needsLoot() {
     if (!this.hasWeapon) return true;
     if (this.weapons.filter(Boolean).length < 2) return true;
-    const heals = this.heals.smallshield + this.heals.shieldpot + this.heals.medkit + this.heals.bandage + this.heals.flopper + this.heals.slurp + this.heals.chug;
+    const heals = this.heals.smallshield + this.heals.shieldpot + this.heals.medkit + this.heals.bandage + this.heals.flopper + this.heals.slurp + this.heals.chugjug;
     return heals < 2 || this.weapons.some((w) => w && w.rarity < 2);
   }
 
@@ -498,10 +526,10 @@ class Bot extends Character {
       if (!pk.settled || this.blacklist.has(pk)) continue;
       const it = pk.item;
       let want = false;
-      if (it.kind === 'weapon' && WEAPONS[it.type].explosive) continue;
       if (it.kind === 'consumable' && !(it.type in this.heals)) continue;
       if (it.kind === 'weapon') want = it.rarity > worst || this.weapons.some((w) => !w) || !this.weapons.some((w) => w && w.type === it.type && w.rarity >= it.rarity) && it.rarity >= worst;
       else if (it.kind === 'consumable') want = (this.heals[it.type] || 0) < 4;
+      else if (it.kind === 'throwable') want = BOT_NADES.includes(it.type) && this.nadeCount() < 5;
       if (!want) continue;
       const d = pk.pos.distanceTo(this.pos);
       if (d < bd && Math.abs(pk.pos.y - this.pos.y) < 2.5) {
@@ -552,8 +580,8 @@ class Bot extends Character {
 
     if (storm === 2 && !(this.targetVisible && enemyClose)) return this.setTask('rotate', this.safePoint());
     if (this.targetVisible && this.target) {
-      const eff = this.def ? EFFECTIVE[cat(this.weapon)] ?? 60 : 0;
-      const bestW = this.weapons.reduce((m, w) => Math.max(m, w ? EFFECTIVE[cat(w)] ?? 60 : 0), 0);
+      const eff = this.def ? effectiveOf(this.weapon) : 0;
+      const bestW = this.weapons.reduce((m, w) => Math.max(m, w ? effectiveOf(w) : 0), 0);
       if (this.hasWeapon && tDist < Math.max(eff, bestW) * 1.1) return this.setTask('fight', null, this.target);
       // Sin arma sólo pelea a pico si le atacan o lo tiene encima
       const attacked = this.target === this.lastAttacker && now - this.lastHurt < 4;
@@ -679,6 +707,11 @@ class Bot extends Character {
     this.buildCd -= dt;
     this.swingT = Math.max(0, this.swingT - dt);
     this.burstPause -= dt;
+    this.nadeCd -= dt;
+    if (this.c4T > 0) {
+      this.c4T -= dt;
+      if (this.c4T <= 0) g.explosives.detonate(this);
+    }
     if (this.reloadT > 0) {
       this.reloadT -= dt;
       if (this.reloadT <= 0 && this.weapon) this.weapon.mag = WEAPONS[this.weapon.type].mag;
@@ -692,6 +725,11 @@ class Bot extends Character {
       if (g.infiniteMats) this.mats.wood = Math.max(this.mats.wood, 200);
     }
 
+    // Si deja de curarse (p. ej. para pelear) se cancela la cura a medias
+    if (this.using && this.task !== 'heal') {
+      this.cancelUse();
+      this.crouching = false;
+    }
     let speed = 5.4;
     let jump = false;
     wish.set(0, 0, 0);
@@ -708,14 +746,14 @@ class Bot extends Character {
         break;
       case 'fight':
         speed = this.fightMove(dt);
-        this.aimAndShoot(dt);
+        if (!this.tryThrow()) this.aimAndShoot(dt);
         break;
       case 'hunt': {
         const m = this.memory.get(this.goalRef);
         if (m) this.goal.copy(m.pos);
         if (this.navigate(this.goal, 3)) this.memory.delete(this.goalRef);
         speed = 6.2;
-        if (this.target && this.memory.get(this.target)?.seen === false) this.shootBlockingBuild(dt);
+        if (this.target && this.memory.get(this.target)?.seen === false && !this.tryThrow()) this.shootBlockingBuild(dt);
         break;
       }
       case 'heal':
@@ -792,7 +830,7 @@ class Bot extends Character {
     tmpA.set(m.pos.x - this.pos.x, 0, m.pos.z - this.pos.z);
     const d = tmpA.length() || 1;
     tmpA.divideScalar(d);
-    const [rmin, rmax] = this.weapon ? RANGE[cat(this.weapon)] || RANGE.ar : [0, 1.5];
+    const [rmin, rmax] = this.weapon ? rangeOf(this.weapon) : [0, 1.5];
     wish.set(0, 0, 0);
     const low = this.health + this.shield < 50;
     if (!this.targetVisible) {
@@ -854,10 +892,12 @@ class Bot extends Character {
     const dist = aim.distanceTo(eye);
     this.chooseWeapon(dist);
     const def = this.def;
-    if (def?.projectile) {
-      const t = dist / def.projectile.speed;
+    const ballistic = def?.projectile || def?.explosive;
+    if (ballistic) {
+      const t = dist / ballistic.speed;
       aim.addScaledVector(tgt.vel, t);
-      aim.y += 0.5 * def.projectile.gravity * t * t;
+      aim.y += 0.5 * ballistic.gravity * t * t;
+      if (def.explosive) aim.y -= tgt.height * 0.45; // a los pies: la explosión alcanza igual
     } else if (this.d.track > 5) aim.addScaledVector(tgt.vel, 0.05);
     const dx = aim.x - eye.x, dy = aim.y - eye.y, dz = aim.z - eye.z;
     const wantYaw = Math.atan2(-dx, -dz);
@@ -912,13 +952,31 @@ class Bot extends Character {
     const w = this.weapon;
     w.mag--;
     this.cooldown = 1 / def.rate + random.float(0, 0.05);
-    if (def.auto) {
+    if (def.burst) {
+      // Rifle de ráfagas: disparos seguidos y luego la pausa de la cadencia
+      this.burstShot++;
+      if (this.burstShot < def.burst && w.mag > 0) this.cooldown = def.burstDelay;
+      else {
+        this.burstShot = 0;
+        this.cooldown += random.float(0.05, 0.25);
+      }
+    } else if (def.auto) {
       this.burstLeft--;
       if (this.burstLeft <= 0) {
         this.burstLeft = random.int(this.d.burst[0], this.d.burst[1]);
         this.burstPause = random.float(this.d.pause[0], this.d.pause[1]);
       }
-    } else this.cooldown += random.float(0.05, 0.25);
+    } else this.cooldown += random.float(0.05, 0.25) + (def.charge || 0);
+    if (def.explosive) {
+      const muzzleE = eye.clone().addScaledVector(dir, 0.8);
+      g.explosives.launch(this, w.type, w.rarity, muzzleE, dir, 1);
+      g.net?.shotFx(this, def.sound, muzzleE, []);
+      const dC = this.pos.distanceTo(g.camera.position);
+      const v = clamp(1 - dC / 260, 0, 1);
+      if (v > 0.03) g.audio.shot(def.sound, v * v * 0.9);
+      g.noise(this.pos, 90, this);
+      return;
+    }
     const still = this.hSpeed < 1;
     const spread = def.pellets ? def.spread : (still ? def.adsSpread * 2 + 0.006 : def.spread * 0.8);
     const pellets = def.pellets || 1;
@@ -932,7 +990,7 @@ class Bot extends Character {
       const hit = g.raycast(eye, d, def.range, 0, this);
       if ((near || ends) && i < 4) {
         const end = hit ? hit.point : eye.clone().addScaledVector(d, def.range);
-        if (near) g.effects.tracer(muzzle, end, 0xffe0a0, 0.02);
+        if (near) g.effects.tracer(muzzle, end, def.beam || 0xffe0a0, def.beam ? 0.045 : 0.02, def.beam ? 0.14 : 0.07);
         if (ends) ends.push(end);
       }
       if (!hit) continue;
@@ -960,7 +1018,7 @@ class Bot extends Character {
     const vol = clamp(1 - dCam / 260, 0, 1);
     if (vol > 0.03) g.audio.shot(def.sound, vol * vol * 0.9);
     if (dCam < 150) g.effects.muzzleFlash(null, muzzle);
-    g.noise(this.pos, def.sound === 'sniper' ? 160 : 90, this);
+    g.noise(this.pos, def.sound === 'sniper' || def.sound === 'dmr' ? 160 : 90, this);
   }
 
   // Si el objetivo se esconde tras una construcción, dispararla.
@@ -978,6 +1036,39 @@ class Bot extends Character {
       if (this.weapon.mag <= 0) this.startReload();
       else this.fire(this.def, dir.clone(), eye);
     }
+  }
+
+  nadeCount() {
+    let n = 0;
+    for (const t of BOT_NADES) n += this.nades[t] || 0;
+    return n;
+  }
+
+  // Lanza una granada, molotov o C4 al objetivo si está a buena distancia
+  // (sobre todo si se esconde detrás de algo). Devuelve true si lanzó.
+  tryThrow() {
+    if (this.nadeCd > 0 || this.using || this.knocked || this.swapT > 0 || !this.target) return false;
+    const g = this.game;
+    const m = this.memory.get(this.target);
+    if (!m || g.time - m.time > 2) return false;
+    const d = Math.hypot(m.pos.x - this.pos.x, m.pos.z - this.pos.z);
+    this.nadeCd = random.float(1.5, 3);
+    const dy = m.pos.y - this.pos.y;
+    if (d < 7 || d > 32 || dy > 6 || dy < -16) return false;
+    const opts = ['grenade', 'sticky', 'molotov', 'c4'].filter((t) => this.nades[t] > 0);
+    if (!opts.length || !random.chance(this.d.nade * (this.targetVisible ? 0.5 : 1))) return false;
+    const type = random.pick(opts);
+    const T = Math.min(1.7, Math.max(0.45, d / 14));
+    const at = m.pos.clone().addScaledVector(this.target.vel, T * 0.5);
+    const vel = g.explosives.aimThrow(this, at);
+    const dir = tmpA.set(at.x - this.pos.x, 0, at.z - this.pos.z).normalize();
+    if (!g.explosives.throwItem(this, type, dir, vel)) return false;
+    this.nades[type]--;
+    this.yaw = Math.atan2(-dir.x, -dir.z);
+    this.nadeCd = random.float(5, 10);
+    this.cooldown = Math.max(this.cooldown, 0.5);
+    if (type === 'c4') this.c4T = T + random.float(0.2, 0.6);
+    return true;
   }
 
   // ------------------------------------------------------------ CONSTRUIR
@@ -1003,6 +1094,12 @@ class Bot extends Character {
     }
     if (!this.using) {
       if (this.game.mode.build && this.totalMats >= 50 && this.game.time - this.lastHurt < 12) this.boxUp();
+      else if (this.nades.smoke > 0 && this.game.time - this.lastHurt < 10) {
+        // Sin muros: humo a los pies para curarse a cubierto
+        this.nades.smoke--;
+        const at = this.pos.clone();
+        this.game.explosives.throwItem(this, 'smoke', tmpA.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)), this.game.explosives.aimThrow(this, at));
+      }
       this.using = item;
       this.useT = CONSUMABLES[item].use;
       this.crouching = true;
@@ -1060,7 +1157,6 @@ class Bot extends Character {
     for (const pk of g.pickups.items) {
       if (!pk.settled || pk.pos.distanceToSquared(this.pos) > 3.2 || Math.abs(pk.pos.y - this.pos.y) > 1.6) continue;
       const it = pk.item;
-      if (it.kind === 'weapon' && WEAPONS[it.type].explosive) continue;
       if (it.kind === 'consumable' && !(it.type in this.heals)) continue;
       if (it.kind === 'weapon') {
         let slot = this.weapons.findIndex((w) => !w);
@@ -1083,6 +1179,8 @@ class Bot extends Character {
         this.setHeld(this.weapon || PICKAXE);
       } else if (it.kind === 'consumable') {
         this.heals[it.type] = (this.heals[it.type] || 0) + it.count;
+      } else if (it.kind === 'throwable') {
+        this.nades[it.type] = Math.min(THROWABLES[it.type].max, (this.nades[it.type] || 0) + it.count);
       } else if (it.kind === 'material') {
         this.mats[it.mat] = Math.min(MATERIALS[it.mat].max, this.mats[it.mat] + it.count);
       } else if (it.kind !== 'ammo') continue;

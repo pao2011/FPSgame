@@ -45,6 +45,14 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
   granada de impulso y plataforma de salto.
 - **Estructuras nuevas**: Castillo Corona, molinos y mercadillos (con nombre
   en el mapa).
+- **Pase de batalla** (40 niveles, XP por partida y logros), **Tienda** con
+  tokens, **skins**, **accesorios** y **camuflajes de armas**.
+- **Versión para móviles**: controles táctiles, calidad *Móvil* con
+  resolución dinámica, juego cruzado PC + móvil y **APK de Android**.
+- **Explosivos**: granada, granada lapa, C4 (detonación a distancia), humo,
+  molotov e impulso, con trayectoria previa y sincronizados online.
+- **Rarezas Mítico y Exótico**, rifle de tirador, rifle de plasma y arco
+  explosivo.
 - **Calidad de vida**: marcadores de ubicación (clic central, también para tu
   equipo online), destino en el mapa (clic), marcas en brújula y minimapa,
   recogida automática, curas ordenadas a la derecha, curación rápida (H),
@@ -55,9 +63,9 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 
 ## 🔴 Prioridad alta (siguiente versión)
 
-1. **Sincronizar en online lo que aún es local**: plataformas de salto,
-   granadas/proyectiles en vuelo (ahora sólo se ve la explosión) y el botín
-   de las mesas de la Isla de Inicio.
+1. **Sincronizar en online lo que aún es local**: plataformas de salto, las
+   puertas ya abiertas al unirse tarde y el botín de las mesas de la Isla de
+   Inicio.
 2. **Servidor con autoridad sobre el daño** (anti-trampas básico): validar
    distancia/cadencia de los impactos y la munición en `server/match.js`.
 3. **Inventario con arrastrar y soltar** (reordenar huecos, dividir pilas,
@@ -66,7 +74,8 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
    tritanopía), visualización de efectos de sonido (indicadores de pasos,
    disparos y cofres en pantalla) y subtítulos.
 5. **Mando (gamepad)** con asistencia de apuntado y esquemas de botones
-   (incluido «constructor pro»).
+   (incluido «constructor pro»), y **reasignar los botones táctiles** igual
+   que las teclas.
 6. **Pantalla de carga/emparejamiento** con consejos y el mapa, y
    **reconexión** a una partida en curso tras perder la conexión.
 7. **Indicador de pasos y disparos cercanos** en la brújula (muy útil sin
@@ -74,10 +83,10 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 
 ## 🟠 Prioridad media
 
-8. **Progresión**: niveles de cuenta, experiencia por partida, estadísticas
-   por modo y **desafíos diarios/semanales**.
+8. **Desafíos diarios y semanales** y estadísticas por modo (el pase de
+   batalla ya da XP por partida y logros).
 9. **Taquilla ampliada**: picos, planeadores, mochilas, estelas, gestos
-   (bailes) y pantallas de carga; tienda con moneda de juego (sin dinero real).
+   (bailes) y pantallas de carga (ya hay skins, accesorios y camuflajes).
 10. **Más vehículos**: barcas, quads, avión de reconocimiento; gasolina y
     daño de vehículos.
 11. **NPCs y misiones** en los pueblos (comerciantes que venden armas por

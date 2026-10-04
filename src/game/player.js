@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PICKAXE, CONSUMABLES, AMMO, MATERIALS } from './items.js';
+import { PICKAXE, AMMO, MATERIALS, stackDef } from './items.js';
 import { Character, R } from './character.js';
 import { clamp } from '../core/rng.js';
 
@@ -23,14 +23,12 @@ export class Player extends Character {
     this.inventory = [PICKAXE, null, null, null, null, null];
     this.selected = 0;
     this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
-    this.flying = false;
     this.autorun = false;
     this.crouchToggled = false;
-    this.lastJumpT = -9;
     this.mats = { wood: 0, stone: 0, metal: 0 };
     this.stepTimer = 0;
     this.vehicle = null;
-    this.stats = { chests: 0, damage: 0, distance: 0, kills: 0, built: 0 };
+    this.stats = { chests: 0, damage: 0, distance: 0, kills: 0, built: 0, edits: 0, heads: 0 };
     this.model.root.visible = false;
     this.setHeld(PICKAXE);
   }
@@ -49,11 +47,11 @@ export class Player extends Character {
       this.mats[item.mat] = Math.min(MATERIALS[item.mat].max, this.mats[item.mat] + item.count);
       return true;
     }
-    if (item.kind === 'consumable') {
-      const def = CONSUMABLES[item.type];
+    const def = stackDef(item);
+    if (def) {
       for (let i = 1; i < 6 && item.count > 0; i++) {
         const s = this.inventory[i];
-        if (s && s.kind === 'consumable' && s.type === item.type && s.count < def.max) {
+        if (s && s.kind === item.kind && s.type === item.type && s.count < def.max) {
           const n = Math.min(def.max - s.count, item.count);
           s.count += n;
           item.count -= n;
@@ -62,7 +60,7 @@ export class Player extends Character {
       if (item.count <= 0) return true;
     }
     // Las curas se ordenan a la derecha y las armas a la izquierda (Opciones)
-    const right = item.kind === 'consumable' && this.game.settings.autoSortConsumables !== false;
+    const right = (item.kind === 'consumable' || item.kind === 'throwable') && this.game.settings.autoSortConsumables !== false;
     for (let k = 1; k < 6; k++) {
       const i = right ? 6 - k : k;
       if (!this.inventory[i]) {
@@ -116,6 +114,14 @@ export class Player extends Character {
     fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     right.set(-fwd.z, 0, fwd.x);
     wish.set(0, 0, 0);
+    const ax = input.axis;
+    if (ax?.active) {
+      // Joystick táctil: dirección analógica; empujarlo poco = andar despacio
+      wish.addScaledVector(fwd, ax.y).addScaledVector(right, ax.x);
+      const m = wish.length();
+      if (m > 0.001) wish.multiplyScalar(Math.min(1, Math.max(0.35, m / 0.8)) / m);
+      return wish;
+    }
     if (input.held('forward') || this.autorun) wish.add(fwd);
     if (input.held('back')) wish.sub(fwd);
     if (input.held('right')) wish.add(right);
@@ -166,23 +172,14 @@ export class Player extends Character {
     }
     if (input.hit('autorun')) this.autorun = !this.autorun;
     if (this.autorun && (input.hit('back') || input.hit('forward'))) this.autorun = false;
-    // Modo creativo: doble salto para volar
-    if (this.game.mode.creative && input.hit('jump')) {
-      const now = this.game.time;
-      if (now - this.lastJumpT < 0.3) {
-        this.flying = !this.flying;
-        this.vel.y = 0;
-        this.game.hud.toast(this.flying ? 'Volando: Espacio sube · Agacharse baja · doble salto para dejar de volar' : 'Has dejado de volar');
-      }
-      this.lastJumpT = now;
-    }
-    if (this.flying) {
-      this.updateFly(dt, input);
+    // Modo creativo: volando no hay gravedad
+    if (this.game.creative?.flying) {
+      this.game.creative.flyStep(dt, this.moveWish(input), input);
       return;
     }
     // Plataforma de salto: al llegar arriba se abre el planeador
-    if (this.launched && this.launchT <= 0 && this.vel.y < 4 && !this.onGround) {
-      this.launched = false;
+    if (this.padLaunch && this.launchT <= 0 && this.vel.y < 4 && !this.onGround) {
+      this.padLaunch = false;
       this.deployGlider();
       this.game.audio.glider();
       return;
@@ -248,26 +245,11 @@ export class Player extends Character {
     }
   }
 
-  // Vuelo libre del modo creativo (atraviesa el aire, choca con paredes).
-  updateFly(dt, input) {
-    const w = this.moveWish(input);
-    const fast = input.held('sprint') ? 2.2 : 1;
-    const speed = 14 * fast * (this.game.speedMult || 1);
-    const k = Math.min(1, dt * 8);
-    this.vel.x += (w.x * speed - this.vel.x) * k;
-    this.vel.z += (w.z * speed - this.vel.z) * k;
-    const vy = input.held('jump') ? speed * 0.8 : input.held('crouch') ? -speed * 0.8 : 0;
-    this.vel.y += (vy - this.vel.y) * k; // move() no aplica gravedad
-    this.sprinting = false;
-    this.crouching = false;
-    this.move(dt);
-    if (this.onGround && input.held('crouch')) this.flying = false;
-  }
-
   // ------------------------------------------------------------ DAÑO
   onHurt(amount, type, attacker) {
     this.game.hud.flashDamage(type, attacker);
     this.game.audio.hurt();
+    if (this.game.touch && type !== 'storm') this.game.touch.vibrate(25);
   }
 
   onEliminated(type, killer) {

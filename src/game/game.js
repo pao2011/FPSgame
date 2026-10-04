@@ -9,6 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Input } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { Effects } from './effects.js';
+import { Explosives } from './explosives.js';
 import { PickupManager, ContainerManager, spawnFloorLoot } from './loot.js';
 import { Dummies } from './dummies.js';
 import { BattleBus } from './bus.js';
@@ -21,10 +22,12 @@ import { Vehicles } from './vehicles.js';
 import { BotManager } from './bots.js';
 import { HUD } from '../ui/hud.js';
 import { Menu } from '../ui/menu.js';
+import { TouchControls, isTouchDevice } from '../ui/touch.js';
+import { Progress } from './progress.js';
+import { Creative } from './creative.js';
 import { MapRenderer } from '../ui/minimap.js';
-import { itemName, itemRarity, RARITIES, MATERIALS, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon } from './items.js';
+import { itemName, itemRarity, RARITIES, MATERIALS, AMMO, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon, stackDef } from './items.js';
 import { mergeBinds, keyName } from '../core/binds.js';
-import { CreativeTools } from './creative.js';
 import { CreativePanel } from '../ui/creative.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
 import { clamp, random, RNG } from '../core/rng.js';
@@ -41,14 +44,21 @@ export class Game {
   constructor(container) {
     this.settings = loadSettings();
     const params = new URLSearchParams(location.search);
-    if (params.get('calidad') === 'baja') this.settings.quality = 'baja';
-    const low = this.settings.quality === 'baja';
+    const q = params.get('calidad');
+    if (q === 'baja' || q === 'movil') this.settings.quality = q;
+    const mobile = this.settings.quality === 'movil';
+    const low = this.settings.quality === 'baja' || mobile;
     const high = this.settings.quality === 'alta';
-    this.quality = low ? 'baja' : high ? 'alta' : 'normal';
+    this.quality = mobile ? 'movil' : low ? 'baja' : high ? 'alta' : 'normal';
+    const tc = this.settings.touchControls;
+    this.isTouch = tc === 'on' || (tc !== 'off' && isTouchDevice());
 
     // ------------------------------------------------------------ RENDER
     const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: low ? false : !this.usePost, powerPreference: 'high-performance' }));
-    renderer.setPixelRatio(low ? Math.min(devicePixelRatio, 1) * 0.75 : Math.min(devicePixelRatio, high ? 2 : 1.5));
+    // Calidad móvil: resolución ajustable y dinámica (baja si van mal los FPS).
+    this.dynRes = 1;
+    this.perf = { t: 0, n: 0, cool: 0 };
+    renderer.setPixelRatio(this.pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = !low;
     renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -86,13 +96,17 @@ export class Game {
     this.setupPost();
 
     // ------------------------------------------------------------ MUNDO
-    // Mapa único: siempre la misma isla (también en online).
+    // Mapa único: siempre la misma isla (también en online). El modo
+    // creativo usa su propia isla plana (sandbox, no es un mapa de partida).
     this.seed = MAP_SEED;
-    this.world = new World(this.scene, this.seed);
+    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
 
     this.input = new Input(this.canvas);
+    this.touch = null;
     this.audio = audio;
     this.effects = new Effects(this);
+    this.explosives = new Explosives(this);
+    this.camShake = 0;
     this.pickups = new PickupManager(this);
     this.containers = new ContainerManager(this, this.world.chestSpots, this.world.ammoSpots);
     this.dummies = new Dummies(this, this.world.dummySpots);
@@ -106,6 +120,8 @@ export class Game {
     this.build = new BuildSystem(this);
     this.vehicles = new Vehicles(this, this.world.carSpots);
     this.bots = new BotManager(this);
+    this.progress = new Progress(this);
+    this.creative = new Creative(this);
     this.containers.reset();
     this.nav = new NavGrid(this.world);
     this.mapRenderer = new MapRenderer(this.world);
@@ -144,11 +160,12 @@ export class Game {
     if (this.settings.outfit) this.player.setOutfit(this.settings.outfit);
 
     this.menu = new Menu(this);
-    this.creative = new CreativeTools(this);
     this.creativePanel = new CreativePanel(this);
+    if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
     this.canvas.addEventListener('click', () => {
+      if (this.touch) return; // en táctil lo gestiona src/ui/touch.js
       if (this.spectating) this.nextSpectate();
       else if (this.state === 'playing' && !this.input.locked && !this.paused) this.input.lock();
     });
@@ -181,7 +198,35 @@ export class Game {
 
   // Posprocesado (calidad normal/alta): MSAA + bloom + tonemapping final.
   get usePost() {
-    return this.settings.quality !== 'baja';
+    return this.settings.quality !== 'baja' && this.settings.quality !== 'movil';
+  }
+
+  pixelRatio() {
+    const dpr = devicePixelRatio || 1;
+    if (this.quality === 'movil') return Math.min(dpr, 2) * ((this.settings.resScale || 70) / 100) * this.dynRes;
+    if (this.quality === 'baja') return Math.min(dpr, 1) * 0.75;
+    return Math.min(dpr, this.quality === 'alta' ? 2 : 1.5);
+  }
+
+  // Resolución dinámica (calidad móvil): mide los FPS y ajusta la resolución.
+  adaptResolution(raw) {
+    if (this.quality !== 'movil' || this.settings.autoRes === false || this.state !== 'playing' || this.paused) return;
+    const pf = this.perf;
+    pf.t += raw;
+    pf.n++;
+    if (pf.t < 2) return;
+    const fps = pf.n / pf.t;
+    pf.t = pf.n = 0;
+    const target = this.settings.fpsCap === 30 ? 28 : 50;
+    let next = this.dynRes;
+    if (fps < target - 6) next = Math.max(0.55, this.dynRes - 0.12);
+    else if (fps > target + 6 && ++pf.cool >= 3) next = Math.min(1, this.dynRes + 0.06);
+    if (next !== this.dynRes) {
+      pf.cool = 0;
+      this.dynRes = next;
+      this.renderer.setPixelRatio(this.pixelRatio());
+      this.renderer.setSize(innerWidth, innerHeight);
+    }
   }
 
   setupPost() {
@@ -222,11 +267,36 @@ export class Game {
     const root = document.documentElement.style;
     root.setProperty('--hud-scale', String(s.hudScale || 1));
     root.setProperty('--cross', s.crosshairColor || '#ffffff');
+    this.touch?.applySettings();
+    if (this.renderer && this.quality === 'movil') {
+      const pr = this.pixelRatio();
+      if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.01) {
+        this.renderer.setPixelRatio(pr);
+        this.renderer.setSize(innerWidth, innerHeight);
+      }
+    }
   }
 
   // Nombre de la tecla asignada a una acción (para los avisos del HUD).
   key(action) {
     return keyName(this.settings.binds?.[action]?.[0]);
+  }
+
+  // Mantiene la pantalla encendida durante la partida (móviles).
+  keepAwake(on) {
+    try {
+      if (on && !this.wakeLock && navigator.wakeLock && document.visibilityState === 'visible') {
+        navigator.wakeLock.request('screen').then((l) => {
+          this.wakeLock = l;
+          l.addEventListener?.('release', () => (this.wakeLock = null));
+        }).catch(() => {});
+      } else if (!on && this.wakeLock) {
+        this.wakeLock.release().catch(() => {});
+        this.wakeLock = null;
+      }
+    } catch {
+      /* API no disponible */
+    }
   }
 
   onResize() {
@@ -244,8 +314,9 @@ export class Game {
   onLockChange(locked) {
     if (locked) {
       this.hadLock = true;
+      this.keepAwake(true);
       this.setPaused(false);
-    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen && !this.hud.mapOpen) {
+    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen && !this.uiOpen && !this.hud.mapOpen) {
       this.setPaused(true);
     }
   }
@@ -261,6 +332,7 @@ export class Game {
 
   resume() {
     this.audio.init();
+    this.touch?.fullscreen();
     this.input.lock();
     this.setPaused(false);
   }
@@ -270,6 +342,16 @@ export class Game {
   startMatch(modeId = this.settings.mode) {
     const mode = MODES[modeId] || MODES.solo;
     this.settings.mode = mode.id;
+    // El creativo usa su propia isla (plana): hay que recargar para cambiar de isla
+    if (!!mode.creative !== this.world.creative) {
+      this.applySettings();
+      const q = new URLSearchParams(location.search);
+      if (mode.creative) q.set('creativo', '1');
+      else q.delete('creativo');
+      q.set('auto', mode.id);
+      location.search = q.toString();
+      return;
+    }
     if (this.net) this.leaveOnline();
     this.prepareMatch(mode, { rng: random, stormRng: random, team: 0 });
 
@@ -288,6 +370,16 @@ export class Game {
     this.bots.reset(nb, teams, this.settings.difficulty);
     this.chars = [this.player, ...this.bots.list];
     this.beginMatch({});
+    if (mode.creative) {
+      const p = this.player;
+      p.resetBody();
+      p.mode = 'ground';
+      p.pos.set(0, this.world.terrain.heightAt(0, 12) + 0.5, 12);
+      p.yaw = 0;
+      p.model.root.visible = this.camMode !== 'fp';
+      this.creative.start();
+    }
+    this.touch?.fullscreen();
     this.input.lock();
   }
 
@@ -297,6 +389,14 @@ export class Game {
       // El mapa es único y fijo: un servidor con otra isla es de otra versión.
       this.hud.toast('El servidor usa otra versión del mapa: actualiza el servidor y el juego');
       this.netClient.send?.('leave_match');
+      return;
+    }
+    if (this.world.creative) {
+      // Desde la isla creativa: recargar con la isla principal
+      const q = new URLSearchParams(location.search);
+      q.delete('creativo');
+      q.set('online', '1');
+      location.search = q.toString();
       return;
     }
     if (this.net) this.leaveOnline();
@@ -379,6 +479,7 @@ export class Game {
     this.harvest.reset();
     this.vehicles.reset();
     this.combat.reset();
+    this.explosives.reset();
     this.effects.clear();
     this.pickups.clear();
     spawnFloorLoot(this, this.world.lootSpots, o.rng, !!o.online);
@@ -395,6 +496,8 @@ export class Game {
     this.respawnT = 0;
     this.matchTime = 0;
     this.stormTick = 0;
+    this.matchAwarded = false;
+    this.matchPlayers = 0;
     this.noises.length = 0;
     this.pathQueue.length = 0;
     this.hud.show(true);
@@ -411,9 +514,8 @@ export class Game {
     if (mode.creative) {
       this.storm.active = false;
       this.storm.mesh.visible = false;
-      this.creative.begin();
     } else if (!mode.noBus) {
-      if (this.settings.skipLobby && !this.net) this.launchBus();
+      if ((this.settings.skipLobby || mode.noBots) && !this.net) this.launchBus();
       else this.enterLobby();
     } else {
       this.bus.active = false;
@@ -451,11 +553,10 @@ export class Game {
     p.mats = { wood: 999, stone: 999, metal: 999 };
     // Armas de práctica en las mesas (sólo en este ordenador)
     this.lobbyPickups = [];
-    const types = ['ar', 'burst', 'heavyar', 'smg', 'shotgun', 'tactical', 'sniper', 'pistol', 'revolver', 'rocket', 'grenadelauncher', 'minigun'];
+    const types = ['ar', 'burst', 'heavyar', 'smg', 'shotgun', 'tactical', 'sniper', 'pistol', 'revolver', 'rocket', 'glauncher', 'minigun'];
     L.loot.forEach((s, i) => {
       const type = types[i % types.length];
-      const w = WEAPONS[type];
-      const it = makeWeapon(type, Math.max(w.minRarity ?? 0, Math.min(w.maxRarity ?? 4, 3)));
+      const it = makeWeapon(type, 3); // makeWeapon ajusta la rareza a las del arma
       this.lobbyPickups.push(this.pickups.spawn(it, new THREE.Vector3(s.x, s.y, s.z), null, null));
     });
     // Los bots van llegando poco a poco (en online todos están ya)
@@ -512,6 +613,7 @@ export class Game {
       this.lobbyPickups = [];
       this.build.reset();
       this.combat.reset();
+      this.explosives.reset();
       p.inventory = [PICKAXE, null, null, null, null, null];
       p.selected = 0;
       p.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
@@ -581,7 +683,7 @@ export class Game {
         { kind: 'consumable', type: 'shieldpot', count: 2 }, { kind: 'consumable', type: 'medkit', count: 1 }];
       p.selected = 1;
     }
-    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60, rockets: 4 };
+    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60, rockets: 6 };
     p.shield = this.mode.arena ? 100 : 50;
     this.combat.modelKey = null;
   }
@@ -590,11 +692,15 @@ export class Game {
     return {
       weapons: [makeWeapon('ar', random.int(1, 3)), makeWeapon('shotgun', random.int(1, 3)), makeWeapon(random.pick(['smg', 'pistol']), random.int(0, 2))],
       heals: { bandage: 5, medkit: 1, smallshield: 2, shieldpot: 1 },
+      nades: { grenade: random.int(0, 2), molotov: random.int(0, 1) },
     };
   }
 
   quitToMenu() {
     const wasOnline = !!this.net || this.mode.online;
+    if (this.mode.creative) this.creative.stop();
+    // Abandonar a mitad de partida también da XP (sin bonus de puesto)
+    const abandon = this.state === 'playing' && !this.matchAwarded && this.matchTime > 30 ? this.awardMatch(false, null) : null;
     this.leaveOnline();
     this.state = 'menu';
     this.phase = 'menu';
@@ -613,9 +719,30 @@ export class Game {
     this.bus.active = false;
     this.bus.model.visible = false;
     this.bots.reset(0, [], 'normal');
+    this.explosives.reset();
     this.chars = [this.player];
     this.player.model.root.visible = false;
     this.menu.showMain(wasOnline && this.netClient.authed ? 'online' : null);
+    if (abandon) this.menu.online.toast(`+${abandon.total} XP del pase · Nivel ${abandon.level}`);
+  }
+
+  // XP del pase de batalla al terminar una partida (no en práctica ni creativo).
+  awardMatch(win, place) {
+    if (this.matchAwarded || this.mode.noBots) return null;
+    this.matchAwarded = true;
+    const p = this.player;
+    const res = this.progress.matchEnd({
+      kills: p.stats.kills, damage: p.stats.damage, chests: p.stats.chests, built: p.stats.built, edits: p.stats.edits,
+      heads: p.stats.heads, time: this.matchTime, place, win, online: !!this.net, respawn: !!this.mode.respawn,
+    });
+    return res;
+  }
+
+  // Avisos de logros y recompensas conseguidos fuera de la pantalla final.
+  announceRewards(r) {
+    if (!r) return;
+    for (const a of r.achievements || []) this.hud.toast(`🏆 Logro: ${a.name} (+${a.xp} XP)`);
+    if (r.rewards?.length) this.menu.online.toast(`🎁 Nuevas recompensas del pase: ${r.rewards.length}`);
   }
 
   characters() {
@@ -713,7 +840,7 @@ export class Game {
 
   onElimination(victim, killer, type) {
     if (this.net?.isLocal(victim)) this.net.sendElim(victim, killer, type);
-    const how = type === 'storm' ? 'la tormenta' : type === 'fall' ? 'una caída' : type === 'quit' ? 'abandono' : null;
+    const how = { storm: 'la tormenta', fall: 'una caída', quit: 'abandono', explosion: 'una explosión', fire: 'el fuego' }[type] || null;
     const v = `<b class="${this.teamTag(victim)}">${this.name(victim)}</b>`;
     let text;
     if (killer && killer !== victim) text = `<b class="${this.teamTag(killer)}">${this.name(killer)}</b> eliminó a ${v}`;
@@ -789,7 +916,7 @@ export class Game {
     }
     // Soltar el inventario
     const drops = [];
-    for (const it of p.inventory.slice(1)) if (it) drops.push({ ...it });
+    for (const it of p.inventory.slice(1)) if (it && !(it.count <= 0)) drops.push({ ...it });
     for (const a in p.ammo) if (p.ammo[a] > 0) drops.push({ kind: 'ammo', ammo: a, count: p.ammo[a] });
     if (!this.infiniteMats) for (const m in p.mats) if (p.mats[m] > 0) drops.push({ kind: 'material', mat: m, count: p.mats[m] });
     this.pickups.burst(drops.slice(0, 10), p.pos.clone().setY(p.pos.y + 0.8));
@@ -800,7 +927,7 @@ export class Game {
     const mate = this.teamMembers(p.team).find((c) => c.alive && c !== p);
     if (mate) {
       this.spectating = mate;
-      document.exitPointerLock?.();
+      this.input.unlock();
       this.hud.toast(`Has sido eliminado · Espectando a ${mate.name}`);
     }
   }
@@ -898,7 +1025,8 @@ export class Game {
       if (!this.mode.noBots && !this.mode.respawn) cause += ` · Puesto #${place}`;
       if (customCause) cause = customCause;
     }
-    this.menu.showEnd(win, cause, this.statsHTML(), !!this.mode.online);
+    const xp = this.awardMatch(win, this.mode.respawn ? null : place);
+    this.menu.showEnd(win, cause, this.statsHTML(), !!this.mode.online, xp);
   }
 
   statsHTML() {
@@ -917,7 +1045,8 @@ export class Game {
   }
 
   endMatchUI() {
-    document.exitPointerLock?.();
+    this.input.unlock();
+    this.keepAwake(false);
     this.hud.setScope(false);
     this.hud.toggleMap(false);
     this.build.setActive(false);
@@ -928,12 +1057,14 @@ export class Game {
   }
 
   onJumpFromBus() {
-    if (this.settings.showHints) this.hud.toast(`¡Has saltado! Mira hacia abajo y pulsa ${this.key('forward')} para caer más rápido`);
+    if (!this.settings.showHints) return;
+    this.hud.toast(this.touch ? '¡Has saltado! Mira hacia abajo y empuja el joystick para caer más rápido' : `¡Has saltado! Mira hacia abajo y pulsa ${this.key('forward')} para caer más rápido`);
   }
 
   onLanded() {
     if (!this.settings.showHints) return;
-    this.hud.toast(this.mode.build ? `¡Has aterrizado! Busca cofres y armas · ${this.key('build')} para construir` : '¡Has aterrizado! Busca cofres y armas');
+    const build = this.touch ? 'el botón de ladrillos para construir' : `${this.key('build')} para construir`;
+    this.hud.toast(this.mode.build ? `¡Has aterrizado! Busca cofres y armas · ${build}` : '¡Has aterrizado! Busca cofres y armas');
   }
 
   // ---------------------------------------------------------- RAYCAST
@@ -975,8 +1106,16 @@ export class Game {
     if (lim > 0 && ts - this.lastFrame < 1000 / lim - 1) return;
     this.lastFrame = ts;
     this.timer.update(ts);
-    const raw = this.timer.getDelta();
+    let raw = this.timer.getDelta();
+    // Límite de 30 FPS (ahorro de batería): se salta un fotograma de cada dos
+    if (this.settings.fpsCap === 30) {
+      this.capAcc = (this.capAcc || 0) + raw;
+      if (this.capAcc < 1 / 32) return;
+      raw = this.capAcc;
+      this.capAcc = 0;
+    }
     this.hud.fps(raw);
+    this.adaptResolution(raw);
     this.step(Math.min(0.05, raw));
     this.render();
   };
@@ -992,11 +1131,13 @@ export class Game {
       this.updateMenuCamera(t);
       this.world.clouds.rotation.y = t * 0.003;
       this.containers.update(dt, t);
+      this.touch?.update();
       input.endFrame();
       return;
     }
     // En online la partida no se detiene al pausar.
     if (this.paused && !this.net) {
+      this.touch?.update();
       input.endFrame();
       return;
     }
@@ -1005,6 +1146,7 @@ export class Game {
       this.updateCamera(dt);
       this.updateBanner();
       this.hud.update(dt);
+      this.touch?.update();
       input.endFrame();
       return;
     }
@@ -1029,14 +1171,18 @@ export class Game {
       if (this.build.editing) mult = st.editSensitivity ?? 1;
       else if (this.build.active) mult = st.buildSensitivity ?? 1;
       else if (this.combat.adsBlend > 0.5) mult = this.hud.scoped ? st.scopeSensitivity ?? 0.6 : st.adsSensitivity ?? 0.8;
-      const sens = 0.0022 * zoom * st.sensitivity * mult * (this.creativePanel.open ? 0 : 1);
-      p.yaw -= input.mouseDX * sens;
-      p.pitch -= input.mouseDY * sens * (this.settings.invertY ? -1 : 1);
+      if (this.creativePanel.open) mult = 0;
+      const sens = 0.0022 * zoom * st.sensitivity * mult;
+      const tsens = 0.0048 * zoom * (st.touchSens || 1) * mult;
+      const inv = st.invertY ? -1 : 1;
+      p.yaw -= input.mouseDX * sens + input.lookDX * tsens;
+      p.pitch -= (input.mouseDY * sens + input.lookDY * tsens) * inv;
       p.pitch = clamp(p.pitch, -1.5, 1.5);
       this.vehicles.update(dt, input);
       p.update(dt, input);
       this.updateCamera(dt);
       this.build.update(dt, input);
+      this.creative.update(dt, input);
       this.combat.update(dt, input);
       this.updateInteraction(input, dt);
       this.updateStorm(dt);
@@ -1061,13 +1207,14 @@ export class Game {
     this.pickups.update(dt, t);
     this.containers.update(dt, t);
     this.dummies.update(dt);
+    this.explosives.update(dt);
     this.effects.update(dt);
     this.updatePings(dt);
-    this.creative.update(dt);
     this.updateAudio();
     if (this.noises.length && t - this.noises[0].t > 1.5) this.noises = this.noises.filter((n) => t - n.t < 1.5);
     this.world.clouds.rotation.y = t * 0.003;
     if (this.state === 'playing') this.hud.update(dt);
+    this.touch?.update();
     input.endFrame();
   }
 
@@ -1149,6 +1296,7 @@ export class Game {
     const p = this.player;
     const item = p.inventory[p.selected];
     if (p.selected === 0 || !item) return;
+    if (stackDef(item) && item.count <= 0) return; // detonador del C4 sin cargas
     p.inventory[p.selected] = null;
     this.combat.reloading = false;
     this.combat.cancelUse();
@@ -1177,7 +1325,8 @@ export class Game {
     for (let i = 1; i < 6; i++) {
       const s = p.inventory[i];
       if (!s) return true;
-      if (item.kind === 'consumable' && s.kind === 'consumable' && s.type === item.type && s.count < CONSUMABLES[item.type].max) return true;
+      const def = stackDef(item);
+      if (def && s.kind === item.kind && s.type === item.type && s.count < def.max) return true;
     }
     return p.selected > 0 && !!p.inventory[p.selected];
   }
@@ -1199,8 +1348,7 @@ export class Game {
       p.addItem(item);
       this.pickups.remove(pk);
       this.audio.pickup();
-      const what = item.kind === 'material' ? MATERIALS[item.mat].name.toLowerCase()
-        : item.ammo === 'shells' ? 'cartuchos' : 'munición ' + { light: 'ligera', medium: 'media', heavy: 'pesada' }[item.ammo];
+      const what = item.kind === 'material' ? MATERIALS[item.mat].name : AMMO[item.ammo].name;
       this.hud.toast(`+${item.count} ${what}`);
       return;
     }
@@ -1337,15 +1485,17 @@ export class Game {
       return hud.banner(`EL AUTOBÚS SALE EN ${Math.max(0, Math.ceil(this.lobbyT))}`, `Jugadores <b>${this.chars.length}/${this.chars.length}</b> · todo lo de la isla de inicio se reinicia al subir`);
     }
     if (this.waiting) return hud.banner('PARTIDA ONLINE', 'Esperando a que estén listos todos los jugadores…');
-    if (this.net && !this.input.locked && !this.paused && p.alive && !this.spectating) return hud.banner('', 'Haz <b>clic</b> en la pantalla para jugar');
+    const touch = !!this.touch;
+    if (this.net && !this.input.locked && !this.paused && p.alive && !this.spectating) return hud.banner('', touch ? '<b>Toca</b> la pantalla para jugar' : 'Haz <b>clic</b> en la pantalla para jugar');
     if (!p.alive && this.mode.respawn) return hud.banner('ELIMINADO', `Reapareces en ${Math.max(1, Math.ceil(this.respawnT))}…`);
-    if (this.spectating) return hud.banner('', `Espectando a <b>${this.spectating.name}</b> · Clic para cambiar · Esc: menú`);
+    if (this.spectating) return hud.banner('', `Espectando a <b>${this.spectating.name}</b> · ${touch ? 'Toca para cambiar · ⏸: menú' : 'Clic para cambiar · Esc: menú'}`);
     if (p.knocked) return hud.banner('¡DERRIBADO!', 'Arrástrate hacia un compañero para que te reanime');
     if (p.mode === 'bus') {
-      const thank = this.bus.thanked ? '' : ` · ${this.key('catalog')}: dar las gracias al conductor`;
+      const thank = this.bus.thanked ? '' : touch ? ' · 🏠: dar las gracias al conductor' : ` · ${this.key('catalog')}: dar las gracias al conductor`;
       if (this.bus.doorsTime > 0) hud.banner('AUTOBÚS DE BATALLA', `Las puertas se abren en ${Math.ceil(this.bus.doorsTime)}…${thank}`);
       else if (!this.bus.doorsOpen) hud.banner('AUTOBÚS DE BATALLA', `Esperando a sobrevolar la isla…${thank}`);
-      else hud.banner(`PULSA <kbd>${this.key('jump').toUpperCase()}</kbd> PARA SALTAR`, `Mueve el ratón para mirar · ${this.key('map')}: mapa${this.bus.thanked ? '' : ` · ${this.key('catalog')}: dar las gracias al conductor`}`);
+      else if (touch) hud.banner('PULSA <kbd>SALTAR</kbd>', `Arrastra para mirar · toca el minimapa para ver el mapa${thank}`);
+      else hud.banner(`PULSA <kbd>${this.key('jump').toUpperCase()}</kbd> PARA SALTAR`, `Mueve el ratón para mirar · ${this.key('map')}: mapa${thank}`);
     } else hud.banner('');
   }
 
@@ -1464,6 +1614,12 @@ export class Game {
       }
     }
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 12);
+    if (this.camShake > 0) {
+      // Temblor de cámara por explosiones cercanas
+      const k = this.camShake * this.camShake * 0.05;
+      cam.rotation.x += (Math.random() - 0.5) * k;
+      cam.rotation.y += (Math.random() - 0.5) * k;
+    }
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     this.storm.updateVisual(cam.position);

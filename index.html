@@ -2,10 +2,17 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Isla Battle Royale</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Isla Royale</title>
+    <meta name="description" content="Battle royale 3D gratis: salta del autobús, saquea, construye y sé el último en pie. Juega contra bots o con tus amigos de PC y móvil." />
+    <meta name="theme-color" content="#0b1630" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Isla Royale" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -56,6 +63,7 @@
       <div id="zone-name"></div>
       <div id="altitude"></div>
       <div id="prompt"></div>
+      <div id="edit-hint"></div>
       <div id="toast"></div>
 
       <div id="progress"><div id="progress-label"></div><div class="track"><div id="progress-fill"></div></div></div>
@@ -87,6 +95,7 @@
     <div id="pause" class="screen" style="display: none"></div>
     <div id="end" class="screen" style="display: none"></div>
     <div id="fps" style="display: none"></div>
+    <div id="rotate-hint"><div class="phone"></div>Gira el móvil para jugar en horizontal</div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

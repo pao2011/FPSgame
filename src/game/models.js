@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { RARITIES, AMMO } from './items.js';
+import { CAMOS } from './cosmetics.js';
+
 
 // Modelos low-poly construidos con primitivas.
 
@@ -44,9 +46,11 @@ const METAL = { phong: true, shininess: 60, specular: 0x444444 };
 
 // ---------------------------------------------------------------- ARMAS ---
 // El cañón apunta hacia -Z. El origen está aproximadamente en la empuñadura.
-export function makeWeaponModel(type, rarity = 0) {
+export function makeWeaponModel(type, rarity = 0, camo = null) {
   const g = new THREE.Group();
   const accent = RARITIES[rarity]?.hex ?? 0xaaaaaa;
+  // Mítico y exótico: el color de la rareza brilla un poco
+  const AC = RARITIES[rarity]?.glow ? { ...METAL, emissive: new THREE.Color(accent).multiplyScalar(0.45).getHex() } : METAL;
   const dark = 0x2a2c30;
   const mid = 0x4b4f57;
   const wood = 0x8a5a32;
@@ -56,12 +60,12 @@ export function makeWeaponModel(type, rarity = 0) {
   switch (type) {
     case 'ar': {
       box(g, 0.07, 0.1, 0.44, mid, 0, 0.0, -0.06, METAL);
-      box(g, 0.074, 0.035, 0.3, accent, 0, 0.04, -0.1, METAL);
+      box(g, 0.074, 0.035, 0.3, accent, 0, 0.04, -0.1, AC);
       box(g, 0.06, 0.075, 0.22, dark, 0, -0.005, -0.38, METAL);
       cylZ(g, 0.014, 0.24, dark, 0, 0.01, -0.58, 8, METAL);
       box(g, 0.05, 0.15, 0.065, dark, 0, -0.11, -0.1).rotation.x = 0.25;
       box(g, 0.045, 0.11, 0.05, dark, 0, -0.08, 0.08).rotation.x = -0.35;
-      box(g, 0.05, 0.09, 0.22, accent, 0, -0.02, 0.26);
+      box(g, 0.05, 0.09, 0.22, accent, 0, -0.02, 0.26, AC);
       box(g, 0.035, 0.05, 0.12, dark, 0, 0.075, -0.06, METAL);
       box(g, 0.012, 0.02, 0.012, 0xff3030, 0, 0.105, -0.06, { emissive: 0xff2020 });
       muzzle.position.set(0, 0.01, -0.72);
@@ -70,7 +74,7 @@ export function makeWeaponModel(type, rarity = 0) {
     }
     case 'smg': {
       box(g, 0.07, 0.11, 0.32, mid, 0, 0, -0.04, METAL);
-      box(g, 0.074, 0.04, 0.22, accent, 0, 0.045, -0.06, METAL);
+      box(g, 0.074, 0.04, 0.22, accent, 0, 0.045, -0.06, AC);
       cylZ(g, 0.018, 0.16, dark, 0, 0.015, -0.27, 8, METAL);
       box(g, 0.045, 0.22, 0.05, dark, 0, -0.15, -0.06);
       box(g, 0.045, 0.1, 0.05, dark, 0, -0.08, 0.07).rotation.x = -0.3;
@@ -85,7 +89,7 @@ export function makeWeaponModel(type, rarity = 0) {
       cylZ(g, 0.022, 0.55, dark, 0, 0.025, -0.42, 10, METAL);
       cylZ(g, 0.018, 0.45, dark, 0, -0.025, -0.38, 10, METAL);
       box(g, 0.07, 0.07, 0.2, wood, 0, -0.035, -0.36);
-      box(g, 0.075, 0.03, 0.2, accent, 0, 0.055, -0.04, METAL);
+      box(g, 0.075, 0.03, 0.2, accent, 0, 0.055, -0.04, AC);
       box(g, 0.045, 0.11, 0.05, wood, 0, -0.08, 0.1).rotation.x = -0.35;
       box(g, 0.06, 0.1, 0.26, wood, 0, -0.03, 0.27);
       muzzle.position.set(0, 0.025, -0.7);
@@ -97,7 +101,7 @@ export function makeWeaponModel(type, rarity = 0) {
       cylZ(g, 0.016, 0.6, dark, 0, 0.01, -0.6, 8, METAL);
       cylZ(g, 0.035, 0.3, 0x15171a, 0, 0.1, -0.06, 12, METAL);
       cylZ(g, 0.042, 0.04, 0x15171a, 0, 0.1, -0.22, 12, METAL);
-      box(g, 0.075, 0.035, 0.34, accent, 0, 0.045, -0.12, METAL);
+      box(g, 0.075, 0.035, 0.34, accent, 0, 0.045, -0.12, AC);
       box(g, 0.045, 0.11, 0.05, dark, 0, -0.08, 0.09).rotation.x = -0.35;
       box(g, 0.06, 0.12, 0.3, wood, 0, -0.03, 0.33);
       box(g, 0.04, 0.08, 0.05, dark, 0, -0.08, -0.12);
@@ -107,23 +111,25 @@ export function makeWeaponModel(type, rarity = 0) {
     }
     case 'pistol': {
       box(g, 0.05, 0.06, 0.22, mid, 0, 0.03, -0.06, METAL);
-      box(g, 0.052, 0.02, 0.18, accent, 0, 0.065, -0.06, METAL);
+      box(g, 0.052, 0.02, 0.18, accent, 0, 0.065, -0.06, AC);
       box(g, 0.045, 0.13, 0.06, dark, 0, -0.05, 0.02).rotation.x = -0.25;
       muzzle.position.set(0, 0.035, -0.18);
       sightY = 0.08;
       break;
     }
     case 'burst': {
-      box(g, 0.07, 0.1, 0.4, 0xc9b28a, 0, 0.0, -0.05);
-      box(g, 0.074, 0.035, 0.28, accent, 0, 0.045, -0.08, METAL);
-      box(g, 0.06, 0.07, 0.2, dark, 0, -0.005, -0.34, METAL);
-      cylZ(g, 0.015, 0.2, dark, 0, 0.01, -0.52, 8, METAL);
-      box(g, 0.05, 0.16, 0.06, dark, 0, -0.11, -0.12).rotation.x = 0.15;
+      box(g, 0.07, 0.1, 0.5, 0x3a3f46, 0, 0.0, -0.08, METAL);
+      box(g, 0.074, 0.03, 0.36, accent, 0, 0.045, -0.12, AC);
+      box(g, 0.065, 0.08, 0.2, dark, 0, -0.005, -0.42, METAL);
+      cylZ(g, 0.015, 0.2, dark, 0, 0.01, -0.6, 8, METAL);
+      cylZ(g, 0.024, 0.06, 0x111111, 0, 0.01, -0.72, 8, METAL);
+      box(g, 0.05, 0.16, 0.06, dark, 0, -0.12, -0.14).rotation.x = 0.1;
       box(g, 0.045, 0.11, 0.05, dark, 0, -0.08, 0.06).rotation.x = -0.35;
-      box(g, 0.055, 0.1, 0.24, 0xc9b28a, 0, -0.02, 0.24);
-      cylZ(g, 0.03, 0.14, 0x15171a, 0, 0.1, -0.05, 10, METAL);
-      muzzle.position.set(0, 0.01, -0.63);
-      sightY = 0.1;
+      box(g, 0.055, 0.1, 0.24, 0x3a3f46, 0, -0.02, 0.27);
+      box(g, 0.02, 0.06, 0.22, dark, 0, 0.09, -0.1, METAL);
+      box(g, 0.05, 0.02, 0.05, dark, 0, 0.12, -0.02, METAL);
+      muzzle.position.set(0, 0.01, -0.76);
+      sightY = 0.13;
       break;
     }
     case 'heavyar': {
@@ -137,32 +143,6 @@ export function makeWeaponModel(type, rarity = 0) {
       box(g, 0.04, 0.05, 0.14, dark, 0, 0.085, -0.08, METAL);
       muzzle.position.set(0, 0.01, -0.76);
       sightY = 0.115;
-      break;
-    }
-    case 'minigun': {
-      box(g, 0.16, 0.16, 0.36, mid, 0, 0, 0, METAL);
-      box(g, 0.165, 0.05, 0.3, accent, 0, 0.09, 0, METAL);
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2;
-        cylZ(g, 0.016, 0.6, dark, Math.cos(a) * 0.05, Math.sin(a) * 0.05, -0.45, 6, METAL);
-      }
-      cylZ(g, 0.075, 0.04, dark, 0, 0, -0.62, 12, METAL);
-      box(g, 0.05, 0.14, 0.06, dark, 0, -0.14, 0.05);
-      box(g, 0.2, 0.12, 0.12, 0x4b5320, 0.14, -0.06, 0.05);
-      muzzle.position.set(0, 0, -0.78);
-      sightY = 0.13;
-      break;
-    }
-    case 'tactical': {
-      box(g, 0.075, 0.1, 0.34, 0x2a2c30, 0, 0, -0.02, METAL);
-      cylZ(g, 0.024, 0.5, dark, 0, 0.025, -0.4, 10, METAL);
-      box(g, 0.07, 0.06, 0.18, mid, 0, -0.035, -0.34, METAL);
-      box(g, 0.075, 0.03, 0.22, accent, 0, 0.06, -0.04, METAL);
-      box(g, 0.045, 0.12, 0.05, dark, 0, -0.09, 0.08).rotation.x = -0.3;
-      box(g, 0.035, 0.05, 0.22, dark, 0, -0.01, 0.24);
-      box(g, 0.05, 0.14, 0.04, dark, 0, -0.1, 0.34);
-      muzzle.position.set(0, 0.025, -0.66);
-      sightY = 0.08;
       break;
     }
     case 'doublebarrel': {
@@ -188,15 +168,6 @@ export function makeWeaponModel(type, rarity = 0) {
       sightY = 0.075;
       break;
     }
-    case 'revolver': {
-      box(g, 0.05, 0.06, 0.12, mid, 0, 0.04, -0.02, METAL);
-      cylZ(g, 0.035, 0.07, accent, 0, 0.035, -0.04, 8, METAL);
-      cylZ(g, 0.015, 0.2, dark, 0, 0.05, -0.18, 8, METAL);
-      box(g, 0.045, 0.12, 0.055, wood, 0, -0.05, 0.04).rotation.x = -0.3;
-      muzzle.position.set(0, 0.05, -0.29);
-      sightY = 0.08;
-      break;
-    }
     case 'handcannon': {
       box(g, 0.06, 0.08, 0.28, 0x1b1b22, 0, 0.04, -0.08, METAL);
       box(g, 0.062, 0.025, 0.24, accent, 0, 0.085, -0.08, METAL);
@@ -205,25 +176,113 @@ export function makeWeaponModel(type, rarity = 0) {
       sightY = 0.1;
       break;
     }
-    case 'rocket': {
-      cylZ(g, 0.09, 0.95, 0x4b5320, 0, 0.04, -0.15, 12, METAL);
-      cylZ(g, 0.1, 0.06, accent, 0, 0.04, -0.6, 12, METAL);
-      cylZ(g, 0.1, 0.06, accent, 0, 0.04, 0.3, 12, METAL);
-      box(g, 0.05, 0.14, 0.06, dark, 0, -0.08, -0.1);
-      box(g, 0.05, 0.12, 0.06, dark, 0, -0.07, 0.12);
-      box(g, 0.04, 0.07, 0.12, dark, -0.1, 0.1, -0.15, METAL);
-      muzzle.position.set(0, 0.04, -0.66);
-      sightY = 0.14;
+    case 'minigun': {
+      box(g, 0.16, 0.16, 0.36, mid, 0, 0, 0.02, METAL);
+      box(g, 0.165, 0.05, 0.3, accent, 0, 0.07, 0.02, AC);
+      const barrels = new THREE.Group();
+      barrels.position.set(0, 0, -0.35);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        cylZ(barrels, 0.014, 0.6, dark, Math.cos(a) * 0.045, Math.sin(a) * 0.045, -0.12, 6, METAL);
+      }
+      cylZ(barrels, 0.07, 0.04, 0x15171a, 0, 0, 0.12, 12, METAL);
+      cylZ(barrels, 0.065, 0.03, 0x15171a, 0, 0, -0.38, 12, METAL);
+      g.add(barrels);
+      g.userData.spin = barrels;
+      box(g, 0.05, 0.14, 0.06, dark, 0, -0.14, 0.04).rotation.x = -0.3;
+      box(g, 0.04, 0.04, 0.22, dark, 0, 0.13, -0.05, METAL);
+      box(g, 0.12, 0.1, 0.14, 0x4b5320, 0.12, -0.04, 0.05);
+      muzzle.position.set(0, 0, -0.95);
+      sightY = 0.15;
       break;
     }
-    case 'grenadelauncher': {
-      box(g, 0.09, 0.11, 0.32, mid, 0, 0, -0.02, METAL);
-      cylZ(g, 0.06, 0.16, accent, 0, 0.0, -0.08, 8, METAL);
-      cylZ(g, 0.035, 0.3, dark, 0, 0.02, -0.33, 10, METAL);
-      box(g, 0.05, 0.13, 0.06, dark, 0, -0.1, 0.06).rotation.x = -0.3;
-      box(g, 0.06, 0.09, 0.22, dark, 0, -0.02, 0.24);
-      muzzle.position.set(0, 0.02, -0.5);
-      sightY = 0.1;
+    case 'tactical': {
+      box(g, 0.075, 0.1, 0.3, 0x24262b, 0, 0, -0.02, METAL);
+      cylZ(g, 0.024, 0.42, dark, 0, 0.025, -0.36, 10, METAL);
+      cylZ(g, 0.02, 0.34, dark, 0, -0.025, -0.32, 10, METAL);
+      box(g, 0.075, 0.075, 0.16, 0x24262b, 0, -0.035, -0.3, METAL);
+      box(g, 0.077, 0.03, 0.22, accent, 0, 0.055, -0.06, AC);
+      box(g, 0.045, 0.12, 0.05, dark, 0, -0.09, 0.08).rotation.x = -0.3;
+      box(g, 0.05, 0.06, 0.2, dark, 0, -0.02, 0.22);
+      box(g, 0.02, 0.04, 0.02, 0xff3030, 0, 0.08, -0.5, { emissive: 0xff2020 });
+      muzzle.position.set(0, 0.025, -0.58);
+      sightY = 0.085;
+      break;
+    }
+    case 'revolver': {
+      cylZ(g, 0.02, 0.24, mid, 0, 0.045, -0.2, 8, METAL);
+      const drum = cylZ(g, 0.042, 0.08, accent, 0, 0.03, -0.05, 6, AC);
+      drum.rotation.z = Math.PI / 6;
+      box(g, 0.05, 0.06, 0.12, mid, 0, 0.03, -0.04, METAL);
+      box(g, 0.048, 0.14, 0.06, wood, 0, -0.06, 0.04).rotation.x = -0.35;
+      box(g, 0.012, 0.025, 0.012, dark, 0, 0.075, -0.3, METAL);
+      muzzle.position.set(0, 0.045, -0.33);
+      sightY = 0.085;
+      break;
+    }
+    case 'dmr': {
+      box(g, 0.07, 0.1, 0.52, 0x5a5048, 0, 0, -0.06, METAL);
+      box(g, 0.074, 0.03, 0.36, accent, 0, 0.045, -0.1, AC);
+      cylZ(g, 0.016, 0.42, dark, 0, 0.01, -0.5, 8, METAL);
+      cylZ(g, 0.024, 0.08, 0x15171a, 0, 0.01, -0.72, 8, METAL);
+      cylZ(g, 0.028, 0.22, 0x15171a, 0, 0.095, -0.06, 10, METAL);
+      box(g, 0.05, 0.12, 0.06, dark, 0, -0.1, -0.14);
+      box(g, 0.045, 0.11, 0.05, dark, 0, -0.08, 0.08).rotation.x = -0.35;
+      box(g, 0.06, 0.11, 0.26, 0x5a5048, 0, -0.03, 0.3);
+      muzzle.position.set(0, 0.01, -0.77);
+      sightY = 0.095;
+      break;
+    }
+    case 'rocket': {
+      cylZ(g, 0.075, 0.95, 0x3d4a2e, 0, 0.06, -0.15, 12);
+      cylZ(g, 0.085, 0.08, accent, 0, 0.06, -0.6, 12, AC);
+      cylZ(g, 0.085, 0.1, dark, 0, 0.06, 0.32, 12, METAL);
+      box(g, 0.05, 0.14, 0.06, dark, 0, -0.06, 0.02).rotation.x = -0.3;
+      box(g, 0.05, 0.12, 0.06, dark, 0, -0.05, -0.25);
+      box(g, 0.04, 0.07, 0.1, dark, -0.09, 0.12, -0.1, METAL);
+      muzzle.position.set(0, 0.06, -0.64);
+      sightY = 0.15;
+      break;
+    }
+    case 'glauncher': {
+      box(g, 0.08, 0.1, 0.3, mid, 0, 0, 0, METAL);
+      const drum = cylZ(g, 0.075, 0.14, accent, 0, -0.01, -0.12, 8, AC);
+      drum.rotation.z = Math.PI / 8;
+      cylZ(g, 0.035, 0.32, dark, 0, 0.02, -0.34, 10, METAL);
+      box(g, 0.045, 0.13, 0.05, dark, 0, -0.1, 0.08).rotation.x = -0.35;
+      box(g, 0.05, 0.08, 0.22, dark, 0, -0.01, 0.24);
+      box(g, 0.03, 0.05, 0.06, dark, 0, 0.08, -0.04, METAL);
+      muzzle.position.set(0, 0.02, -0.52);
+      sightY = 0.11;
+      break;
+    }
+    case 'plasma': {
+      const glow = { emissive: 0x1fa8a0, phong: true, shininess: 90 };
+      box(g, 0.08, 0.11, 0.46, 0xeef3f6, 0, 0, -0.06, METAL);
+      box(g, 0.084, 0.035, 0.34, accent, 0, 0.05, -0.1, AC);
+      for (let i = 0; i < 4; i++) cylZ(g, 0.035, 0.03, accent, 0, 0.0, -0.36 - i * 0.07, 10, glow);
+      cylZ(g, 0.018, 0.34, 0x2a3138, 0, 0.0, -0.46, 8, METAL);
+      box(g, 0.05, 0.14, 0.06, 0x2a3138, 0, -0.11, -0.08).rotation.x = 0.2;
+      box(g, 0.045, 0.11, 0.05, 0x2a3138, 0, -0.08, 0.08).rotation.x = -0.35;
+      box(g, 0.06, 0.1, 0.22, 0xeef3f6, 0, -0.02, 0.26, METAL);
+      box(g, 0.03, 0.05, 0.12, 0x2a3138, 0, 0.09, -0.06, METAL);
+      box(g, 0.012, 0.012, 0.03, accent, 0, 0.12, -0.06, glow);
+      muzzle.position.set(0, 0.0, -0.66);
+      sightY = 0.12;
+      break;
+    }
+    case 'boombow': {
+      const r = 0.42;
+      const limb = new THREE.Mesh(new THREE.TorusGeometry(r, 0.018, 5, 14, 2).rotateZ(-1).rotateY(Math.PI / 2).translate(0, 0, r - 0.05), mat(accent, AC));
+      g.add(limb);
+      const ends = r * Math.sin(1);
+      const sz = r * (1 - Math.cos(1)) - 0.05;
+      box(g, 0.006, ends * 2, 0.006, 0xeeeeee, 0, 0, sz);
+      box(g, 0.035, 0.12, 0.05, wood, 0, 0, -0.05);
+      cylZ(g, 0.008, 0.62, 0x6b4a2b, 0, 0.0, -0.06, 6);
+      cylZ(g, 0.02, 0.06, 0xff6a2a, 0, 0.0, -0.38, 8, { emissive: 0x902000 });
+      muzzle.position.set(0, 0, -0.42);
+      sightY = 0.06;
       break;
     }
     case 'pickaxe': {
@@ -238,10 +297,25 @@ export function makeWeaponModel(type, rarity = 0) {
       break;
     }
   }
+  if (camo && CAMOS[camo] && type !== 'pickaxe') applyCamo(g, CAMOS[camo], [mid, dark, wood]);
   g.add(muzzle);
   g.userData.muzzle = muzzle;
   g.userData.sightY = sightY;
   return g;
+}
+
+// Camuflaje: las piezas del cuerpo del arma (no el color de rareza ni la mira)
+// toman colores de la paleta del camuflaje, pieza a pieza.
+function applyCamo(g, camo, recolor) {
+  const cols = camo.colors;
+  let i = 0;
+  g.traverse((o) => {
+    if (!o.isMesh || !recolor.includes(o.material.color.getHex())) return;
+    const c = cols[(i * 7 + 3) % cols.length];
+    i++;
+    const opts = camo.shiny ? { phong: true, shininess: 90, specular: 0x888888 } : camo.glow ? { emissive: c, emissiveIntensity: 0.35 } : {};
+    o.material = mat(c, opts);
+  });
 }
 
 // ----------------------------------------------------------- CONSUMIBLES ---
@@ -273,6 +347,22 @@ function makeConsumableModel(type) {
       const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.08, 8), mat(0xe8f4ff));
       neck.position.y = 0.1;
       g.add(neck);
+      break;
+    }
+    case 'chugjug': {
+      const b = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.13, 0.14, 0.3, 14),
+        mat(0x3f7bff, { emissive: 0x12307a, phong: true, shininess: 90 }),
+      );
+      g.add(b);
+      for (const y of [-0.1, 0.1]) {
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.145, 0.03, 14), mat(0x8a5a2b));
+        ring.position.y = y;
+        g.add(ring);
+      }
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.07, 10), mat(0xffd34d, { emissive: 0x5a4400 }));
+      cap.position.y = 0.18;
+      g.add(cap);
       break;
     }
     case 'shieldpot': {
@@ -310,36 +400,6 @@ function makeConsumableModel(type) {
       box(g, 0.01, 0.12, 0.01, 0xffffff, 0.03, 0.22, 0);
       break;
     }
-    case 'chug': {
-      const b = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.16, 0.18, 0.3, 14),
-        mat(0x3fa9ff, { emissive: 0x0b3a77, transparent: true, opacity: 0.9, phong: true, shininess: 90 }),
-      );
-      g.add(b);
-      box(g, 0.33, 0.06, 0.33, 0xc9a050, 0, -0.12, 0);
-      box(g, 0.33, 0.06, 0.33, 0xc9a050, 0, 0.12, 0);
-      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 6, 10, Math.PI), mat(0xc9a050));
-      handle.position.set(0.18, 0, 0);
-      handle.rotation.z = -Math.PI / 2;
-      g.add(handle);
-      break;
-    }
-    case 'grenade': {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat(0x4b5320));
-      b.scale.y = 1.2;
-      g.add(b);
-      box(g, 0.04, 0.04, 0.04, 0x8a8f96, 0, 0.09, 0, METAL);
-      box(g, 0.012, 0.06, 0.02, 0xc9a050, 0.03, 0.1, 0, METAL);
-      break;
-    }
-    case 'impulse': {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), mat(0x3fd6ff, { emissive: 0x0b5a77, phong: true, shininess: 90 }));
-      g.add(b);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.015, 6, 16), mat(0x1b1b22));
-      ring.rotation.x = Math.PI / 2;
-      g.add(ring);
-      break;
-    }
     case 'launchpad': {
       box(g, 0.34, 0.06, 0.34, 0x2a2c30);
       box(g, 0.26, 0.04, 0.26, 0xf2c230, 0, 0.05, 0);
@@ -365,28 +425,6 @@ export function makeLaunchPad() {
   return g;
 }
 
-// Proyectiles visibles (cohete y granada).
-export function makeProjectileModel(kind) {
-  const g = new THREE.Group();
-  if (kind === 'rocket') {
-    cylZ(g, 0.07, 0.6, 0xdddddd, 0, 0, 0, 8);
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 8).rotateX(-Math.PI / 2), mat(0xd63a2f));
-    nose.position.z = -0.38;
-    g.add(nose);
-    box(g, 0.22, 0.02, 0.1, 0x555555, 0, 0, 0.26);
-    box(g, 0.02, 0.22, 0.1, 0x555555, 0, 0, 0.26);
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.4, 6).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffa040 }));
-    flame.position.z = 0.5;
-    g.add(flame);
-  } else if (kind === 'impulse') {
-    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat(0x3fd6ff, { emissive: 0x0b5a77 })));
-  } else {
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), mat(0x4b5320));
-    b.scale.y = 1.2;
-    g.add(b);
-  }
-  return g;
-}
 
 function makeAmmoModel(ammo) {
   const g = new THREE.Group();
@@ -396,9 +434,99 @@ function makeAmmoModel(ammo) {
   return g;
 }
 
-export function makeItemModel(item) {
-  if (item.kind === 'weapon') return makeWeaponModel(item.type, item.rarity);
+// ------------------------------------------------------------ ARROJADIZOS
+export function makeThrowableModel(type) {
+  const g = new THREE.Group();
+  const sphere = (r, color, opts, y = 0) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), mat(color, opts));
+    m.position.y = y;
+    g.add(m);
+    return m;
+  };
+  switch (type) {
+    case 'grenade': {
+      sphere(0.075, 0x4f6a2e, { phong: true, shininess: 30 });
+      box(g, 0.03, 0.04, 0.03, 0x888888, 0, 0.08, 0, METAL);
+      box(g, 0.012, 0.09, 0.025, 0xaaaaaa, 0.03, 0.06, 0, METAL).rotation.z = -0.4;
+      box(g, 0.152, 0.012, 0.152, 0x3a4f22, 0, 0, 0);
+      break;
+    }
+    case 'sticky': {
+      sphere(0.07, 0x2a6fd6, { phong: true, shininess: 50 });
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        box(g, 0.035, 0.035, 0.035, 0x9de05a, Math.cos(a) * 0.07, 0, Math.sin(a) * 0.07, { emissive: 0x2a5a10 });
+      }
+      box(g, 0.03, 0.03, 0.03, 0x9de05a, 0, 0.075, 0, { emissive: 0x2a5a10 });
+      break;
+    }
+    case 'impulse': {
+      sphere(0.075, 0x6a3fd6, { phong: true, shininess: 70 });
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.03, 14), mat(0x7ad0ff, { emissive: 0x2a7aaa }));
+      g.add(band);
+      box(g, 0.03, 0.03, 0.03, 0xdddddd, 0, 0.08, 0, METAL);
+      break;
+    }
+    case 'c4': {
+      box(g, 0.2, 0.07, 0.13, 0xd8c48a);
+      box(g, 0.21, 0.02, 0.135, 0x333333, 0, 0, 0);
+      box(g, 0.06, 0.03, 0.05, 0x222222, 0.05, 0.045, 0);
+      box(g, 0.015, 0.015, 0.015, 0xff2020, 0.05, 0.065, 0, { emissive: 0xff0000 });
+      box(g, 0.008, 0.02, 0.1, 0xd03030, -0.04, 0.04, 0);
+      break;
+    }
+    case 'smoke': {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.16, 12), mat(0x8a9099));
+      g.add(c);
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.057, 0.057, 0.03, 12), mat(0xdddddd));
+      t.position.y = 0.05;
+      g.add(t);
+      box(g, 0.02, 0.03, 0.02, 0x666666, 0, 0.095, 0, METAL);
+      break;
+    }
+    case 'molotov': {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.16, 10), mat(0x6a8a3a, { transparent: true, opacity: 0.9, phong: true, shininess: 100 }));
+      g.add(b);
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.08, 8), mat(0x6a8a3a, { phong: true, shininess: 100 }));
+      neck.position.y = 0.12;
+      g.add(neck);
+      box(g, 0.03, 0.06, 0.03, 0xe8dcc0, 0, 0.18, 0);
+      box(g, 0.02, 0.025, 0.02, 0xff8a2a, 0, 0.22, 0, { emissive: 0xff5a00 });
+      break;
+    }
+  }
+  return g;
+}
+
+// Proyectiles de las armas explosivas (apuntan hacia -Z).
+export function makeProjectileModel(kind) {
+  const g = new THREE.Group();
+  if (kind === 'rocket') {
+    cylZ(g, 0.06, 0.45, 0x5a6a4a, 0, 0, 0, 10);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 10).rotateX(-Math.PI / 2), mat(0xd04030));
+    tip.position.z = -0.3;
+    g.add(tip);
+    for (let i = 0; i < 4; i++) {
+      const f = box(g, 0.01, 0.12, 0.12, 0x333333, 0, 0, 0.2);
+      f.rotation.z = (i * Math.PI) / 2;
+    }
+  } else if (kind === 'arrow') {
+    cylZ(g, 0.01, 0.7, 0x6b4a2b, 0, 0, 0, 6);
+    cylZ(g, 0.025, 0.07, 0xff6a2a, 0, 0, -0.33, 8, { emissive: 0x902000 });
+    box(g, 0.004, 0.05, 0.1, 0xeeeeee, 0, 0, 0.3);
+  } else {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat(0x4f5a3a, { phong: true, shininess: 40 }));
+    s.scale.z = 1.4;
+    g.add(s);
+    box(g, 0.1, 0.02, 0.02, 0xffa22a, 0, 0, 0, { emissive: 0x7a3a00 });
+  }
+  return g;
+}
+
+export function makeItemModel(item, camo = null) {
+  if (item.kind === 'weapon') return makeWeaponModel(item.type, item.rarity, camo);
   if (item.kind === 'consumable') return makeConsumableModel(item.type);
+  if (item.kind === 'throwable') return makeThrowableModel(item.type);
   if (item.kind === 'ammo') return makeAmmoModel(item.ammo);
   if (item.kind === 'material') return makeMaterialModel(item.mat);
   return makeWeaponModel('pickaxe');
@@ -440,11 +568,28 @@ function makeAmmoBox() {
 }
 
 // ------------------------------------------------------------- PERSONAJE ---
+// Colores base de cada skin (los detalles se añaden en addSuitParts).
+const SUIT_LOOK = {
+  banana: { skin: 0xffe135, shirt: 0xffe135, pants: 0xf2cf1d, hair: 0xffe135, pack: false },
+  astronauta: { skin: 0xf1c9a5, shirt: 0xf2f4f7, pants: 0xdfe3ea, hair: 0x3a2a1a, pack: false },
+  robot: { skin: 0x9aa5b1, shirt: 0x6b7684, pants: 0x4b5563, hair: 0x9aa5b1, pack: false },
+  pirata: { skin: 0xe0b48a, shirt: 0xf2f2f2, pants: 0x2b2b38, hair: 0x1b1b1b, pack: true },
+  ninja: { skin: 0x1b1b22, shirt: 0x1b1b22, pants: 0x1b1b22, hair: 0x1b1b22, pack: false },
+  dino: { skin: 0x4fbf4a, shirt: 0x4fbf4a, pants: 0x3a9a3a, hair: 0x4fbf4a, pack: false },
+};
+
+// Colores efectivos de un aspecto (la skin manda sobre los colores elegidos).
+export function outfitColors(c = {}) {
+  const look = SUIT_LOOK[c.suit];
+  return { skin: look?.skin ?? c.skin ?? 0xe0b48a, shirt: look?.shirt ?? c.shirt ?? 0x2f6fd6 };
+}
+
 export function makeCharacter(c = {}) {
-  const skin = c.skin ?? 0xe0b48a;
-  const shirt = c.shirt ?? 0x2f6fd6;
-  const pants = c.pants ?? 0x2b2b38;
-  const hair = c.hair ?? 0x3a2a1a;
+  const look = SUIT_LOOK[c.suit] || null;
+  const skin = look?.skin ?? c.skin ?? 0xe0b48a;
+  const shirt = look?.shirt ?? c.shirt ?? 0x2f6fd6;
+  const pants = look?.pants ?? c.pants ?? 0x2b2b38;
+  const hair = look?.hair ?? c.hair ?? 0x3a2a1a;
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -473,11 +618,142 @@ export function makeCharacter(c = {}) {
   box(head, 0.05, 0.05, 0.02, 0x111111, 0.07, 0.2, -0.155);
   const armL = mkLimb(-0.32, 1.5, 0.14, 0.62, shirt, skin);
   const armR = mkLimb(0.32, 1.5, 0.14, 0.62, shirt, skin);
-  box(body, 0.36, 0.4, 0.16, 0x6b4a2b, 0, 1.25, 0.2).castShadow = true; // mochila
+  if (!look || look.pack) box(body, 0.36, 0.4, 0.16, 0x6b4a2b, 0, 1.25, 0.2).castShadow = true; // mochila
   const hand = new THREE.Group();
   hand.position.set(0, -0.6, 0);
   armR.add(hand);
-  return { root, body, legL, legR, armL, armR, head, torso, hand };
+  const parts = { root, body, legL, legR, armL, armR, head, torso, hand };
+  if (look) addSuitParts(parts, c.suit);
+  if (c.acc) addAccessory(parts, c.acc);
+  return parts;
+}
+
+const GOLD = { emissive: 0x6a4a00 };
+
+function addSuitParts({ body, head, armL, armR }, suit) {
+  switch (suit) {
+    case 'banana':
+      box(head, 0.27, 0.3, 0.27, 0xffe135, 0, 0.46, 0.02);
+      box(head, 0.2, 0.2, 0.2, 0xf7d82a, 0, 0.68, 0.07);
+      box(head, 0.08, 0.12, 0.08, 0x5a3a1a, 0, 0.83, 0.12);
+      box(head, 0.12, 0.025, 0.02, 0x111111, 0, 0.1, -0.155);
+      for (const [x, y] of [[-0.12, 1.36], [0.14, 1.12], [-0.05, 1.02], [0.08, 1.45]]) box(body, 0.06, 0.06, 0.02, 0x7a5a20, x, y, -0.135);
+      break;
+    case 'astronauta':
+      box(head, 0.44, 0.06, 0.44, 0xf2f4f7, 0, 0.38, 0);
+      box(head, 0.06, 0.42, 0.44, 0xf2f4f7, -0.22, 0.17, 0);
+      box(head, 0.06, 0.42, 0.44, 0xf2f4f7, 0.22, 0.17, 0);
+      box(head, 0.44, 0.42, 0.06, 0xf2f4f7, 0, 0.17, 0.22);
+      box(head, 0.38, 0.07, 0.04, 0xffb43c, 0, 0.32, -0.21, { emissive: 0x553300 });
+      box(body, 0.44, 0.56, 0.22, 0xe6e9ee, 0, 1.25, 0.24).castShadow = true;
+      box(body, 0.1, 0.1, 0.02, 0x2f6fd6, -0.12, 1.38, -0.135);
+      box(body, 0.1, 0.1, 0.02, 0xd63a2f, 0.12, 1.38, -0.135);
+      box(body, 0.2, 0.06, 0.02, 0x8a93a0, 0, 1.18, -0.135);
+      break;
+    case 'robot':
+      box(head, 0.26, 0.07, 0.04, 0xff3030, 0, 0.2, -0.16, { emissive: 0xff2020 });
+      box(head, 0.03, 0.2, 0.03, 0x333a44, 0, 0.44, 0);
+      box(head, 0.08, 0.08, 0.08, 0xff3030, 0, 0.56, 0, { emissive: 0xaa1010 });
+      box(body, 0.3, 0.22, 0.03, 0x2b323c, 0, 1.3, -0.14);
+      box(body, 0.05, 0.05, 0.02, 0x40ff80, -0.08, 1.33, -0.16, { emissive: 0x20a040 });
+      box(body, 0.05, 0.05, 0.02, 0xffd23f, 0, 1.33, -0.16, { emissive: 0x806010 });
+      box(body, 0.05, 0.05, 0.02, 0x3fa9ff, 0.08, 1.33, -0.16, { emissive: 0x1050a0 });
+      box(armL, 0.2, 0.14, 0.2, 0x4b5563, 0, -0.05, 0);
+      box(armR, 0.2, 0.14, 0.2, 0x4b5563, 0, -0.05, 0);
+      break;
+    case 'pirata':
+      box(head, 0.48, 0.05, 0.42, 0x1b1b1b, 0, 0.36, 0);
+      box(head, 0.34, 0.16, 0.32, 0x1b1b1b, 0, 0.45, 0);
+      box(head, 0.07, 0.07, 0.02, 0xf2f2f2, 0, 0.46, -0.165);
+      box(head, 0.09, 0.08, 0.03, 0x111111, -0.07, 0.2, -0.165);
+      box(head, 0.32, 0.02, 0.02, 0x111111, 0, 0.27, -0.155);
+      for (const y of [1.04, 1.16, 1.28, 1.4]) box(body, 0.49, 0.05, 0.27, 0xd63a2f, 0, y, 0);
+      box(body, 0.5, 0.08, 0.28, 0x6b4a2b, 0, 0.98, 0);
+      box(body, 0.08, 0.08, 0.02, 0xffd23f, 0, 0.98, -0.145, GOLD);
+      break;
+    case 'ninja':
+      box(head, 0.24, 0.06, 0.02, 0xe0b48a, 0, 0.2, -0.15);
+      box(head, 0.33, 0.06, 0.33, 0xd63a2f, 0, 0.3, 0);
+      box(head, 0.05, 0.05, 0.2, 0xd63a2f, 0.06, 0.29, 0.25);
+      box(head, 0.05, 0.05, 0.18, 0xd63a2f, -0.04, 0.27, 0.24);
+      {
+        const k = box(body, 0.04, 0.8, 0.04, 0xc0c6cc, 0.12, 1.35, 0.17, METAL);
+        k.rotation.z = 0.55;
+        const hdl = box(body, 0.05, 0.22, 0.05, 0xd63a2f, -0.12, 1.66, 0.17);
+        hdl.rotation.z = 0.55;
+      }
+      box(body, 0.5, 0.06, 0.28, 0xd63a2f, 0, 0.98, 0);
+      break;
+    case 'dino':
+      box(head, 0.28, 0.16, 0.24, 0x4fbf4a, 0, 0.11, -0.25);
+      box(head, 0.24, 0.03, 0.02, 0xf2f2f2, 0, 0.05, -0.37);
+      box(head, 0.08, 0.06, 0.04, 0x111111, -0.08, 0.27, -0.13);
+      box(head, 0.08, 0.06, 0.04, 0x111111, 0.08, 0.27, -0.13);
+      for (const [y, s] of [[0.56, 0.1], [0.42, 0.13]]) box(head, 0.05, s, 0.1, 0x2f8a2f, 0, y - 0.1, 0.1);
+      for (const y of [1.52, 1.36, 1.2, 1.04]) box(body, 0.06, 0.12, 0.1, 0x2f8a2f, 0, y, 0.17);
+      box(body, 0.2, 0.18, 0.5, 0x4fbf4a, 0, 0.95, 0.38).castShadow = true;
+      box(body, 0.12, 0.12, 0.34, 0x4fbf4a, 0, 0.88, 0.78);
+      box(body, 0.32, 0.4, 0.03, 0xc8e86a, 0, 1.2, -0.13);
+      break;
+  }
+}
+
+function addAccessory({ body, head }, acc) {
+  switch (acc) {
+    case 'corona':
+      box(head, 0.32, 0.07, 0.32, 0xffd23f, 0, 0.44, 0, GOLD);
+      for (const [x, z] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12], [0, -0.13]]) box(head, 0.06, 0.1, 0.06, 0xffd23f, x, 0.52, z, GOLD);
+      box(head, 0.05, 0.05, 0.02, 0xff2d55, 0, 0.45, -0.165, { emissive: 0x801020 });
+      break;
+    case 'gorra':
+      box(head, 0.33, 0.09, 0.33, 0xd63a2f, 0, 0.38, 0);
+      box(head, 0.3, 0.03, 0.16, 0xd63a2f, 0, 0.35, -0.22);
+      box(head, 0.06, 0.04, 0.06, 0xf2f2f2, 0, 0.44, 0);
+      break;
+    case 'gafas':
+      box(head, 0.32, 0.03, 0.03, 0x111111, 0, 0.23, -0.17);
+      box(head, 0.11, 0.07, 0.03, 0x1a2a3a, -0.07, 0.2, -0.175);
+      box(head, 0.11, 0.07, 0.03, 0x1a2a3a, 0.07, 0.2, -0.175);
+      break;
+    case 'auriculares':
+      box(head, 0.37, 0.04, 0.07, 0x222222, 0, 0.4, 0);
+      box(head, 0.06, 0.15, 0.13, 0x2bfff1, -0.18, 0.2, 0, { emissive: 0x0a5a55 });
+      box(head, 0.06, 0.15, 0.13, 0x2bfff1, 0.18, 0.2, 0, { emissive: 0x0a5a55 });
+      break;
+    case 'vikingo':
+      box(head, 0.35, 0.13, 0.35, 0x8a93a0, 0, 0.38, 0, METAL);
+      box(head, 0.06, 0.05, 0.36, 0x6b4a2b, 0, 0.42, 0);
+      for (const x of [-1, 1]) {
+        box(head, 0.07, 0.07, 0.07, 0xf2ead2, 0.21 * x, 0.42, 0);
+        box(head, 0.06, 0.14, 0.06, 0xf2ead2, 0.25 * x, 0.52, 0);
+      }
+      break;
+    case 'vaquero':
+      box(head, 0.6, 0.03, 0.56, 0x7a4a24, 0, 0.36, 0);
+      box(head, 0.32, 0.18, 0.3, 0x7a4a24, 0, 0.46, 0);
+      box(head, 0.33, 0.04, 0.31, 0x2b1d10, 0, 0.39, 0);
+      break;
+    case 'capa': {
+      const cape = box(body, 0.52, 1.0, 0.04, 0xb01c2e, 0, 0.98, 0.3);
+      cape.rotation.x = 0.12;
+      box(body, 0.5, 0.06, 0.06, 0xffd23f, 0, 1.5, 0.18, GOLD);
+      break;
+    }
+    case 'aureola':
+      for (const [w, d, x, z] of [[0.3, 0.04, 0, -0.14], [0.3, 0.04, 0, 0.14], [0.04, 0.3, -0.14, 0], [0.04, 0.3, 0.14, 0]]) {
+        box(head, w, 0.03, d, 0xfff3a0, x, 0.62, z, { emissive: 0xb09a30 });
+      }
+      break;
+    case 'alas':
+      for (const x of [-1, 1]) {
+        const w = box(body, 0.5, 0.7, 0.04, 0xf7f7ff, 0.32 * x, 1.32, 0.3);
+        w.rotation.z = -0.35 * x;
+        w.rotation.y = 0.35 * x;
+        const w2 = box(body, 0.34, 0.4, 0.05, 0xe2e6f5, 0.5 * x, 1.12, 0.32);
+        w2.rotation.z = -0.5 * x;
+      }
+      break;
+  }
 }
 
 // --------------------------------------------------------------- PLANEADOR ---
@@ -740,6 +1016,7 @@ export function mergedMesh(key, build) {
 export function itemKey(item) {
   if (item.kind === 'weapon') return `w_${item.type}_${item.rarity}`;
   if (item.kind === 'consumable') return `c_${item.type}`;
+  if (item.kind === 'throwable') return `t_${item.type}`;
   if (item.kind === 'ammo') return `a_${item.ammo}`;
   if (item.kind === 'material') return `m_${item.mat}`;
   return 'pickaxe';

@@ -2,7 +2,7 @@
   "name": "isla-royale",
   "private": true,
   "version": "0.4.0",
-  "description": "Battle royale 3D estilo Fortnite en el navegador (Three.js), con modo online",
+  "description": "Battle royale 3D estilo Fortnite en el navegador (Three.js), con modo online y versión para móviles (Android)",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -14,13 +14,21 @@
     "start": "node server/index.js",
     "build": "vite build",
     "build:standalone": "vite build && node scripts/standalone.mjs",
-    "preview": "vite preview --open"
+    "preview": "vite preview --open",
+    "build:android": "vite build && cap sync android",
+    "android:open": "cap open android",
+    "android:apk": "node scripts/android.mjs",
+    "arte": "node movil/arte/generar-arte.mjs"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.2",
     "three": "^0.186.1",
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "vite": "^6.4.3"
   }
 }

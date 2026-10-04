@@ -1,5 +1,6 @@
 import { MODES, DIFFICULTIES, partyLimit } from '../game/modes.js';
-import { serverUrl } from '../net/client.js';
+import { serverUrl, needsServerAddress } from '../net/client.js';
+import { scanLan, canScan } from '../net/discover.js';
 
 const $ = (id) => document.getElementById(id);
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -55,7 +56,72 @@ export class OnlineUI {
   }
 
   connect() {
-    this.net.connect(this.url);
+    if (this.url) this.net.connect(this.url);
+  }
+
+  // Guarda la dirección del servidor y se conecta a él.
+  setServer(addr) {
+    this.game.settings.server = String(addr || '').trim();
+    this.game.applySettings();
+    this.editServer = false;
+    this.error = '';
+    this.net.close();
+    this.net.url = this.url;
+    if (this.net.token) this.connect();
+  }
+
+  // «Buscar en mi Wi-Fi»: encuentra el servidor de un amigo en la red local.
+  startScan() {
+    if (this.scan) return;
+    const hints = [this.game.settings.server, location.hostname];
+    const job = scanLan({
+      hints,
+      onProgress: (done, total, net) => {
+        this.scanText = `Buscando en ${net}.x … ${Math.round((done / total) * 100)}%`;
+        const el = document.getElementById('ol-scan-status');
+        if (el) el.textContent = this.scanText;
+      },
+    });
+    this.scan = job;
+    this.scanFound = null;
+    this.scanText = 'Buscando…';
+    this.refresh();
+    job.promise.then((found) => {
+      if (this.scan !== job) return;
+      this.scan = null;
+      this.scanFound = found;
+      if (found.length === 1) {
+        this.setServer(found[0].host);
+        this.toast(`Servidor encontrado: ${found[0].host}`);
+      }
+      this.refresh();
+    });
+  }
+
+  stopScan() {
+    this.scan?.stop();
+    this.scan = null;
+    this.scanText = '';
+    this.refresh();
+  }
+
+  serverSetupHTML() {
+    const s = this.game.settings.server;
+    const scanning = !!this.scan;
+    const found = this.scanFound;
+    return `
+      <form id="ol-server" class="server-form">
+        <input name="server" value="${esc(s)}" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+          placeholder="${needsServerAddress() ? 'ej. 192.168.1.20:8080 o mi-isla.onrender.com' : 'Vacío = este mismo servidor · ej. 192.168.1.20:8080 o mi-isla.onrender.com'}">
+        <button class="small-btn" type="submit">Guardar</button>
+      </form>
+      ${canScan() ? `<div class="scan-row">
+        ${scanning ? `<div class="spinner small"></div><span id="ol-scan-status">${esc(this.scanText)}</span><button class="small-btn" id="ol-scan-stop" type="button">Parar</button>`
+          : `<button class="small-btn ok" id="ol-scan" type="button">🔍 Buscar en mi Wi-Fi</button>`}
+      </div>` : ''}
+      ${found && !scanning ? (found.length ? `<div class="scan-found">${found.map((f) => `<button class="small-btn" data-server="${esc(f.host)}">${esc(f.host)} · ${f.online} conectado${f.online === 1 ? '' : 's'}</button>`).join('')}</div>`
+        : '<div class="form-error">No se ha encontrado ningún servidor en esta Wi-Fi. Comprueba que tu amigo tiene el servidor en marcha (npm run dev) y que estáis en la misma red; si no, escribe la dirección que le sale en la terminal.</div>') : ''}
+      <small class="hint">Para jugar con un amigo de PC: él arranca el juego con <b>npm run dev</b> (o <b>npm start</b>) y en su terminal y en su pantalla ONLINE aparece la dirección (por ejemplo <code>192.168.1.20:8080</code>). Todos tenéis que usar el mismo servidor.</small>`;
   }
 
   // ------------------------------------------------------------ RED
@@ -70,6 +136,8 @@ export class OnlineUI {
     n.on('auth_ok', (m) => {
       this.busy = false;
       this.error = '';
+      // Pase de batalla, tokens y objetos: se sincronizan con la cuenta
+      this.game.progress.syncWithAccount(m.profile);
       // Aspecto: el del servidor manda; si no tiene, se sube el local
       if (m.outfit) {
         this.game.settings.outfit = m.outfit;
@@ -199,14 +267,15 @@ export class OnlineUI {
   bindChat() {
     addEventListener('keydown', (e) => {
       const g = this.game;
-      if (e.code !== 'Enter' || this.chatOpen || g.state !== 'playing' || !g.net || g.paused) return;
+      if ((e.code !== 'Enter' && e.key !== 'Enter') || this.chatOpen || g.state !== 'playing' || !g.net || g.paused) return;
       if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
       e.preventDefault();
       this.openChat();
     });
     this.chatInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.code === 'Enter') {
+      // Los teclados de Android a veces no rellenan e.code: se mira también e.key
+      if (e.code === 'Enter' || e.key === 'Enter') {
         const text = this.chatInput.value.trim();
         if (text) {
           const team = text.startsWith('/e ');
@@ -216,13 +285,15 @@ export class OnlineUI {
       } else if (e.code === 'Escape') this.closeChat();
     });
     this.chatInput.addEventListener('keyup', (e) => e.stopPropagation());
+    // En el móvil, cerrar el teclado cancela el chat
+    this.chatInput.addEventListener('blur', () => this.chatOpen && this.closeChat());
   }
 
   openChat() {
     this.chatOpen = true;
     this.game.chatOpen = true;
     this.chatBox.classList.add('active', 'typing');
-    document.exitPointerLock?.();
+    this.game.input.unlock();
     this.chatInput.value = '';
     setTimeout(() => this.chatInput.focus(), 0);
   }
@@ -277,7 +348,8 @@ export class OnlineUI {
       : st === 'connecting' ? '<span class="dot busy"></span> Conectando…' : '<span class="dot off"></span> Sin conexión';
     return `
       <h2>Jugar online</h2>
-      <p class="lead">Crea una cuenta, añade a tus amigos y jugad juntos: <b>1v1</b>, <b>Dúos</b>, <b>Tríos</b>, <b>Escuadras</b> y más.</p>
+      <p class="lead">Crea una cuenta, añade a tus amigos y jugad juntos: <b>1v1</b>, <b>Dúos</b>, <b>Tríos</b>, <b>Escuadras</b> y más. PC y móvil juegan juntos.</p>
+      ${!this.url ? '<div class="tip">📱 Primero indica el <b>servidor</b> (abajo): pulsa <b>Buscar en mi Wi-Fi</b> o escribe la dirección que le sale a tu amigo en el PC.</div>' : ''}
       <div class="tabs">
         <button data-tab="login" class="${this.tab === 'login' ? 'on' : ''}">Entrar</button>
         <button data-tab="register" class="${this.tab === 'register' ? 'on' : ''}">Crear cuenta</button>
@@ -289,15 +361,10 @@ export class OnlineUI {
         <button class="big-play" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'CONECTANDO…' : this.tab === 'login' ? 'ENTRAR' : 'CREAR CUENTA'}</button>
       </form>
       <div class="server-row">
-        <div>${status}<br><small>Servidor: <code>${esc(this.url)}</code></small></div>
+        <div>${status}<br><small>Servidor: <code>${this.url ? esc(this.url) : 'sin configurar'}</code></small></div>
         <button class="small-btn" id="ol-server-btn">Cambiar servidor</button>
       </div>
-      ${this.editServer ? `
-        <form id="ol-server" class="server-form">
-          <input name="server" value="${esc(this.game.settings.server)}" placeholder="Vacío = este mismo servidor · ej. 192.168.1.20:8080 o mi-isla.onrender.com">
-          <button class="small-btn" type="submit">Guardar</button>
-        </form>
-        <small class="hint">Para jugar con amigos todos tenéis que usar el mismo servidor (mira la sección <i>Jugar online</i> del README).</small>` : ''}`;
+      ${this.editServer || !this.url ? this.serverSetupHTML() : ''}`;
   }
 
   bindLogin(el) {
@@ -309,6 +376,11 @@ export class OnlineUI {
     el.querySelector('#ol-auth').addEventListener('submit', (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
+      if (!this.url) {
+        this.error = 'Primero indica la dirección del servidor (o pulsa Buscar en mi Wi-Fi).';
+        this.render(el);
+        return;
+      }
       this.error = '';
       this.busy = true;
       this.net.url = this.url;
@@ -328,14 +400,16 @@ export class OnlineUI {
     });
     el.querySelector('#ol-server')?.addEventListener('submit', (e) => {
       e.preventDefault();
-      this.game.settings.server = String(new FormData(e.target).get('server') || '').trim();
-      this.game.applySettings();
-      this.editServer = false;
-      this.net.close();
-      this.net.url = this.url;
-      if (this.net.token) this.connect();
+      this.setServer(new FormData(e.target).get('server'));
       this.render(el);
     });
+    el.querySelector('#ol-scan')?.addEventListener('click', () => this.startScan());
+    el.querySelector('#ol-scan-stop')?.addEventListener('click', () => this.stopScan());
+    el.querySelectorAll('[data-server]').forEach((b) => b.addEventListener('click', () => {
+      this.setServer(b.dataset.server);
+      this.scanFound = null;
+      this.render(el);
+    }));
   }
 
   hubHTML() {
@@ -412,8 +486,26 @@ export class OnlineUI {
             <div class="friend req out"><span class="fn">${esc(n)}</span><small>pendiente</small><button class="small-btn" data-decline="${esc(n)}" title="Cancelar">✕</button></div>`).join('')}` : ''}
           <div class="friend-list">${this.social.friends.map((f) => this.friendHTML(f, p)).join('') || '<div class="empty-note">Todavía no tienes amigos añadidos. Escribe el nombre de jugador de un amigo arriba para enviarle una solicitud.</div>'}</div>
           <div class="online-count">${this.social.online} jugador${this.social.online === 1 ? '' : 'es'} conectado${this.social.online === 1 ? '' : 's'}</div>
+          ${this.addressHTML()}
         </aside>
       </div>`;
+  }
+
+  // Dirección que tiene que escribir un amigo con la app del móvil.
+  addressHTML() {
+    let host = '';
+    try {
+      host = new URL(this.url.replace(/^ws/, 'http')).host;
+    } catch {
+      /* sin servidor */
+    }
+    // Conectado a «localhost»: se muestran las IPs de red que envía el servidor
+    const list = !host || /^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? this.net.addresses || [] : [host];
+    if (!list.length) return '';
+    return `<div class="mobile-addr">📱 <b>¿Tu amigo juega desde el móvil?</b><br>
+      En la app: <i>ONLINE → Cambiar servidor</i> y escribe:
+      ${list.map((a) => `<code>${esc(a)}</code>`).join(' ')}
+      <small>o pulsa «Buscar en mi Wi-Fi» (misma red Wi-Fi).</small></div>`;
   }
 
   friendHTML(f, p) {

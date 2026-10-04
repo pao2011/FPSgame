@@ -15,7 +15,7 @@ export const PIECES = [
   { id: 'cone', name: 'Techo', key: '4' },
 ];
 export const MAT_ORDER = ['wood', 'stone', 'metal'];
-const NET_OWNER = { mats: { wood: 999, stone: 999, metal: 999 }, isPlayer: false, team: -1 };
+const NET_OWNER = { mats: { wood: 999, stone: 999, metal: 999 }, isPlayer: false, isNet: true, team: -1 };
 export const FREE_OWNER = NET_OWNER;
 
 // ------------------------------------------------------------- EDICIÓN
@@ -169,6 +169,11 @@ export class BuildSystem {
 
   get settings() {
     return this.game.settings;
+  }
+
+  // Construyendo o editando: el arma no se usa.
+  get busy() {
+    return this.active || !!this.editing;
   }
 
   setActive(on) {
@@ -464,6 +469,7 @@ export class BuildSystem {
     const piece = {
       ...t, edit: t.edit || 0, doorOpen: !!t.doorOpen, mat: matId, maxHp: def.hp, hp: def.hp * 0.3, buildT: 0, buildTime: def.buildTime, grow: 0,
       team: t.team ?? owner.team ?? -1, mesh: null, colliders: null,
+      owner: owner.isPlayer ? 'me' : owner.isNet ? 'net' : 'bot',
     };
     piece.mesh = this.buildMesh(piece);
     piece.mesh.scale.setScalar(0.3);
@@ -474,6 +480,7 @@ export class BuildSystem {
     if (owner.isPlayer) owner.stats.built++;
     if (owner.isPlayer || piece.mesh.position.distanceTo(this.game.player.pos) < 40) this.game.audio.build();
     if (!fromNet) this.game.net?.sendBuild(piece);
+    this.game.creative?.changed();
     return piece;
   }
 
@@ -500,6 +507,7 @@ export class BuildSystem {
     this.game.scene.remove(piece.mesh);
     this.pieces.delete(piece.key);
     if (this.editing?.piece === piece) this.cancelEdit();
+    this.game.creative?.changed();
     if (fx) {
       this.game.effects.debris(piece.mesh.position.clone(), MATERIALS[piece.mat].hex);
       this.game.audio.breakPiece();
@@ -527,7 +535,25 @@ export class BuildSystem {
     piece.mesh = this.buildMesh(piece);
     piece.mesh.scale.setScalar(Math.max(0.3, piece.grow ? 0.3 + 0.7 * piece.grow : 1));
     this.setColliders(piece);
-    if (!fromNet) this.game.net?.sendBuildEdit(piece);
+    if (!fromNet) {
+      this.game.net?.sendBuildEdit(piece);
+      this.game.player.stats.edits = (this.game.player.stats.edits || 0) + 1;
+    }
+    this.game.creative?.changed();
+  }
+
+  // Edición hecha por otro jugador (m.bedit: mask = casillas quitadas).
+  netEdit(m) {
+    const piece = this.pieces.get(m.key);
+    if (!piece) return;
+    if (this.editing?.piece === piece) this.cancelEdit();
+    this.applyEdit(piece, m.mask | 0, true, piece.type === 'ramp' ? m.dir & 3 : null);
+  }
+
+  // Compatibilidad: termina la edición aplicándola o no.
+  endEdit(apply = true) {
+    if (apply) this.confirmEdit();
+    else this.cancelEdit();
   }
 
   setDoor(piece, open, fromNet = false) {
@@ -771,17 +797,20 @@ export class BuildSystem {
     if (player.mode !== 'ground' || !player.alive || player.vehicle || player.knocked) {
       if (this.active) this.setActive(false);
       this.cancelEdit();
+      this.editTarget = null;
       return;
     }
     if (this.editing) {
+      this.editTarget = null;
       this.updateEdit(input);
       return;
     }
     // Entrar en edición (desde combate o construcción)
+    const aimed = g.creative?.busy ? null : this.aimedPiece();
+    this.editTarget = aimed && this.canEdit(aimed) ? aimed : null;
     if (input.hit('edit')) {
-      const piece = this.aimedPiece();
-      if (piece) {
-        this.startEdit(piece);
+      if (aimed) {
+        this.startEdit(aimed);
         return;
       }
       if (!g.mode.build) g.hud.toast('No hay ninguna construcción que editar');
@@ -796,7 +825,8 @@ export class BuildSystem {
       this.piece = quick;
     } else if (input.hit('build')) {
       this.setActive(!this.active);
-      if (this.settings.showHints) g.hud.toast(this.active ? 'Construcción: 1-4 pieza · clic der. material · R girar · F editar · Q salir' : 'Modo combate');
+      const help = g.touch ? 'toca la pieza abajo · dispara para colocar · ✎ editar' : '1-4 pieza · clic der. material · R girar · F editar · Q salir';
+      if (this.settings.showHints) g.hud.toast(this.active ? `Construcción: ${help}` : 'Modo combate');
     }
     if (!this.active) return;
     for (let i = 0; i < PIECES.length; i++) if (input.hit('slot' + (i + 1))) this.piece = i;

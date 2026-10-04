@@ -4,36 +4,47 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
-**Novedades 0.4:** 🗺️ **un solo mapa** (siempre la misma isla), 🧰
-**cofres aleatorios** en cada partida, 🏝️ **Isla de Inicio** antes del
-autobús, 🚌 **autobús de batalla detallado** (y puedes dar las gracias al
-conductor), ✏️ **edición con piezas reales** (puerta, ventana, arco, media
-pared, valla…), ⚙️ **ajustes al estilo de Epic** (construcción turbo,
-controles personalizados, sensibilidades…), 🎨 **modo creativo** con catálogo
-de todas las armas y consumibles, 🔫 **10 armas nuevas**, 🧪 **6 consumibles
-nuevos**, 🏰 **estructuras nuevas** (castillo, molinos, mercadillos) y muchas
-mejoras de calidad de vida. El plan de próximas actualizaciones está en
+**Novedades 0.4:** 🗺️ **un solo mapa** (*Isla Royale*, siempre la misma
+isla), 🧰 **cofres aleatorios** en cada partida, 🏝️ **Isla de Inicio** antes
+del autobús, 🚌 **autobús de batalla detallado** (y puedes dar las gracias al
+conductor), ✏️ **edición con piezas reales** (puerta que se abre, ventana,
+arco, arco grande, media pared, valla…), ⚙️ **ajustes al estilo de Epic**
+(construcción turbo, controles personalizados, sensibilidades…), 🎨 **modo
+creativo** ampliado con catálogo de todas las armas y consumibles, bots,
+prefabricados y guardado, 🔫 armas y consumibles nuevos, 🏰 **estructuras
+nuevas** (castillo, molinos, mercadillos), 🎖️ **pase de batalla** (40
+niveles), **Tienda**, **skins**, **accesorios**, **camuflajes**, 💣
+**explosivos** (granadas, lapa, C4, humo, molotov, impulso) y muchas mejoras de
+calidad de vida. El plan de próximas actualizaciones está en
 [`ROADMAP.md`](ROADMAP.md).
 
-**Anteriormente:** 🌐 **modo online** con cuentas, **amigos**, **grupos**,
+**Anteriormente:** 📱 **versión para móviles** con controles táctiles, calidad
+gráfica *Móvil* con resolución dinámica, juego cruzado **PC + móvil** y
+**APK de Android** (se compila sola en GitHub; ver
+[sección 9](#9-versión-para-móviles-android--apk)); 🌐 **modo online** con cuentas, **amigos**, **grupos**,
 invitaciones, chat y emparejamiento para **1v1 Práctica, Solitario, Dúos,
 Tríos, Escuadras, Duelo por equipos y Construcción cero** (con bots de relleno
 opcionales), pantalla **Personaje** para elegir tu aspecto y un apartado
 gráfico renovado: bloom, antialiasing, cielo con nubes, agua con olas,
 reflejos y espuma en la orilla, terreno con más detalle y menús nuevos.
 
-**Incluye:** menú principal con opciones, **8 modos de juego** (Solitario,
-Dúos, Tríos, Escuadras, 1v1 Práctica, Duelo por equipos, Construcción cero y
-Modo creativo), **bots con
+**Incluye:** menú principal con opciones, **9 modos de juego** (Solitario,
+Dúos, Tríos, Escuadras, 1v1 Práctica, Duelo por equipos, Construcción cero,
+Práctica libre y Creativo), **bots con
 IA** (navegan por el mapa, saquean, construyen, se curan, se reaniman y
 trabajan en equipo), una isla de 1,6 km con **carreteras y pueblos ordenados
 por calles** y muchos tipos de estructuras (casas, tiendas, gasolineras,
 iglesias, rascacielos, fábrica, puerto con muelle y grúa, base militar,
 estadio, granjas, faro, antena de radio, depósitos de agua, búnkeres,
-campamentos, ruinas, castillo, molinos, mercadillos…), cofres y botín por
-rarezas, 15 armas con apuntado, 10 consumibles, construcción y edición,
-recolección de materiales con el pico, coches conducibles, Isla de Inicio,
-autobús de batalla, planeador y tormenta.
+campamentos, ruinas, castillo, molinos, mercadillos…), cofres aleatorios y
+botín por **7 rarezas** (de común a mítico y exótico), **18 armas** con
+apuntado (rifles, fusil pesado, escopetas, minigun, revólver, cañón de mano,
+rifle de caza, lanzacohetes, lanzagranadas, rifle de plasma, arco
+explosivo…), curas (incluidos pez saltarín, Zumo Slurp y barril de poción),
+**granadas, granadas lapa, C4, granadas de impulso, humo, molotov** y
+plataforma de salto, construcción y edición, recolección de materiales con
+el pico, coches conducibles, Isla de Inicio, autobús de batalla, planeador y
+tormenta.
 
 ---
 
@@ -47,6 +58,7 @@ autobús de batalla, planeador y tormenta.
 6. [Opciones avanzadas](#6-opciones-avanzadas)
 7. [Estructura del proyecto](#7-estructura-del-proyecto)
 8. [Jugar online con amigos](#8-jugar-online-con-amigos)
+9. [Versión para móviles (Android / APK)](#9-versión-para-móviles-android--apk)
 
 ---
 
@@ -69,9 +81,8 @@ necesitas Node.js, npm ni terminal.
 3. Entra en la carpeta extraída y haz **doble clic en `jugar.html`**.
    Se abrirá en tu navegador (recomendado: **Chrome, Edge o Firefox**
    actualizados).
-4. Pulsa **▶ JUGAR CON BOTS** y luego **¡A LA ISLA!** (o elige el **Modo
-   creativo** en *Modos de juego*). Haz clic dentro del juego para capturar
-   el ratón.
+4. Pulsa **JUGAR** (con bots) o **PRÁCTICA** (sin bots). Haz clic dentro del
+   juego para capturar el ratón.
 
 > Si tu navegador abre el archivo con otra aplicación, haz clic derecho sobre
 > `jugar.html` → **Abrir con** → Chrome / Edge / Firefox.
@@ -169,19 +180,23 @@ arrancan el juego.
 | `npm run build` | Genera la versión optimizada en `dist/` |
 | `npm run preview` | Sirve la carpeta `dist/` para probarla |
 | `npm run build:standalone` | Regenera `jugar.html` (un solo archivo) |
+| `npm run android:apk` | Genera la APK de Android (`IslaRoyale-debug.apk`); ver [sección 9](#9-versión-para-móviles-android--apk) |
+| `npm run build:android` | Compila el juego y lo copia al proyecto Android |
+| `npm run android:open` | Abre el proyecto Android en Android Studio |
+| `npm run arte` | Regenera iconos, pantalla de carga e imágenes de la tienda |
 
 ---
 
 ## 3. Cómo se juega
 
 1. **Menú principal.** A la izquierda tienes **Online** (ver la
-   [sección 8](#8-jugar-online-con-amigos)), **Jugar con bots**,
-   **Personaje** (colores de tu personaje), **Modos de juego**,
-   **Opciones**, **Controles**, **Cómo jugar** y **Novedades**. En *Jugar con
-   bots* eliges la dificultad de los bots (Fácil, Normal, Difícil, Experto) y
-   el número de jugadores, y pulsas **¡A LA ISLA!**. El mapa es **siempre el
-   mismo** (*Isla Royale*). Durante la partida, **Esc** abre la pausa
-   (continuar, opciones o abandonar).
+   [sección 8](#8-jugar-online-con-amigos)), **Jugar con bots**, **Pase de
+   batalla**, **Tienda**, **Personaje**, **Modos de juego**, **Opciones**,
+   **Controles**, **Cómo jugar** y **Novedades**. En *Jugar con bots* eliges la
+   dificultad de los bots (Fácil, Normal, Difícil, Experto) y el número de
+   jugadores, y pulsas **¡A LA ISLA!**. El mapa es **siempre el mismo**
+   (*Isla Royale*). Durante la partida, **Esc** abre la pausa (continuar,
+   opciones o abandonar).
 
    | Modo | Descripción |
    | --- | --- |
@@ -192,16 +207,17 @@ arrancan el juego.
    | **1v1 Práctica** | Duelo contra un bot en una arena pequeña, con equipo completo, materiales infinitos y reaparición; gana el primero en llegar a 5 |
    | **Duelo por equipos** | 2 equipos grandes, reaparición; gana el primero en llegar a 50 eliminaciones |
    | **Construcción cero** | Solitario sin construir |
-   | **Modo creativo** | La isla para ti: vuelo, catálogo de objetos, bots y dianas a demanda, prefabricados, guardar construcciones… (ver abajo) |
+   | **Práctica libre** | La isla principal sin bots, materiales infinitos y dianas |
+   | **Modo creativo** | Isla plana para ti: vuelo, catálogo de objetos y de edificios, bots y dianas a demanda, prefabricados, guardar construcciones… (ver abajo) |
 
 2. **Isla de Inicio.** Antes de cada partida (Solitario, Dúos, Tríos,
    Escuadras y Construcción cero) apareces en la **Isla de Inicio**, una isla
    pequeña fuera del mapa que se ve desde la costa de la isla principal pero
-   no sale en el minimapa. Mientras llegan los demás jugadores puedes
-   correr, construir (materiales infinitos), coger las armas de las mesas y
-   disparar a las dianas; aquí nadie recibe daño. Cuando están todos, empieza
-   una **cuenta atrás de 10 segundos** y todos subís al autobús (lo de la isla
-   de inicio se reinicia). En *Opciones → Juego* puedes saltártela en las
+   no sale en el minimapa. Mientras llegan los demás jugadores puedes correr,
+   construir (materiales infinitos), coger las armas de las mesas y disparar a
+   las dianas; aquí nadie recibe daño. Cuando están todos, empieza una
+   **cuenta atrás de 10 segundos** y todos subís al autobús (lo de la Isla de
+   Inicio se reinicia). En *Opciones → Juego* puedes saltártela en las
    partidas contra bots.
 3. **Autobús de batalla.** El autobús (con su conductor, pasajeros, equipaje
    y un globo con quemador) cruza la isla. Mueve el ratón para mirar, pulsa
@@ -214,55 +230,66 @@ arrancan el juego.
    **Espacio**. Sigue dirigiéndote con WASD hasta aterrizar.
 6. **Botín.** Busca **cofres dorados** (brillan y suenan cuando estás cerca) y
    ábrelos con **E**. **Los cofres no están siempre en el mismo sitio**: cada
-   cofre posible tiene una probabilidad de aparecer en cada partida. Recoge armas, munición y curas con **E**; la munición y
-   los materiales se recogen solos al pasar por encima. El color indica la
-   rareza: gris (común), verde, azul, morado y dorado (legendario).
+   cofre posible tiene una probabilidad de aparecer en cada partida. Recoge
+   armas, munición y curas con **E**; la munición y los materiales se recogen
+   solos al pasar por encima (y las armas y curas también, si tienes un hueco
+   libre). El color indica la rareza: gris (común), verde (poco común), azul
+   (raro), morado (épico), naranja (legendario), dorado (mítico) y turquesa
+   (exótico). Las armas míticas y exóticas brillan; las exóticas (rifle de
+   plasma y arco explosivo) solo aparecen con esa rareza.
 7. **Inventario.** Tienes 6 huecos (**1–6** o la rueda del ratón). El 1 es
    siempre el pico. Si el inventario está lleno, al recoger algo cambias el
-   objeto que tengas en la mano. **G** suelta el objeto actual. Las armas y
-   curas se recogen solas si tienes un hueco libre (las curas se colocan a la
-   derecha). **X** vuelve al arma anterior y **H** usa la mejor cura.
+   objeto que tengas en la mano. **G** suelta el objeto actual. Las curas y
+   granadas se colocan a la derecha. **X** vuelve al arma anterior y **H**
+   usa la mejor cura.
 8. **Disparar.** **Clic izquierdo** dispara y **clic derecho** apunta (más
    precisión y zoom; el francotirador usa mira telescópica). **R** recarga.
    Disparar en movimiento, saltando o seguido abre la mira (menos precisión);
    agacharse (**C**) la cierra. Los disparos a la cabeza hacen más daño.
-9. **Curarse.** Selecciona vendas, botiquín o pociones y haz **clic
-   izquierdo**; tarda unos segundos (te mueves más lento mientras tanto). El
-   **escudo** (barra azul) absorbe el daño antes que la vida.
+9. **Armas especiales.** El **rifle de ráfagas** dispara 3 balas por clic; la
+   **minigun** necesita un momento para girar los cañones; el **arco
+   explosivo** se tensa manteniendo el clic y dispara al soltarlo; el **rifle
+   de plasma** atraviesa construcciones y enemigos. El **fusil de asalto
+   pesado** pega más fuerte pero con más retroceso; la **escopeta de dos
+   cañones** dispara dos veces muy rápido; el **rifle de caza** es un
+   francotirador sin mira; el **cañón de mano** es la pistola más potente. El
+   **lanzacohetes** y el **lanzagranadas** usan **cohetes** y destrozan
+   construcciones.
+10. **Explosivos.** Selecciona una granada y verás su **trayectoria**; **clic
+    izquierdo** la lanza. *Granada*: rebota y explota a los 2,4 s. *Granada
+    lapa*: se pega a lo que toque (también a enemigos). *Molotov*: incendia el
+    suelo unos segundos. *Humo*: crea una nube que tapa la visión (los bots no
+    ven a través). *Granada de impulso*: no hace daño pero lanza por los aires
+    a todos los cercanos, y al caer no se recibe daño. *C4*: lanza hasta 10
+    cargas que se pegan donde caen y detónalas con **clic derecho**. Las
+    explosiones no atraviesan paredes y no te dañan a ti ni a tu equipo.
+11. **Curarse.** Selecciona una cura y haz **clic izquierdo**; tarda unos
+    segundos (te mueves más lento mientras tanto). El **escudo** (barra azul)
+    absorbe el daño antes que la vida.
 
-   | Arma | Munición | Notas |
-   | --- | --- | --- |
-   | Rifle de asalto · Fusil de ráfagas · Fusil de asalto pesado | Media | Ráfagas de 3 / más daño y retroceso |
-   | Subfusil · Minigun | Ligera | La minigun tiene que girar antes de disparar |
-   | Escopeta de corredera · táctica · de dos cañones | Cartuchos | Mucho daño de cerca |
-   | Rifle de francotirador · Rifle de caza | Pesada | Con mira / sin mira y más rápido |
-   | Pistola · Revólver · Cañón de mano | Ligera / media / pesada | |
-   | Lanzacohetes · Lanzagranadas | Cohetes | Explosiones que dañan en área y rompen construcciones |
-
-   | Consumible | Efecto |
-   | --- | --- |
-   | Vendas · Botiquín | +15 vida (hasta 75) · +100 vida |
-   | Minipoción · Poción de escudo | +25 escudo (hasta 50) · +50 escudo |
-   | Pez saltarín | +40 vida en 1 s |
-   | Zumo Slurp | +75 de vida y luego escudo, poco a poco |
-   | Jarra Chug | Vida y escudo al máximo (15 s) |
-   | Granada · Granada de impulso | Explota en área · te empuja por los aires (sin daño de caída) |
-   | Plataforma de salto | Se coloca en el suelo; al pisarla sales disparado y se abre el planeador |
-10. **Materiales.** Con el **pico** golpea **árboles** (madera), **rocas**
-   (piedra) y **coches abandonados** (metal). Al romperlos ganas un extra.
-   Los bots también sueltan materiales al ser eliminados.
-11. **Construir.** Pulsa **Q** para entrar en modo construcción (la cámara pasa
+    | Objeto | Efecto |
+    | --- | --- |
+    | Vendas · Botiquín | +15 vida (hasta 75) · +100 vida |
+    | Minipoción · Poción de escudo | +25 escudo (hasta 50) · +50 escudo |
+    | Pez saltarín | +40 vida en 1 s |
+    | Zumo Slurp | +75 de vida y luego escudo, poco a poco |
+    | Barril de poción | Vida y escudo al máximo (15 s) |
+    | Plataforma de salto | Se coloca en el suelo; al pisarla sales disparado y se abre el planeador |
+12. **Materiales.** Con el **pico** golpea **árboles** (madera), **rocas**
+    (piedra) y **coches abandonados** (metal). Al romperlos ganas un extra.
+    Los bots también sueltan materiales al ser eliminados.
+13. **Construir.** Pulsa **Q** para entrar en modo construcción (la cámara pasa
     a tercera persona). Elige pieza con **1** muro, **2** suelo, **3** rampa,
     **4** techo (o directamente con **Z**/**F1**–**F4**), cambia de material
     con **clic derecho**, gira rampas y techos con **R** y coloca con **clic
-    izquierdo** (con la *construcción turbo* basta con mantenerlo pulsado). Cada pieza cuesta 10 de material.
-    La silueta azul indica dónde se colocará (roja = no se puede: falta
-    material, ya hay una pieza o te estorba). Mirando hacia arriba se coloca
-    por encima de ti. Para **subir rápido**, corre hacia delante colocando
-    rampas: se encadenan solas. Madera = rápida y débil, piedra = media,
-    metal = muy resistente pero tarda más en endurecerse. Las piezas se
-    rompen a tiros. **Q** vuelve al modo combate.
-12. **Editar.** Apunta a una pieza de tu equipo y pulsa **F**. Aparece una
+    izquierdo** (con la *construcción turbo* basta con mantenerlo pulsado).
+    Cada pieza cuesta 10 de material. La silueta azul indica dónde se colocará
+    (roja = no se puede: falta material, ya hay una pieza o te estorba).
+    Mirando hacia arriba se coloca por encima de ti. Para **subir rápido**,
+    corre hacia delante colocando rampas: se encadenan solas. Madera = rápida
+    y débil, piedra = media, metal = muy resistente pero tarda más en
+    endurecerse. Las piezas se rompen a tiros. **Q** vuelve al modo combate.
+14. **Editar.** Apunta a una pieza de tu equipo y pulsa **F**. Aparece una
     rejilla: haz clic (o arrastra) sobre las casillas para quitarlas o
     ponerlas y vuelve a pulsar **F** para confirmar (**clic derecho**
     restablece). En los muros puedes aplicar directamente **piezas reales**:
@@ -270,61 +297,91 @@ arrancan el juego.
     arco, **4** arco grande, **5** media pared, **6** valla (muro bajo), **7**
     puerta lateral y **8** ventana doble. Los suelos admiten huecos, las
     rampas se giran eligiendo las 2 casillas del lado hacia el que deben subir
-    y los techos se convierten en tejado inclinado o plano.
-13. **Coches.** Acércate a un coche de color y pulsa **E** para conducir.
+    y los techos se convierten en tejado inclinado o plano. En el móvil: botón
+    **✎ EDITAR** (otra vez **LISTO**) y disparar para marcar casillas.
+15. **Coches.** Acércate a un coche de color y pulsa **E** para conducir.
     **W/S** acelerar/frenar y marcha atrás, **A/D** girar, **Espacio** freno
     de mano, ratón para mirar alrededor. **E** para bajarte. Puedes atropellar
     a los bots.
-14. **Tormenta.** El muro morado se cierra por fases (mira el aviso arriba a
+16. **Tormenta.** El muro morado se cierra por fases (mira el aviso arriba a
     la derecha y el círculo blanco del mapa: es la próxima zona segura).
     Fuera de la zona pierdes vida cada segundo (el escudo no protege).
-15. **Equipos.** En Dúos y Escuadras, si tu vida llega a 0 quedas
+17. **Equipos.** En Dúos y Escuadras, si tu vida llega a 0 quedas
     **derribado**: sólo puedes arrastrarte y te desangras. Un compañero puede
     reanimarte (los bots lo hacen solos). Para reanimar tú a un compañero,
     acércate y **mantén E** 5 segundos. Si todo el equipo cae, quedáis
     eliminados. Si te eliminan y queda algún compañero, pasas a **espectar**
     (clic para cambiar de compañero). Tus compañeros aparecen en azul en el
     minimapa y con su nombre encima.
-16. **Marcadores.** **Clic central** (o **T**) marca el punto al que apuntas
+18. **Marcadores.** **Clic central** (o **T**) marca el punto al que apuntas
     (en online lo ven tus compañeros). En el mapa (**M**) el ratón queda libre:
     **clic** para marcar un destino y **clic derecho** para quitarlo. Las
     marcas salen en la brújula (con la distancia) y en el minimapa.
-17. **Ganar.** Sé el último jugador (o equipo) en pie: **¡VICTORIA
+19. **Ganar.** Sé el último jugador (o equipo) en pie: **¡VICTORIA
     MAGISTRAL!** Arriba a la derecha: 👤 jugadores vivos, 🚩 equipos vivos,
     💀 tus eliminaciones.
+20. **Pase de batalla.** Cada partida da **XP**: +100 por jugar, +75 por
+    eliminación, daño (hasta +400), cofres, construir y editar, tiempo de juego
+    y puesto (victoria +500, top 5 +200, top 10 +100); online, +25 %. Los
+    **logros** (primera eliminación, 5 victorias, 50 disparos a la cabeza,
+    abrir 25 cofres…) dan entre 300 y 2.500 XP. Cada 1.000 XP subes un nivel
+    (40 niveles). El **pase gratuito** da camuflajes, accesorios, 2 skins y
+    **450 tokens**; el **premium** (**800 tokens**, en la Tienda o en la
+    pantalla del pase) añade la Banana Agente, el Astronauta, el Robo-Royale,
+    más camuflajes (neón, arcoíris, lava, diamante, oro), accesorios y 25
+    tokens en el resto de niveles. Al comprarlo recibes al momento todo lo de
+    los niveles que ya tengas. Al completar el pase, cada nivel extra da 25
+    tokens. Empiezas con 200 tokens de regalo. La Práctica libre y el modo
+    creativo no dan XP.
+21. **Tienda y personaje.** En **TIENDA** compras skins (Dino Rex es
+    exclusiva), accesorios o el pase premium con tokens (pulsa dos veces para
+    confirmar). En **PERSONAJE** equipas skin, accesorio y camuflaje de armas
+    (o tus colores). Con sesión online, el progreso y el aspecto se guardan en
+    tu cuenta y los demás te ven así.
 
-**Modo creativo:** doble **Espacio** para volar (Espacio sube, C baja, Shift
-acelera) y **B** abre el panel con cuatro pestañas:
+**Modo creativo:** isla plana sin tormenta, eres invulnerable y tienes
+munición y materiales infinitos (se puede cambiar). Doble **Espacio** para
+volar (Espacio sube, C baja, Shift acelera) y **B** abre el panel:
 
-- **Catálogo**: todas las armas (en todas sus rarezas), consumibles, munición
-  y materiales. Clic = al inventario, clic derecho = soltar al suelo.
+- **Objetos**: todas las armas (en todas sus rarezas), curas, arrojadizos,
+  munición y materiales. Clic = al inventario, clic derecho = soltar al suelo.
+- **Edificios**: todos los edificios de la isla (casas, rascacielos, tienda,
+  gasolinera, iglesia, nave, fábrica, estadio, búnker, torres, faro, antena,
+  grúa, silo, contenedores, fuente…): elige uno, apunta y **clic** para
+  colocarlo (**R** gira). *Borrar edificios* quita lo que apuntes y *Vaciar la
+  isla* lo borra todo.
 - **Herramientas**: modo dios, munición infinita, vuelo, velocidad, vida y
   escudo al máximo, vaciar inventario, generar **bots enemigos** (con
   dificultad), dianas, cofres y cajas de munición.
 - **Construcción**: prefabricados (caja 1×1, subida de rampas, torre de
   rampas, fuerte 2×2 de 3 plantas, muro de 5, puente, plataforma 5×5), borrar
-  todo y **guardar/cargar** en 3 ranuras.
+  construcciones y **guardar/cargar** en 3 ranuras.
 - **Mundo**: teletransporte haciendo clic en el mapa, hora del día
   (día/noche), activar la tormenta y materiales infinitos.
 
+Tu isla creativa (edificios y construcciones) se **guarda sola**.
+
 **Ajustes (Opciones):** pestañas *Juego* (recogida automática, ordenar curas,
 recarga automática, apuntar/agacharse alternos, correr por defecto, saltar la
-isla de inicio, consejos), *Sensibilidad* (general, al apuntar, con mira,
+Isla de Inicio, consejos), *Sensibilidad* (general, al apuntar, con mira,
 construyendo y editando), *Construcción y edición* (construcción turbo y su
 retardo, cambio automático de material, silueta, confirmar edición al soltar,
 seleccionar arrastrando), **Controles** (reasigna cualquier acción con dos
 teclas o botones del ratón), *Interfaz* (números de daño, tamaño de la
-interfaz, color de la mira, FPS) y *Vídeo y sonido* (campo de visión,
-volumen, límite de FPS y calidad gráfica).
+interfaz, color de la mira, FPS), *Vídeo y sonido* (campo de visión, volumen,
+límite de FPS y calidad gráfica, también *Móvil*) y *Móvil y táctil*
+(controles táctiles, sensibilidad y tamaño de los botones, vibración,
+resolución dinámica, ahorro de batería).
 
 **Cómo piensan los bots:** ven en un cono de ~130° y oyen los disparos
 cercanos; comparten lo que ven con su equipo; recorren la isla por caminos
 calculados (entran por las puertas, rodean muros y vallas); eligen el arma
 según la distancia (escopeta de cerca, fusil a media distancia,
-francotirador de lejos); tardan un poco en reaccionar y afinan la puntería
+francotirador de lejos, lanzacohetes contra grupos y construcciones); tardan un poco en reaccionar y afinan la puntería
 cuanto más tiempo te siguen; disparan en ráfagas; se cubren con muros o se
 encierran para curarse; hacen rampas si estás más alto; disparan a tus
-construcciones si te escondes detrás; recogen materiales; rotan hacia la
+construcciones si te escondes detrás; te lanzan granadas, molotov y C4
+(sobre todo si te escondes); usan humo para curarse; recogen materiales; rotan hacia la
 zona segura con antelación; y reaniman a sus compañeros. La dificultad
 cambia sus reflejos, su puntería y lo mucho que construyen.
 
@@ -337,21 +394,22 @@ alrededor de la mira señala de dónde vienen los disparos.
 ## 4. Controles
 
 Son los controles por defecto: **todos se pueden cambiar** en *Opciones →
-Controles*.
+Controles* (en el móvil hay controles táctiles; ver la
+[sección 9](#9-versión-para-móviles-android--apk)).
 
 | Tecla | Acción |
 | --- | --- |
 | **W A S D** (o flechas) | Moverse · **W/S** junto a una escalera de mano: trepar/bajar |
 | **Ratón** | Mirar |
-| **Clic izquierdo** | Disparar · usar curas · lanzar · golpear con el pico · colocar pieza |
-| **Clic derecho** | Apuntar · (construyendo) cambiar material · (editando) restablecer |
+| **Clic izquierdo** | Disparar · usar curas · lanzar granadas · golpear con el pico · colocar pieza · (arco) mantener para tensar |
+| **Clic derecho** | Apuntar · detonar C4 · (construyendo) cambiar material · (editando) restablecer |
 | **Clic central** / **T** | Marcar ubicación |
 | **Espacio** | Saltar · salir del autobús · planeador · freno de mano · (creativo, doble) volar |
 | **Shift** | Correr |
 | **C** / **Ctrl** | Agacharse · (volando) bajar |
 | **=** | Correr automáticamente |
 | **E** | Abrir cofre · recoger · abrir puerta · coche · (mantener) reanimar |
-| **R** | Recargar · (construyendo) girar pieza |
+| **R** | Recargar · (construyendo o colocando edificios) girar |
 | **1–6 / rueda** | Cambiar de objeto · (construyendo) 1–4 pieza · (editando) piezas reales |
 | **X** | Arma anterior |
 | **H** | Curación rápida |
@@ -361,7 +419,7 @@ Controles*.
 | **G** | Soltar el objeto actual |
 | **V** | Cámara en 1ª / 3ª persona |
 | **M** | Mapa de la isla (clic: marcar destino) |
-| **B** | (Autobús) dar las gracias al conductor · (creativo) catálogo y herramientas |
+| **B** | (Autobús) dar las gracias al conductor · (creativo) panel de objetos, edificios y herramientas |
 | **Esc** | Liberar el ratón / pausa |
 
 ---
@@ -396,13 +454,15 @@ Se añaden al final de la dirección (por ejemplo `jugar.html?calidad=baja`):
 | Opción | Efecto |
 | --- | --- |
 | `?calidad=baja` | Sin sombras, sin posprocesado y menor resolución |
+| `?calidad=movil` | Como *baja*, con resolución ajustable y dinámica (la de los móviles) |
 | `?calidad=alta` | Sombras más nítidas y mayor resolución |
 
 El mapa es **único**: la isla se genera siempre con la misma semilla
 (`MAP_SEED` en `src/world/constants.js`). El resto de ajustes (modo,
 dificultad, jugadores, sensibilidades, controles, construcción turbo, campo de
-visión, volumen, límite de FPS, calidad gráfica **Alta / Normal / Baja**,
-servidor online…) están en el menú y se guardan en el navegador.
+visión, volumen, límite de FPS, calidad gráfica **Alta / Normal / Baja /
+Móvil**, controles táctiles, servidor online…) están en el menú y se guardan
+en el navegador.
 
 ---
 
@@ -430,6 +490,7 @@ src/
     terrain.js collision.js nature.js sky.js
   net/
     client.js         conexión con el servidor (sesión, reconexión)
+    discover.js       «Buscar en mi Wi-Fi»: encuentra servidores en la red local
     match.js          sincronización de una partida online
     remote.js         otros jugadores (interpolación de su movimiento)
   game/
@@ -439,14 +500,23 @@ src/
     bots.js           IA de los bots (percepción, decisiones, combate…)
     modes.js          modos de juego y ajustes guardados
     combat.js         armas, apuntado, retroceso, recarga, curas y pico
-    build.js          sistema de construcción y edición de piezas
-    creative.js       herramientas del modo creativo (prefabricados, guardar…)
+    build.js          sistema de construcción y edición
+    creative.js       modo creativo: catálogo de edificios, vuelo, guardado, herramientas y prefabricados
+    progress.js       pase de batalla: XP, niveles, tokens, logros y compras
+    cosmetics.js      skins, accesorios, camuflajes, recompensas del pase y tienda
     harvest.js        árboles, rocas y coches que dan materiales
     vehicles.js       coches conducibles
     loot.js           objetos en el suelo, cofres y cajas de munición
     items.js          definición de armas, curas, materiales y botín
     bus.js storm.js effects.js dummies.js models.js
-  ui/                 menú principal, online (amigos/grupo/chat), HUD, minimapa, mapa y panel creativo
+  ui/                 menú principal, online (amigos/grupo/chat), HUD, minimapa, mapa, panel creativo (creative.js)
+                      controles táctiles (touch.js) y pase/tienda/taquilla (progression.js)
+  platform.js         botón Atrás de Android y web instalable (PWA)
+  fonts/              fuentes incluidas (funcionan sin internet)
+public/               manifest, iconos y service worker de la web instalable
+android/              proyecto Android (Capacitor) para generar la APK
+capacitor.config.json configuración de la app Android
+movil/                guía de la APK, arte (iconos) y ficha de Google Play
 server/
   index.js            servidor online (WebSocket en /ws + sirve dist/)
   lobby.js            cuentas conectadas, amigos, grupos, invitaciones, cola
@@ -499,9 +569,10 @@ Lo más sencillo es publicar el servidor gratis en un servicio como
 También puedes abrir el puerto 8080 en tu router o usar un túnel como
 `cloudflared tunnel --url http://localhost:8080` o `ngrok http 8080`.
 
-> Si usas `jugar.html` (el archivo suelto), en **ONLINE → Cambiar servidor**
-> escribe la dirección del servidor (por ejemplo `192.168.1.20:8080` o
-> `mi-isla.onrender.com`). Todos tenéis que usar el mismo servidor.
+> Si usas `jugar.html` (el archivo suelto) o la **app de Android**, en
+> **ONLINE → Cambiar servidor** escribe la dirección del servidor (por ejemplo
+> `192.168.1.20:8080` o `mi-isla.onrender.com`). En la app también puedes
+> pulsar **Buscar en mi Wi-Fi**. Todos tenéis que usar el mismo servidor.
 
 ### 8.4 Cómo funciona
 
@@ -550,3 +621,29 @@ funciona en `/estado`.
 | *El puerto 8080 ya está en uso* | Ya hay un servidor abierto: ciérralo o usa otro puerto (`PORT=8081 npm start`) |
 | No veo a mi amigo conectado | Tenéis que estar en el **mismo servidor** y haber aceptado la solicitud de amistad |
 | *Has iniciado sesión desde otra ventana* | Una cuenta solo puede estar conectada en un sitio a la vez |
+
+---
+
+## 9. Versión para móviles (Android / APK)
+
+El mismo juego funciona en móviles y tabletas con **controles táctiles**
+(joystick, botones de disparar, apuntar, saltar, agacharse, recargar,
+construir, usar, inventario y mapa táctiles), interfaz adaptada a pantallas
+pequeñas, calidad gráfica **Móvil** con resolución dinámica y límite de 30
+FPS opcional.
+
+- **Instalar la APK:** en GitHub → **Releases** → *Isla Royale (APK de
+  prueba)* → descarga `IslaRoyale-debug.apk` en el móvil y ábrela. GitHub la
+  compila sola en cada cambio (`.github/workflows/android.yml`).
+- **Sin instalar nada:** con `npm run build` + `npm start` en el PC, abre en
+  el navegador del móvil la dirección de red que muestra la terminal
+  (`http://192.168.1.20:8080`).
+- **Compilarla tú:** Node 22 + Android Studio y `npm run android:apk`.
+- **Jugar con un amigo de PC:** él arranca `npm run dev`; tú, en la app,
+  **ONLINE → Buscar en mi Wi-Fi** (o escribe la dirección que le sale en la
+  terminal). Jugáis en la misma partida.
+
+Guía completa (controles, firma para Google Play, problemas frecuentes):
+[`movil/README.md`](movil/README.md). Icono, gráfico destacado, capturas,
+descripción y política de privacidad para la tienda:
+[`movil/tienda/`](movil/tienda/FICHA.md).
