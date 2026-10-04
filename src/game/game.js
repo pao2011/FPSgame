@@ -6,6 +6,7 @@ import { Grass } from '../world/grass.js';
 import { InventoryPanel } from '../ui/inventory.js';
 import { Accessibility } from '../ui/accessibility.js';
 import { GamepadInput } from '../core/gamepad.js';
+import { MatchLoader } from '../ui/tips.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -186,6 +187,7 @@ export class Game {
     this.creativePanel = new CreativePanel(this);
     this.inventory = new InventoryPanel(this);
     this.a11y = new Accessibility(this);
+    this.loader = new MatchLoader(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
@@ -459,11 +461,13 @@ export class Game {
     this.waiting = true;
     this.combat.modelKey = null;
     this.hud.toast('Conectando con el resto de jugadores…');
+    this.loader.show(info, mode.name);
     net.ready();
   }
 
   onOnlineGo() {
     this.waiting = false;
+    this.loader.hide();
     this.audio.busHorn?.();
     this.hud.toast(this.mode.noBus ? '¡A luchar!' : '¡Todos los jugadores están listos! El autobús sale en 10 segundos');
     this.input.lock();
@@ -471,6 +475,7 @@ export class Game {
 
   // Fin de la partida online decidido por el servidor.
   onOnlineEnd(m) {
+    this.loader.hide();
     if (this.state !== 'playing') return;
     if (m.winner === -2) {
       this.deathInfo = { type: 'net' };
@@ -482,6 +487,7 @@ export class Game {
   }
 
   leaveOnline() {
+    this.loader.hide();
     if (!this.net) return;
     const net = this.net;
     this.net = null;

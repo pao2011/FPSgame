@@ -1,5 +1,9 @@
 import { Game } from './game/game.js';
 import { setupPlatform } from './platform.js';
+import { randomTip } from './ui/tips.js';
+
+const tipEl = document.querySelector('#loading .loading-tip');
+if (tipEl) tipEl.textContent = '💡 ' + randomTip();
 
 // Deja que se pinte la pantalla de carga antes de generar la isla.
 requestAnimationFrame(() =>

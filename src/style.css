@@ -2766,7 +2766,8 @@ body.touch #touch-ui {
 
 .t-pause,
 .t-cam,
-.t-chat {
+.t-chat,
+.t-inv {
   --s: 40px;
   top: calc(8px + var(--st));
   border-radius: 10px;
@@ -2775,6 +2776,8 @@ body.touch #touch-ui {
 .t-pause { left: calc(8px + var(--sl)); }
 .t-cam { left: calc(54px + var(--sl)); }
 .t-chat { left: calc(100px + var(--sl)); display: none; }
+.t-inv { left: calc(100px + var(--sl)); }
+#touch-ui.online .t-inv { left: calc(146px + var(--sl)); }
 #touch-ui.online .t-chat { display: flex; }
 
 /* Joystick: en reposo se ve un círculo tenue abajo a la izquierda */
@@ -3869,3 +3872,42 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 .t-edit-bar span { opacity: 0.7; }
 .t-edit-bar button { padding: 4px 10px; font-size: 13px; }
 .t-edit-bar button.ok { background: #2fb35a; }
+
+/* ------------------------------------------------------------ CARGA */
+#loading .loading-tip {
+  margin-top: 26px;
+  max-width: min(560px, calc(100vw - 32px));
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.8;
+  line-height: 1.4;
+}
+#match-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 30% 20%, #23407a, #0a1328 70%);
+  color: #fff;
+  transition: opacity 0.35s;
+}
+#match-loader.out { opacity: 0; }
+#match-loader .ml-box { display: flex; gap: 28px; align-items: center; max-width: calc(100vw - 32px); flex-wrap: wrap; justify-content: center; }
+#match-loader .ml-map canvas {
+  width: min(360px, 80vw);
+  height: auto;
+  border-radius: 18px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5);
+}
+#match-loader .ml-side { width: min(380px, calc(100vw - 32px)); }
+#match-loader .ml-title { font-family: 'Lilita One', Inter, sans-serif; font-size: 34px; letter-spacing: 1px; }
+#match-loader .ml-status { display: flex; gap: 10px; align-items: center; margin: 10px 0 16px; opacity: 0.9; }
+#match-loader .spin { width: 16px; height: 16px; border: 3px solid rgba(255, 255, 255, 0.3); border-top-color: #ffd34d; border-radius: 50%; animation: netspin 0.8s linear infinite; flex: none; }
+#match-loader .ml-names { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+#match-loader .ml-names span { background: rgba(255, 255, 255, 0.12); padding: 3px 10px; border-radius: 12px; font-size: 13px; }
+#match-loader .ml-names span.me { background: #ffd34d; color: #222; font-weight: 700; }
+#match-loader .ml-tip { margin-top: 22px; background: rgba(0, 0, 0, 0.3); border-left: 4px solid #ffd34d; border-radius: 10px; padding: 10px 14px; }
+#match-loader .ml-tip small { color: #ffd34d; font-weight: 800; letter-spacing: 1px; }
+#match-loader .ml-tip p { margin: 4px 0 0; line-height: 1.4; }

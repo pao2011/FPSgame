@@ -18,6 +18,7 @@ const ICONS = {
   edit: svg('<path d="M4 17.5V20h2.5L17.8 8.7l-2.5-2.5zM19.7 6.8a1 1 0 0 0 0-1.4l-1.1-1.1a1 1 0 0 0-1.4 0l-1 1 2.5 2.5z" fill="currentColor"/>'),
   catalog: svg('<path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z" fill="currentColor"/>'),
   close: svg('<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'),
+  inv: svg('<path d="M8 7V5a4 4 0 0 1 8 0v2h3l1 14H4L5 7zm2 0h4V5a2 2 0 0 0-4 0z" fill="currentColor"/>'),
   use: svg('<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V3a1.5 1.5 0 0 1 3 0v7h.5V5a1.5 1.5 0 0 1 3 0v9c0 4-2.5 7-6.5 7-3 0-4.6-1.6-6-3.7L4 13.5a1.4 1.4 0 0 1 2.2-1.7z" fill="currentColor"/>'),
 };
 
@@ -36,6 +37,7 @@ const BUTTONS = [
   { id: 'pause', icon: 'pause' },
   { id: 'cam', key: 'KeyV' },
   { id: 'chat' },
+  { id: 'inv', key: 'Tab' },
 ];
 
 export function isTouchDevice() {
