@@ -1,120 +1,533 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Isla Battle Royale</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/src/style.css" />
-  </head>
-  <body>
-    <div id="app"></div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BoomApp Pro Ultimate 💥</title>
+<link rel="manifest" href="manifest.json">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary: #ff4757;
+      --primary-glow: rgba(255, 71, 87, 0.6);
+      --glass-bg: rgba(20, 20, 30, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --text: #f1f2f6;
+      --bg-space: linear-gradient(-45deg, #0a0a1a, #1a1a3a, #2a0825, #0f2027);
+      --bg-cyber: linear-gradient(-45deg, #0f0c29, #302b63, #24243e);
+      --bg-lava: linear-gradient(-45deg, #3a0000, #5c0000, #800000, #2b0000);
+      --current-bg: var(--bg-space);
+    }
 
-    <div id="loading">
-      <div class="logo">ISLA<span>ROYALE</span></div>
-      <div class="loading-text">Generando la isla…</div>
-      <div class="bar"><div></div></div>
-    </div>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; user-select: none; }
 
-    <!-- HUD -->
-    <div id="hud" style="display: none">
-      <div id="damage-numbers"></div>
-      <div id="storm-vignette"></div>
-      <div id="damage-vignette"></div>
-      <div id="scope">
-        <div class="lens"></div>
-        <div class="h"></div>
-        <div class="v"></div>
+    body {
+      background: var(--current-bg);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background 0.5s ease;
+    }
+
+    @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+    /* Indicador FPS */
+    #fpsCounter {
+      position: absolute;
+      top: 70px; left: 20px;
+      font-size: 0.8rem;
+      background: rgba(0,0,0,0.5);
+      padding: 2px 8px;
+      border-radius: 5px;
+      color: #2ed573;
+      font-family: monospace;
+      z-index: 5;
+      display: none;
+    }
+
+    /* Encabezado */
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 15px 20px; background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%); z-index: 10;
+    }
+    
+    h1 { font-size: 1.5rem; font-weight: 800; text-shadow: 0 0 10px var(--primary-glow); }
+    
+    .settings-btn {
+      background: rgba(255,255,255,0.1); border: 1px solid var(--glass-border); color: white;
+      font-size: 1.5rem; border-radius: 50%; width: 45px; height: 45px;
+      display: flex; justify-content: center; align-items: center; cursor: pointer; backdrop-filter: blur(5px);
+    }
+
+    /* Modal de Configuración */
+    #settingsModal {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); z-index: 100;
+      display: flex; justify-content: center; align-items: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    #settingsModal.active { opacity: 1; pointer-events: all; }
+
+    .modal-content {
+      background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px;
+      width: 90%; max-width: 400px; max-height: 85vh; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+      display: flex; flex-direction: column;
+    }
+
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .close-btn { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
+
+    .tabs { display: flex; gap: 5px; margin-bottom: 15px; overflow-x: auto; scrollbar-width: none; }
+    .tab-btn {
+      flex: 1; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border);
+      color: white; border-radius: 10px; cursor: pointer; transition: 0.2s; font-size: 0.85rem; text-align: center; white-space: nowrap;
+    }
+    .tab-btn.active { background: var(--primary); border-color: var(--primary); }
+
+    .tab-content { display: none; flex: 1; overflow-y: auto; padding-right: 5px; }
+    .tab-content.active { display: block; }
+
+    /* Opciones dentro del modal */
+    .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-size: 0.9rem;}
+    
+    select {
+      background: rgba(0,0,0,0.5); color: white; border: 1px solid var(--glass-border);
+      padding: 5px 10px; border-radius: 8px; outline: none; font-family: 'Poppins';
+    }
+    
+    .color-picker { display: flex; gap: 10px; }
+    .color-btn { width: 30px; height: 30px; border-radius: 50%; border: 2px solid white; cursor: pointer; }
+    
+    /* Toggle Switch */
+    .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.2); transition: .4s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Consola Log */
+    #systemLog {
+      background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 10px;
+      font-family: monospace; font-size: 0.75rem; color: #2ed573; height: 200px;
+      overflow-y: auto; text-align: left;
+    }
+    .log-time { color: #888; margin-right: 5px; }
+    .log-err { color: #ff4757; }
+    
+    .credits-text { font-size: 0.85rem; color: #ccc; text-align: center; line-height: 1.6; }
+
+    /* Contenedor del Canvas */
+    #canvas-container { flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; padding: 10px; perspective: 1000px;}
+    canvas { border-radius: 15px; box-shadow: 0 15px 35px rgba(0,0,0,0.5); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+    /* Menú Inferior */
+    #bottom-menu {
+      background: var(--glass-bg); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+      border-top: 1px solid var(--glass-border); padding: 15px; border-radius: 30px 30px 0 0;
+      z-index: 10; display: flex; flex-direction: column; gap: 12px;
+    }
+
+    .preset-gallery { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
+    .preset-img { width: 55px; height: 55px; border-radius: 12px; object-fit: cover; cursor: pointer; border: 2px solid transparent; flex-shrink: 0; }
+    .preset-img.active { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+    .upload-btn { width: 55px; height: 55px; border-radius: 12px; background: rgba(255,255,255,0.1); display: flex; justify-content: center; align-items: center; font-size: 1.5rem; border: 2px dashed rgba(255,255,255,0.3); cursor: pointer; flex-shrink: 0; }
+
+    .control-row { display: flex; gap: 15px; }
+    .control-group { flex: 1; display: flex; flex-direction: column; }
+    label { font-size: 0.8rem; color: #dfe4ea; margin-bottom: 5px; display: flex; justify-content: space-between; }
+    input[type="range"] { -webkit-appearance: none; width: 100%; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; }
+
+    /* Matriz de Botones de Acción */
+    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn { padding: 12px; border: none; border-radius: 12px; font-size: 0.95rem; font-weight: bold; cursor: pointer; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
+    .btn:active { transform: scale(0.95); }
+    .btn-explode { background: linear-gradient(45deg, #ff4757, #ff6b81); }
+    .btn-implode { background: linear-gradient(45deg, #3742fa, #5352ed); }
+    .btn-melt { background: linear-gradient(45deg, #ffa502, #eccc68); }
+    .btn-glitch { background: linear-gradient(45deg, #2ed573, #7bed9f); color: #2f3542;}
+    .btn-reset { background: rgba(255,255,255,0.1); border: 1px solid var(--glass-border); width: 100%; margin-top: 10px; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- Contador FPS -->
+  <div id="fpsCounter">FPS: 0</div>
+
+  <!-- MODAL DE CONFIGURACIÓN -->
+  <div id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="txtSettingsTitle">⚙️ Ajustes</h2>
+        <button class="close-btn" onclick="toggleSettings()">✖</button>
+      </div>
+      
+      <div class="tabs">
+        <div class="tab-btn active" onclick="switchTab('config')" id="tabSys">Sistema</div>
+        <div class="tab-btn" onclick="switchTab('misc')" id="tabMisc">Opciones</div>
+        <div class="tab-btn" onclick="switchTab('log')" id="tabLog">Log</div>
+        <div class="tab-btn" onclick="switchTab('credits')" id="tabCred">Créditos</div>
       </div>
 
-      <div id="crosshair">
-        <i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i><i class="dot"></i>
-      </div>
-      <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
-
-      <div id="compass">
-        <div id="compass-strip"></div>
-        <div class="needle"></div>
-        <div id="heading"></div>
-      </div>
-
-      <div id="top-right">
-        <canvas id="minimap" width="200" height="200"></canvas>
-        <div id="stats"></div>
-        <div id="storm-info"></div>
-      </div>
-
-      <div id="banner"></div>
-      <div id="zone-name"></div>
-      <div id="altitude"></div>
-      <div id="prompt"></div>
-      <div id="toast"></div>
-
-      <div id="progress"><div id="progress-label"></div><div class="track"><div id="progress-fill"></div></div></div>
-
-      <div id="bottom-left">
-        <div class="bar-row shield"><div class="icon">⛨</div><div class="bar"><div id="sh-fill"></div></div><div id="sh-val">0</div></div>
-        <div class="bar-row health"><div class="icon">✚</div><div class="bar"><div id="hp-fill"></div></div><div id="hp-val">100</div></div>
-      </div>
-
-      <div id="bottom-right">
-        <div id="weapon-name"></div>
-        <div id="ammo"></div>
-        <div id="slots"></div>
-        <div id="ammo-list"></div>
-      </div>
-
-      <div id="fullmap">
-        <div class="frame">
-          <div class="title">MAPA DE LA ISLA <small>(M para cerrar)</small></div>
-          <canvas id="fullmap-canvas" width="640" height="640"></canvas>
+      <!-- Pestaña Sistema -->
+      <div id="tab-config" class="tab-content active">
+        <div class="setting-row">
+          <span id="txtLang">Idioma</span>
+          <select id="langSelect">
+            <option value="es">Español</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        
+        <label><span id="txtVol">Volumen General</span>: <span id="valVol">100</span>%</label>
+        <input type="range" id="volumeSlider" min="0" max="100" value="100" style="margin-bottom: 20px;">
+        
+        <div class="setting-row">
+          <span id="txtTheme">Tema Visual</span>
+          <div class="color-picker">
+            <div class="color-btn" style="background: #0f2027;" onclick="changeTheme('space')"></div>
+            <div class="color-btn" style="background: #302b63;" onclick="changeTheme('cyber')"></div>
+            <div class="color-btn" style="background: #5c0000;" onclick="changeTheme('lava')"></div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- MENÚ -->
-    <div id="menu" style="display: none">
-      <div class="menu-card">
-        <div class="logo">ISLA<span>ROYALE</span></div>
-        <div class="subtitle">Battle royale en 3D · Modo práctica (sin bots)</div>
-        <button id="play-btn">JUGAR</button>
-        <div id="seed-label"></div>
-        <div class="controls">
-          <div><kbd>W A S D</kbd> Moverse</div>
-          <div><kbd>Ratón</kbd> Mirar / apuntar</div>
-          <div><kbd>Clic izq.</kbd> Disparar / usar</div>
-          <div><kbd>Clic der.</kbd> Apuntar (ADS)</div>
-          <div><kbd>Espacio</kbd> Saltar / salir del bus / planeador</div>
-          <div><kbd>Shift</kbd> Correr</div>
-          <div><kbd>C</kbd> Agacharse</div>
-          <div><kbd>E</kbd> Abrir cofres / recoger</div>
-          <div><kbd>R</kbd> Recargar</div>
-          <div><kbd>1-6</kbd> / <kbd>Rueda</kbd> Inventario</div>
-          <div><kbd>G</kbd> Soltar objeto</div>
-          <div><kbd>V</kbd> 1ª / 3ª persona</div>
-          <div><kbd>M</kbd> Mapa</div>
-          <div><kbd>Esc</kbd> Pausa</div>
+      <!-- Pestaña Misceláneas (Relleno) -->
+      <div id="tab-misc" class="tab-content">
+        <div class="setting-row">
+          <span id="txtVib">Vibración Háptica</span>
+          <label class="switch"><input type="checkbox" id="tglVib" checked><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <span id="txtFps">Mostrar FPS</span>
+          <label class="switch"><input type="checkbox" id="tglFps"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <span id="txtEco">Ahorro de Energía (Visual)</span>
+          <label class="switch"><input type="checkbox" id="tglEco"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <span id="txtRtx">Trazado de Rayos RTX (Broma)</span>
+          <label class="switch"><input type="checkbox" id="tglRtx"><span class="slider"></span></label>
         </div>
       </div>
+
+      <!-- Pestaña Log -->
+      <div id="tab-log" class="tab-content">
+        <div id="systemLog"></div>
+        <button onclick="document.getElementById('systemLog').innerHTML=''" style="width:100%; margin-top:10px; padding:5px; background:#333; color:white; border:none; border-radius:5px; cursor:pointer;" id="btnClearLog">Limpiar Registro</button>
+      </div>
+
+      <!-- Pestaña Créditos -->
+      <div id="tab-credits" class="tab-content">
+        <p class="credits-text">
+          <strong id="txtAppVer">BoomApp Pro Ultimate v2.0</strong><br><br>
+          <span id="txtDesc1">Desarrollado como una PWA interactiva.</span><br>
+          <span id="txtDesc2">Tecnologías: HTML5 Canvas, JS Vainilla, CSS3 Glassmorphism.</span><br>
+          <i id="txtDesc3">¡Rómpelo todo sin ensuciar!</i>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <header>
+    <h1>BoomApp 💥</h1>
+    <div class="settings-btn" onclick="toggleSettings()">⚙️</div>
+  </header>
+
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="bottom-menu">
+    <div class="preset-gallery">
+      <label class="upload-btn">+<input type="file" id="imageLoader" accept="image/*" class="hidden" /></label>
+      <img src="https://picsum.photos/id/1015/400/400" crossorigin="anonymous" class="preset-img active" onclick="selectPreset(this)">
+      <img src="https://picsum.photos/id/1025/400/400" crossorigin="anonymous" class="preset-img" onclick="selectPreset(this)">
+      <img src="https://picsum.photos/id/1062/400/400" crossorigin="anonymous" class="preset-img" onclick="selectPreset(this)">
+      <img src="https://picsum.photos/id/1074/400/400" crossorigin="anonymous" class="preset-img" onclick="selectPreset(this)">
     </div>
 
-    <div id="pause" style="display: none">
-      <div class="menu-card small">
-        <div class="logo small">PAUSA</div>
-        <div class="subtitle">Haz clic para continuar</div>
+    <div class="control-row">
+      <div class="control-group">
+        <label><span id="txtPieces">Piezas</span> <span id="valDensity">25</span></label>
+        <input type="range" id="densitySlider" min="10" max="60" value="25">
+      </div>
+      <div class="control-group">
+        <label><span id="txtForce">Intensidad</span> <span id="valForce">20</span></label>
+        <input type="range" id="forceSlider" min="5" max="50" value="20">
       </div>
     </div>
 
-    <div id="death" style="display: none">
-      <div class="menu-card">
-        <div class="logo small red">ELIMINADO</div>
-        <div id="death-cause" class="subtitle"></div>
-        <div id="death-stats"></div>
-        <button id="again-btn">VOLVER A JUGAR</button>
-      </div>
+    <div class="action-grid">
+      <button class="btn btn-explode" onclick="triggerAction('explode')" id="btnExp">💣 Explotar</button>
+      <button class="btn btn-implode" onclick="triggerAction('implode')" id="btnImp">🌌 Implosión</button>
+      <button class="btn btn-melt" onclick="triggerAction('melt')" id="btnMelt">💧 Derretir</button>
+      <button class="btn btn-glitch" onclick="triggerAction('glitch')" id="btnGlitch">👾 Glitch</button>
     </div>
+    <button class="btn btn-reset" onclick="resetImage()" id="btnReset">↻ Restaurar Imagen</button>
+  </div>
 
-    <script type="module" src="/src/main.js"></script>
-  </body>
+  <script>
+    // --- SISTEMA DE LOGS ---
+    function logMsg(msg, isError = false) {
+      const logDiv = document.getElementById('systemLog');
+      const time = new Date().toLocaleTimeString('es-ES', { hour12: false });
+      const colorClass = isError ? 'log-err' : '';
+      logDiv.innerHTML += `<div><span class="log-time">[${time}]</span> <span class="${colorClass}">${msg}</span></div>`;
+      logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll
+    }
+    logMsg("Sistema BoomApp inicializado.");
+
+    // --- SISTEMA DE IDIOMAS ---
+    const dict = {
+      es: {
+        txtSettingsTitle: "⚙️ Ajustes", tabSys: "Sistema", tabMisc: "Opciones", tabLog: "Log", tabCred: "Créditos",
+        txtLang: "Idioma", txtVol: "Volumen General", txtTheme: "Tema Visual",
+        txtVib: "Vibración Háptica", txtFps: "Mostrar FPS", txtEco: "Ahorro de Energía (Visual)", txtRtx: "Trazado de Rayos RTX (Broma)",
+        btnClearLog: "Limpiar Registro", txtPieces: "Piezas", txtForce: "Intensidad",
+        btnExp: "💣 Explotar", btnImp: "🌌 Implosión", btnMelt: "💧 Derretir", btnGlitch: "👾 Glitch", btnReset: "↻ Restaurar Imagen",
+        txtDesc3: "¡Rómpelo todo sin ensuciar!"
+      },
+      en: {
+        txtSettingsTitle: "⚙️ Settings", tabSys: "System", tabMisc: "Options", tabLog: "Log", tabCred: "Credits",
+        txtLang: "Language", txtVol: "Master Volume", txtTheme: "Visual Theme",
+        txtVib: "Haptic Vibration", txtFps: "Show FPS", txtEco: "Power Saving Mode (Visual)", txtRtx: "Ray Tracing RTX (Joke)",
+        btnClearLog: "Clear Log", txtPieces: "Pieces", txtForce: "Intensity",
+        btnExp: "💣 Explode", btnImp: "🌌 Implosion", btnMelt: "💧 Melt", btnGlitch: "👾 Glitch", btnReset: "↻ Reset Image",
+        txtDesc3: "Break everything without the mess!"
+      }
+    };
+
+    document.getElementById('langSelect').addEventListener('change', (e) => {
+      const lang = e.target.value;
+      for (let key in dict[lang]) {
+        if(document.getElementById(key)) document.getElementById(key).innerText = dict[lang][key];
+      }
+      logMsg(`Idioma cambiado a: ${lang.toUpperCase()}`);
+    });
+
+    // --- VARIABLES GLOBALES Y DOM ---
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const densitySlider = document.getElementById('densitySlider');
+    const forceSlider = document.getElementById('forceSlider');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const tglFps = document.getElementById('tglFps');
+    const fpsCounter = document.getElementById('fpsCounter');
+    
+    let img = new Image();
+    img.crossOrigin = "anonymous";
+    let particles = [];
+    let isAnimating = false;
+    let animationId;
+    let currentMode = '';
+    let lastTime = 0; // Para FPS
+    
+    const sounds = {
+      explode: new Audio('explosion.mp3'),
+      implode: new Audio('implosion.mp3'),
+      melt: new Audio('melt.mp3'),
+      glitch: new Audio('glitch.mp3')
+    };
+
+    // Actualizaciones de UI
+    densitySlider.addEventListener('input', e => document.getElementById('valDensity').innerText = e.target.value);
+    forceSlider.addEventListener('input', e => document.getElementById('valForce').innerText = e.target.value);
+    volumeSlider.addEventListener('input', e => {
+      const vol = e.target.value / 100;
+      document.getElementById('valVol').innerText = e.target.value;
+      Object.values(sounds).forEach(audio => audio.volume = vol);
+      logMsg(`Volumen ajustado al ${e.target.value}%`);
+    });
+
+    tglFps.addEventListener('change', (e) => {
+      fpsCounter.style.display = e.target.checked ? 'block' : 'none';
+      logMsg(e.target.checked ? "Contador FPS Activado" : "Contador FPS Desactivado");
+    });
+    
+    document.getElementById('tglRtx').addEventListener('change', e => {
+      logMsg(e.target.checked ? "Iniciando Ray Tracing... (Mentira, no hace nada 😂)" : "Ray Tracing desactivado");
+    });
+
+    // --- MODAL Y TEMAS ---
+    function toggleSettings() {
+      document.getElementById('settingsModal').classList.toggle('active');
+    }
+    
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+    }
+
+    function changeTheme(theme) {
+      const root = document.documentElement;
+      if(theme === 'space') root.style.setProperty('--current-bg', 'var(--bg-space)');
+      if(theme === 'cyber') root.style.setProperty('--current-bg', 'var(--bg-cyber)');
+      if(theme === 'lava') root.style.setProperty('--current-bg', 'var(--bg-lava)');
+      logMsg(`Tema cambiado a: ${theme}`);
+    }
+
+    // --- CARGA DE IMÁGENES ---
+    window.onload = () => { img.src = document.querySelector('.preset-img').src; };
+
+    function selectPreset(element) {
+      document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active'));
+      element.classList.add('active');
+      img.src = element.src;
+      logMsg("Imagen predeterminada seleccionada.");
+    }
+
+    document.getElementById('imageLoader').addEventListener('change', (e) => {
+      document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active'));
+      const reader = new FileReader();
+      reader.onload = (event) => { img.src = event.target.result; logMsg("Imagen personalizada cargada con éxito."); };
+      if (e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+    });
+
+    img.onload = resetImage;
+
+    function resetImage() {
+      cancelAnimationFrame(animationId);
+      isAnimating = false;
+      
+      const container = document.getElementById('canvas-container');
+      const maxW = container.clientWidth * 0.9;
+      const maxH = container.clientHeight * 0.8;
+      
+      let ratio = img.width / img.height;
+      if (img.width > maxW || img.height > maxH) {
+        if (ratio > 1) { canvas.width = maxW; canvas.height = maxW / ratio; } 
+        else { canvas.height = maxH; canvas.width = maxH * ratio; }
+      } else {
+        canvas.width = img.width; canvas.height = img.height;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.style.transform = 'scale(0.85)';
+      setTimeout(() => canvas.style.transform = 'scale(1)', 150);
+      
+      logMsg("Lienzo restaurado a la imagen original.");
+    }
+
+    // --- LÓGICA DE MOTOR DE EFECTOS ---
+    function triggerAction(action) {
+      if (!isAnimating) {
+        currentMode = action;
+        createParticles();
+        isAnimating = true;
+        
+        logMsg(`>>> Ejecutando evento: ${action.toUpperCase()} <<<`);
+        
+        // Vibración si está activa y el celular lo soporta
+        if(document.getElementById('tglVib').checked && navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+
+        if (sounds[action]) {
+          sounds[action].currentTime = 0;
+          sounds[action].play().catch(() => logMsg(`Error: Faltan archivos de audio (${action}.mp3)`, true));
+        }
+        
+        lastTime = performance.now();
+        animate(lastTime);
+      }
+    }
+
+    function createParticles() {
+      particles = [];
+      const density = parseInt(densitySlider.value);
+      const force = parseInt(forceSlider.value);
+      
+      const pWidth = canvas.width / density;
+      const pHeight = canvas.height / density;
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+
+      for (let y = 0; y < density; y++) {
+        for (let x = 0; x < density; x++) {
+          let p = {
+            origX: x * pWidth, origY: y * pHeight, currX: x * pWidth, currY: y * pHeight,
+            w: pWidth, h: pHeight, vx: 0, vy: 0, gravity: 0, alpha: 1, delay: 0 
+          };
+
+          if (currentMode === 'explode') {
+            p.vx = (Math.random() - 0.5) * force; p.vy = (Math.random() - 0.5) * force - (force/3); p.gravity = force * 0.04;
+          } else if (currentMode === 'implode') {
+            let dx = centerX - p.currX; let dy = centerY - p.currY; let dist = Math.sqrt(dx*dx + dy*dy);
+            p.vx = (dx / dist) * (force * 0.8) * Math.random(); p.vy = (dy / dist) * (force * 0.8) * Math.random();
+          } else if (currentMode === 'melt') {
+            p.vy = (Math.random() * force * 0.3); p.delay = Math.random() * 50; 
+          } else if (currentMode === 'glitch') {
+            p.delay = Math.random() > 0.8 ? (Math.random() * force) : 0; 
+          }
+          particles.push(p);
+        }
+      }
+      logMsg(`Generadas ${particles.length} partículas de colisión.`);
+    }
+
+    function animate(currentTime) {
+      // Calcular FPS
+      if (document.getElementById('tglFps').checked) {
+        const deltaTime = currentTime - lastTime;
+        fpsCounter.innerText = `FPS: ${Math.round(1000 / deltaTime)}`;
+      }
+      lastTime = currentTime;
+
+      // Aplicar ahorro de energía (falso salto de frames para simular bajo rendimiento si está activo)
+      if(document.getElementById('tglEco').checked && Math.random() > 0.7) {
+        animationId = requestAnimationFrame(animate);
+        return; 
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let particlesVisible = false;
+
+      particles.forEach(p => {
+        if (currentMode === 'explode') {
+          p.vy += p.gravity; p.currX += p.vx; p.currY += p.vy;
+        } else if (currentMode === 'implode') {
+          p.currX += p.vx; p.currY += p.vy; p.alpha -= 0.02; 
+        } else if (currentMode === 'melt') {
+          if (p.delay > 0) p.delay--; else p.currY += p.vy;
+        } else if (currentMode === 'glitch') {
+          if(Math.random() > 0.9) p.currX = p.origX + (Math.random() - 0.5) * p.delay * 5; else p.currX = p.origX;
+        }
+
+        if (p.alpha < 0) p.alpha = 0;
+
+        if (p.currY < canvas.height + 50 && p.alpha > 0) {
+          particlesVisible = true;
+          ctx.save();
+          ctx.globalAlpha = p.alpha;
+          ctx.drawImage(img, p.origX, p.origY, p.w, p.h, p.currX, p.currY, p.w, p.h);
+          ctx.restore();
+        }
+      });
+
+      if (currentMode === 'glitch' && Math.random() < 0.01) particlesVisible = false;
+
+      if (particlesVisible) {
+        animationId = requestAnimationFrame(animate);
+      } else {
+        if (currentMode === 'implode') ctx.clearRect(0, 0, canvas.width, canvas.height); 
+        logMsg("Animación finalizada.");
+      }
+    }
+  </script>
+</body>
 </html>
