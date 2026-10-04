@@ -344,7 +344,8 @@ export class BuildSystem {
     }
     if (input.wasPressed('KeyQ')) {
       this.setActive(!this.active);
-      this.game.hud.toast(this.active ? 'Modo construcción: 1-4 pieza · clic der. material · Q salir' : 'Modo combate');
+      const help = this.game.touch ? 'toca la pieza abajo · dispara para colocar' : '1-4 pieza · clic der. material · Q salir';
+      this.game.hud.toast(this.active ? `Modo construcción: ${help}` : 'Modo combate');
     }
     if (!this.active) return;
     for (let i = 0; i < PIECES.length; i++) if (input.wasPressed('Digit' + (i + 1))) this.piece = i;

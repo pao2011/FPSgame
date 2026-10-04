@@ -4,7 +4,10 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
-**Novedades:** 🌐 **modo online** con cuentas, **amigos**, **grupos**,
+**Novedades:** 📱 **versión para móviles** con controles táctiles, calidad
+gráfica *Móvil* con resolución dinámica, juego cruzado **PC + móvil** y
+**APK de Android** (se compila sola en GitHub; ver
+[sección 9](#9-versión-para-móviles-android--apk)). Antes: 🌐 **modo online** con cuentas, **amigos**, **grupos**,
 invitaciones, chat y emparejamiento para **1v1 Práctica, Solitario, Dúos,
 Tríos, Escuadras, Duelo por equipos y Construcción cero** (con bots de relleno
 opcionales), pantalla **Personaje** para elegir tu aspecto y un apartado
@@ -35,6 +38,7 @@ autobús de batalla, planeador y tormenta.
 6. [Opciones avanzadas](#6-opciones-avanzadas)
 7. [Estructura del proyecto](#7-estructura-del-proyecto)
 8. [Jugar online con amigos](#8-jugar-online-con-amigos)
+9. [Versión para móviles (Android / APK)](#9-versión-para-móviles-android--apk)
 
 ---
 
@@ -156,6 +160,10 @@ arrancan el juego.
 | `npm run build` | Genera la versión optimizada en `dist/` |
 | `npm run preview` | Sirve la carpeta `dist/` para probarla |
 | `npm run build:standalone` | Regenera `jugar.html` (un solo archivo) |
+| `npm run android:apk` | Genera la APK de Android (`IslaRoyale-debug.apk`); ver [sección 9](#9-versión-para-móviles-android--apk) |
+| `npm run build:android` | Compila el juego y lo copia al proyecto Android |
+| `npm run android:open` | Abre el proyecto Android en Android Studio |
+| `npm run arte` | Regenera iconos, pantalla de carga e imágenes de la tienda |
 
 ---
 
@@ -306,11 +314,13 @@ Se añaden al final de la dirección (por ejemplo
 | --- | --- |
 | `?seed=12345` | Genera siempre la misma isla |
 | `?calidad=baja` | Sin sombras, sin posprocesado y menor resolución |
+| `?calidad=movil` | Como *baja*, con resolución ajustable y dinámica (la de los móviles) |
 | `?calidad=alta` | Sombras más nítidas y mayor resolución |
 
 El resto de ajustes (modo, dificultad, jugadores, sensibilidad, campo de
 visión, volumen, invertir eje, mostrar FPS, calidad gráfica **Alta / Normal /
-Baja**, servidor online) están en el menú y se guardan en el navegador.
+Baja / Móvil**, límite de 30 FPS, controles táctiles, servidor online) están
+en el menú y se guardan en el navegador.
 
 ---
 
@@ -336,6 +346,7 @@ src/
     terrain.js collision.js nature.js sky.js
   net/
     client.js         conexión con el servidor (sesión, reconexión)
+    discover.js       «Buscar en mi Wi-Fi»: encuentra servidores en la red local
     match.js          sincronización de una partida online
     remote.js         otros jugadores (interpolación de su movimiento)
   game/
@@ -351,7 +362,14 @@ src/
     loot.js           objetos en el suelo, cofres y cajas de munición
     items.js          definición de armas, curas, materiales y botín
     bus.js storm.js effects.js dummies.js models.js
-  ui/                 menú principal, online (amigos/grupo/chat), HUD, minimapa y mapa
+  ui/                 menú principal, online (amigos/grupo/chat), HUD, minimapa, mapa
+                      y controles táctiles (touch.js)
+  platform.js         botón Atrás de Android y web instalable (PWA)
+  fonts/              fuentes incluidas (funcionan sin internet)
+public/               manifest, iconos y service worker de la web instalable
+android/              proyecto Android (Capacitor) para generar la APK
+capacitor.config.json configuración de la app Android
+movil/                guía de la APK, arte (iconos) y ficha de Google Play
 server/
   index.js            servidor online (WebSocket en /ws + sirve dist/)
   lobby.js            cuentas conectadas, amigos, grupos, invitaciones, cola
@@ -404,9 +422,10 @@ Lo más sencillo es publicar el servidor gratis en un servicio como
 También puedes abrir el puerto 8080 en tu router o usar un túnel como
 `cloudflared tunnel --url http://localhost:8080` o `ngrok http 8080`.
 
-> Si usas `jugar.html` (el archivo suelto), en **ONLINE → Cambiar servidor**
-> escribe la dirección del servidor (por ejemplo `192.168.1.20:8080` o
-> `mi-isla.onrender.com`). Todos tenéis que usar el mismo servidor.
+> Si usas `jugar.html` (el archivo suelto) o la **app de Android**, en
+> **ONLINE → Cambiar servidor** escribe la dirección del servidor (por ejemplo
+> `192.168.1.20:8080` o `mi-isla.onrender.com`). En la app también puedes
+> pulsar **Buscar en mi Wi-Fi**. Todos tenéis que usar el mismo servidor.
 
 ### 8.4 Cómo funciona
 
@@ -453,3 +472,29 @@ otra isla, el juego te ofrece cargarla con un botón.
 | *El puerto 8080 ya está en uso* | Ya hay un servidor abierto: ciérralo o usa otro puerto (`PORT=8081 npm start`) |
 | No veo a mi amigo conectado | Tenéis que estar en el **mismo servidor** y haber aceptado la solicitud de amistad |
 | *Has iniciado sesión desde otra ventana* | Una cuenta solo puede estar conectada en un sitio a la vez |
+
+---
+
+## 9. Versión para móviles (Android / APK)
+
+El mismo juego funciona en móviles y tabletas con **controles táctiles**
+(joystick, botones de disparar, apuntar, saltar, agacharse, recargar,
+construir, usar, inventario y mapa táctiles), interfaz adaptada a pantallas
+pequeñas, calidad gráfica **Móvil** con resolución dinámica y límite de 30
+FPS opcional.
+
+- **Instalar la APK:** en GitHub → **Releases** → *Isla Royale (APK de
+  prueba)* → descarga `IslaRoyale-debug.apk` en el móvil y ábrela. GitHub la
+  compila sola en cada cambio (`.github/workflows/android.yml`).
+- **Sin instalar nada:** con `npm run build` + `npm start` en el PC, abre en
+  el navegador del móvil la dirección de red que muestra la terminal
+  (`http://192.168.1.20:8080`).
+- **Compilarla tú:** Node 22 + Android Studio y `npm run android:apk`.
+- **Jugar con un amigo de PC:** él arranca `npm run dev`; tú, en la app,
+  **ONLINE → Buscar en mi Wi-Fi** (o escribe la dirección que le sale en la
+  terminal). Jugáis en la misma partida.
+
+Guía completa (controles, firma para Google Play, problemas frecuentes):
+[`movil/README.md`](movil/README.md). Icono, gráfico destacado, capturas,
+descripción y política de privacidad para la tienda:
+[`movil/tienda/`](movil/tienda/FICHA.md).

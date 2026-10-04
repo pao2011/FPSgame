@@ -68,7 +68,28 @@ export const DEFAULT_SETTINGS = {
   quality: 'normal',
   server: '',
   online: { mode: 'duos', bots: true, difficulty: 'normal' },
+  // Móvil / táctil
+  touchControls: 'auto', // auto | on | off
+  touchSens: 1,
+  touchSize: 1,
+  touchOpacity: 0.85,
+  touchFullscreen: true,
+  vibration: true,
+  resScale: 70, // % de resolución en calidad «móvil»
+  autoRes: true, // resolución dinámica en calidad «móvil»
+  fpsCap: 0, // 0 = sin límite · 30 = ahorro de batería
 };
+
+// Primera vez en un móvil o tableta: ajustes pensados para rendimiento.
+function deviceDefaults() {
+  try {
+    const touch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+    if (touch && Math.min(screen.width, screen.height) < 900) return { quality: 'movil', players: 20, fov: 85 };
+  } catch {
+    /* fuera del navegador */
+  }
+  return {};
+}
 
 export function loadSettings() {
   try {
@@ -81,7 +102,7 @@ export function loadSettings() {
   } catch {
     /* almacenamiento no disponible */
   }
-  return { ...DEFAULT_SETTINGS, online: { ...DEFAULT_SETTINGS.online } };
+  return { ...DEFAULT_SETTINGS, ...deviceDefaults(), online: { ...DEFAULT_SETTINGS.online } };
 }
 
 export function saveSettings(s) {

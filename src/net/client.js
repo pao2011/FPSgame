@@ -37,6 +37,9 @@ export function serverUrl(custom) {
     if (!/\/ws\/?$/.test(s)) s = s.replace(/\/$/, '') + '/ws';
     return s;
   }
+  // En la app de Android el juego va dentro del móvil: no hay servidor por
+  // defecto, hay que indicar el del amigo (o buscarlo en la Wi-Fi).
+  if (needsServerAddress()) return '';
   // Con `npm run dev` el juego va por Vite (5173) y el servidor por el 8080:
   // se conecta directo al servidor (sin depender del proxy de Vite).
   if (import.meta.env?.DEV && (location.protocol === 'http:' || location.protocol === 'https:')) {
@@ -46,6 +49,10 @@ export function serverUrl(custom) {
     return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
   }
   return 'ws://localhost:8080/ws';
+}
+
+export function needsServerAddress() {
+  return !!window.Capacitor?.isNativePlatform?.();
 }
 
 export class NetClient {
@@ -61,6 +68,7 @@ export class NetClient {
     this.retryTimer = null;
     this.seed = 0;
     this.ping = 0;
+    this.addresses = [];
     this.pendingAuth = null;
     setInterval(() => {
       if (this.state === 'online') this.send('ping', { ts: performance.now() });
@@ -146,7 +154,10 @@ export class NetClient {
   }
 
   receive(m) {
-    if (m.t === 'hello') this.seed = m.seed;
+    if (m.t === 'hello') {
+      this.seed = m.seed;
+      this.addresses = m.addr || [];
+    }
     if (m.t === 'auth_ok') {
       this.user = { name: m.name, stats: m.stats, outfit: m.outfit };
       this.token = m.token;

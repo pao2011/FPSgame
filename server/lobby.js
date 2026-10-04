@@ -50,7 +50,8 @@ export class Lobby {
     ws.on('pong', () => (c.alive = true));
     ws.on('close', () => this.disconnect(c));
     ws.on('error', () => {});
-    this.send(c, { t: 'hello', seed: this.islandSeed, online: this.online.size });
+    // addr: direcciones de red local del servidor (para conectar móviles)
+    this.send(c, { t: 'hello', seed: this.islandSeed, online: this.online.size, addr: this.addresses || [] });
   }
 
   send(c, msg) {

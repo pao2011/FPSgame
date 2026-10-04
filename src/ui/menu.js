@@ -15,6 +15,18 @@ const CONTROLS = [
   ['Intro', '(online) Chat de la partida · empieza con /e para hablar solo con tu equipo'],
 ];
 
+const TOUCH_CONTROLS = [
+  ['Joystick (izquierda)', 'Moverse · a tope hacia delante: correr · en una escalera: trepar'],
+  ['Arrastrar (derecha)', 'Mirar · también arrastrando el botón de disparo'],
+  ['◎ Disparar', 'Disparar · usar curas · golpear con el pico · colocar pieza (hay otro a la izquierda)'],
+  ['Mira', 'Apuntar (toca para activar/desactivar) · construyendo: cambiar material'],
+  ['▲ Saltar', 'Saltar · salir del autobús · abrir el planeador · freno de mano'],
+  ['▼', 'Agacharse (activar/desactivar)'], ['↻', 'Recargar'], ['Ladrillos', 'Modo construcción / volver al combate'],
+  ['USAR', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
+  ['Inventario', 'Toca un hueco para elegir · mantenlo pulsado para soltar el objeto'],
+  ['Minimapa', 'Tócalo para abrir el mapa'], ['⏸', 'Pausa'], ['👁', 'Cámara 1ª / 3ª persona'], ['💬', '(online) Chat de la partida'],
+];
+
 const OUTFIT_PARTS = [
   ['shirt', 'Camiseta', SHIRTS], ['pants', 'Pantalón', PANTS], ['hair', 'Pelo', HAIR], ['skin', 'Piel', SKINS],
 ];
@@ -85,7 +97,7 @@ class CharacterPreview {
 }
 
 const HOWTO = [
-  ['Salta del autobús', 'Pulsa Espacio cuando se abran las puertas. Mira hacia abajo y mantén W para caer más rápido; el planeador se abre solo.'],
+  ['Salta del autobús', 'Pulsa Espacio (en el móvil, SALTAR) cuando se abran las puertas. Mira hacia abajo y mantén W o el joystick hacia delante para caer más rápido; el planeador se abre solo.'],
   ['Equípate', 'Abre cofres dorados (E) y recoge armas, curas y munición. El color indica la rareza.'],
   ['Consigue materiales', 'Golpea árboles, rocas y coches abandonados con el pico para conseguir madera, piedra y metal.'],
   ['Construye para cubrirte', 'Q entra en modo construcción: muros, suelos, rampas y techos. Clic derecho cambia el material.'],
@@ -208,7 +220,12 @@ export class Menu {
     if (panel === 'play') el.innerHTML = this.playHTML();
     else if (panel === 'modes') el.innerHTML = this.modesHTML();
     else if (panel === 'options') el.innerHTML = this.optionsHTML();
-    else if (panel === 'controls') el.innerHTML = `<h2>Controles</h2><table class="ctrl-table">${CONTROLS.map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>`;
+    else if (panel === 'controls') {
+      const table = (list) => `<table class="ctrl-table">${list.map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>`;
+      el.innerHTML = this.game.touch
+        ? `<h2>Controles táctiles</h2>${table(TOUCH_CONTROLS)}<h3>Con teclado y ratón</h3>${table(CONTROLS)}`
+        : `<h2>Controles</h2>${table(CONTROLS)}`;
+    }
     else el.innerHTML = `<h2>Cómo jugar</h2><ol class="howto">${HOWTO.map(([t, d]) => `<li><b>${t}.</b> ${d}</li>`).join('')}</ol>`;
     if (panel === 'play') this.bindPlay(el);
     if (panel === 'modes') this.bindModes(el);
@@ -280,6 +297,25 @@ export class Menu {
 
   optionsHTML() {
     const s = this.s;
+    const touch = !!this.game.touch;
+    const seg = (k, opts) => `<div class="seg" data-seg="${k}">${opts.map(([v, label]) => `<button data-v="${v}" class="${String(s[k]) === String(v) ? 'on' : ''}">${label}</button>`).join('')}</div>`;
+    const touchHTML = `
+      <h3>Móvil y pantalla táctil</h3>
+      <div class="opt-row"><label>Controles táctiles</label>${seg('touchControls', [['auto', 'Automático'], ['on', 'Siempre'], ['off', 'Nunca']])}
+        <small class="hint" data-hint="touchControls"></small></div>
+      ${touch ? `
+      <div class="opt-row"><label>Sensibilidad táctil <b data-out="touchSens">${s.touchSens.toFixed(2)}</b></label>
+        <input data-k="touchSens" type="range" min="0.3" max="3" step="0.05" value="${s.touchSens}"></div>
+      <div class="opt-row"><label>Tamaño de los botones <b data-out="touchSize">${Math.round(s.touchSize * 100)}%</b></label>
+        <input data-k="touchSize" type="range" min="0.7" max="1.4" step="0.05" value="${s.touchSize}"></div>
+      <div class="opt-row"><label>Opacidad de los botones <b data-out="touchOpacity">${Math.round(s.touchOpacity * 100)}%</b></label>
+        <input data-k="touchOpacity" type="range" min="0.3" max="1" step="0.05" value="${s.touchOpacity}"></div>
+      <div class="opt-row check"><label><input data-k="vibration" type="checkbox" ${s.vibration ? 'checked' : ''}> Vibración</label></div>
+      <div class="opt-row check"><label><input data-k="touchFullscreen" type="checkbox" ${s.touchFullscreen ? 'checked' : ''}> Pantalla completa al jugar (navegador)</label></div>` : ''}`;
+    const mobileHTML = `
+      <div class="opt-row"><label>Resolución (calidad Móvil) <b data-out="resScale">${s.resScale}%</b></label>
+        <input data-k="resScale" type="range" min="40" max="100" step="5" value="${s.resScale}"></div>
+      <div class="opt-row check"><label><input data-k="autoRes" type="checkbox" ${s.autoRes ? 'checked' : ''}> Resolución dinámica (baja la resolución si van lentos los FPS)</label></div>`;
     return `
       <h2>Opciones</h2>
       <div class="opt-row"><label>Sensibilidad del ratón <b data-out="sensitivity">${s.sensitivity.toFixed(2)}</b></label>
@@ -295,9 +331,13 @@ export class Menu {
           <button data-v="alta" class="${s.quality === 'alta' ? 'on' : ''}">Alta</button>
           <button data-v="normal" class="${s.quality === 'normal' ? 'on' : ''}">Normal</button>
           <button data-v="baja" class="${s.quality === 'baja' ? 'on' : ''}">Baja (PCs modestos)</button>
+          <button data-v="movil" class="${s.quality === 'movil' ? 'on' : ''}">Móvil</button>
         </div>
-        <small class="hint" id="quality-hint"></small>
-      </div>`;
+        <small class="hint" data-hint="quality"></small>
+      </div>
+      ${s.quality === 'movil' ? mobileHTML : ''}
+      <div class="opt-row"><label>Límite de FPS</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS (ahorra batería)']])}</div>
+      ${touchHTML}`;
   }
 
   bindOptions(el) {
@@ -306,28 +346,38 @@ export class Menu {
       const k = inp.dataset.k;
       s[k] = Number(inp.value);
       const out = el.querySelector(`[data-out="${k}"]`);
-      if (out) out.textContent = k === 'fov' ? `${s[k]}°` : k === 'volume' ? `${s[k]}%` : s[k].toFixed(2);
+      const pct = k === 'touchSize' || k === 'touchOpacity';
+      if (out) out.textContent = k === 'fov' ? `${s[k]}°` : k === 'volume' || k === 'resScale' ? `${s[k]}%` : pct ? `${Math.round(s[k] * 100)}%` : s[k].toFixed(2);
       this.game.applySettings();
     }));
     el.querySelectorAll('input[type=checkbox]').forEach((inp) => inp.addEventListener('change', () => {
       s[inp.dataset.k] = inp.checked;
       this.game.applySettings();
     }));
-    el.querySelectorAll('[data-seg="quality"] button').forEach((b) => b.addEventListener('click', (e) => {
+    // Ajustes que necesitan recargar la página: calidad y controles táctiles
+    for (const k of ['quality', 'touchControls']) {
+      el.querySelectorAll(`[data-seg="${k}"] button`).forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (s[k] === b.dataset.v) return;
+        s[k] = b.dataset.v;
+        this.game.applySettings();
+        el.querySelectorAll(`[data-seg="${k}"] button`).forEach((x) => x.classList.toggle('on', x === b));
+        const hint = el.querySelector(`[data-hint="${k}"]`);
+        hint.innerHTML = 'Se aplicará al recargar. <a href="#" class="reload-now">Recargar ahora</a>';
+        hint.querySelector('.reload-now').addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const q = new URLSearchParams(location.search);
+          q.delete('calidad');
+          q.set('seed', this.game.seed);
+          location.search = q.toString();
+        });
+      }));
+    }
+    el.querySelectorAll('[data-seg="fpsCap"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (s.quality === b.dataset.v) return;
-      s.quality = b.dataset.v;
+      s.fpsCap = Number(b.dataset.v);
       this.game.applySettings();
-      el.querySelectorAll('[data-seg="quality"] button').forEach((x) => x.classList.toggle('on', x === b));
-      const hint = el.querySelector('#quality-hint');
-      hint.innerHTML = 'Se aplicará al recargar. <a href="#" id="reload-now">Recargar ahora</a>';
-      hint.querySelector('#reload-now').addEventListener('click', (ev) => {
-        ev.preventDefault();
-        const q = new URLSearchParams(location.search);
-        q.delete('calidad');
-        q.set('seed', this.game.seed);
-        location.search = q.toString();
-      });
+      el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
   }
 

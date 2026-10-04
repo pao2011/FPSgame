@@ -1,0 +1,14 @@
+{
+  "appId": "com.islaroyale.juego",
+  "appName": "Isla Royale",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#0b1630",
+    "webContentsDebuggingEnabled": false
+  }
+}
