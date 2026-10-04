@@ -37,6 +37,11 @@ export function serverUrl(custom) {
     if (!/\/ws\/?$/.test(s)) s = s.replace(/\/$/, '') + '/ws';
     return s;
   }
+  // Con `npm run dev` el juego va por Vite (5173) y el servidor por el 8080:
+  // se conecta directo al servidor (sin depender del proxy de Vite).
+  if (import.meta.env?.DEV && (location.protocol === 'http:' || location.protocol === 'https:')) {
+    return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:8080/ws`;
+  }
   if (location.protocol === 'http:' || location.protocol === 'https:') {
     return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
   }
