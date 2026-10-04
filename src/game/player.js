@@ -26,7 +26,7 @@ export class Player extends Character {
     this.mats = { wood: 0, stone: 0, metal: 0 };
     this.stepTimer = 0;
     this.vehicle = null;
-    this.stats = { chests: 0, damage: 0, distance: 0, kills: 0, built: 0 };
+    this.stats = { chests: 0, damage: 0, distance: 0, kills: 0, built: 0, edits: 0, heads: 0 };
     this.model.root.visible = false;
     this.setHeld(PICKAXE);
   }
@@ -108,6 +108,14 @@ export class Player extends Character {
     fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     right.set(-fwd.z, 0, fwd.x);
     wish.set(0, 0, 0);
+    const ax = input.axis;
+    if (ax?.active) {
+      // Joystick táctil: dirección analógica; empujarlo poco = andar despacio
+      wish.addScaledVector(fwd, ax.y).addScaledVector(right, ax.x);
+      const m = wish.length();
+      if (m > 0.001) wish.multiplyScalar(Math.min(1, Math.max(0.35, m / 0.8)) / m);
+      return wish;
+    }
     if (input.down('KeyW')) wish.add(fwd);
     if (input.down('KeyS')) wish.sub(fwd);
     if (input.down('KeyD')) wish.add(right);
@@ -154,6 +162,11 @@ export class Player extends Character {
       const w = this.moveWish(input);
       this.sprinting = false;
       this.groundStep(dt, w, 1.6, false);
+      return;
+    }
+    // Modo creativo: volando no hay gravedad
+    if (this.game.creative?.flying) {
+      this.game.creative.flyStep(dt, this.moveWish(input), input);
       return;
     }
     const wantCrouch = input.down('KeyC') || input.down('ControlLeft');
@@ -214,6 +227,7 @@ export class Player extends Character {
   onHurt(amount, type, attacker) {
     this.game.hud.flashDamage(type, attacker);
     this.game.audio.hurt();
+    if (this.game.touch && type !== 'storm') this.game.touch.vibrate(25);
   }
 
   onEliminated(type, killer) {

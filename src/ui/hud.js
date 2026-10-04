@@ -74,6 +74,7 @@ export class HUD {
       heading: $('heading'),
       storm: $('storm-info'),
       prompt: $('prompt'),
+      editHint: $('edit-hint'),
       banner: $('banner'),
       altitude: $('altitude'),
       progress: $('progress'), progressFill: $('progress-fill'), progressLabel: $('progress-label'),
@@ -109,6 +110,7 @@ export class HUD {
     this.zoneT = 0;
     this.lastZone = null;
     this.mapOpen = false;
+    addEventListener('resize', () => (this.compassHalf = 0));
     this.feed = [];
     this.dirs = [];
   }
@@ -200,7 +202,7 @@ export class HUD {
     for (let i = 0; i < 6; i++) {
       const s = document.createElement('div');
       s.className = 'slot';
-      s.innerHTML = `<span class="key">${i + 1}</span><img alt=""><span class="count"></span>`;
+      s.innerHTML = `<span class="key">${i + 1}</span><img alt="" draggable="false"><span class="count"></span>`;
       this.el.slots.appendChild(s);
       this.slotEls.push({ root: s, img: s.querySelector('img'), count: s.querySelector('.count'), sig: '' });
     }
@@ -276,6 +278,8 @@ export class HUD {
   }
 
   setPrompt(text) {
+    // En táctil la tecla E es el botón «USAR» (o tocar el propio aviso)
+    if (text && this.game.touch) text = text.replace('<kbd>E</kbd>', '<kbd>USAR</kbd>');
     this.set('prompt', this.el.prompt, 'html', text || '');
     this.set('promptShow', this.el.prompt, 'display', text ? 'block' : 'none');
   }
@@ -334,14 +338,14 @@ export class HUD {
       ammoTxt = `<span class="mag">${it.mag}</span><span class="res"> / ${p.ammo[def.ammo]}</span>${reloading}`;
       wname = `<span style="color:${RARITIES[it.rarity].color}">${def.name}</span> · ${RARITIES[it.rarity].name}`;
     } else if (it && it.kind === 'consumable') {
-      wname = `<span style="color:${RARITIES[CONSUMABLES[it.type].rarity].color}">${CONSUMABLES[it.type].name}</span> · Clic para usar`;
+      wname = `<span style="color:${RARITIES[CONSUMABLES[it.type].rarity].color}">${CONSUMABLES[it.type].name}</span> · ${g.touch ? 'Dispara para usar' : 'Clic para usar'}`;
     } else if (it && it.kind === 'throwable') {
       const td = THROWABLES[it.type];
       const col = RARITIES[td.rarity].color;
       if (td.remote) {
         const n = g.explosives.charges(p);
-        wname = `<span style="color:${col}">${it.count > 0 ? td.name : 'Detonador de C4'}</span> · ${it.count > 0 ? 'Clic izq.: lanzar · ' : ''}Clic der.: detonar${n ? ` (${n})` : ''}`;
-      } else wname = `<span style="color:${col}">${td.name}</span> · Clic para lanzar`;
+        wname = `<span style="color:${col}">${it.count > 0 ? td.name : 'Detonador de C4'}</span> · ${it.count > 0 ? (g.touch ? 'Dispara: lanzar · ' : 'Clic izq.: lanzar · ') : ''}${g.touch ? 'Apuntar: detonar' : 'Clic der.: detonar'}${n ? ` (${n})` : ''}`;
+      } else wname = `<span style="color:${col}">${td.name}</span> · ${g.touch ? 'Dispara para lanzar' : 'Clic para lanzar'}`;
       ammoTxt = `<span class="mag">${it.count}</span>`;
     } else {
       wname = 'Pico';
@@ -378,13 +382,22 @@ export class HUD {
     // Brújula
     const heading = ((-p.yaw * 180) / Math.PI) % 360;
     const hd = (heading + 360) % 360;
-    e.compass.style.transform = `translateX(${-(hd * 4) + 200}px)`;
+    if (!this.compassHalf) this.compassHalf = e.compass.parentElement.clientWidth / 2 || 200;
+    e.compass.style.transform = `translateX(${-(hd * 4) + this.compassHalf}px)`;
     this.set('heading', e.heading, 'text', `${Math.round(hd)}°`);
 
-    // Minimapa
+    // Minimapa (en calidad móvil se redibuja a ~20 Hz para ahorrar CPU)
     const mm = e.mini;
-    g.mapRenderer.drawMini(this.miniCtx, mm.width, mm.height, g, p.mode === 'ground' ? 220 : 420);
-    if (this.mapOpen) g.mapRenderer.drawFull(this.fullCtx, e.fullmapCanvas.width, e.fullmapCanvas.height, g);
+    this.miniT = (this.miniT || 0) - dt;
+    if (this.miniT <= 0) {
+      this.miniT = g.quality === 'movil' ? 0.05 : 0;
+      g.mapRenderer.drawMini(this.miniCtx, mm.width, mm.height, g, p.mode === 'ground' ? 220 : 420);
+    }
+    this.fullT = (this.fullT || 0) - dt;
+    if (this.mapOpen && this.fullT <= 0) {
+      this.fullT = g.quality === 'movil' ? 0.1 : 0;
+      g.mapRenderer.drawFull(this.fullCtx, e.fullmapCanvas.width, e.fullmapCanvas.height, g);
+    }
 
     // Tormenta
     const st = g.storm;
@@ -408,7 +421,7 @@ export class HUD {
     const air = p.mode === 'freefall' || p.mode === 'glide';
     this.set('altShow', e.altitude, 'display', air ? 'flex' : 'none');
     if (air) {
-      this.set('alt', e.altitude, 'html', `<div class="alt-val">${Math.max(0, Math.round(p.altitude))} m</div><div class="alt-label">${p.mode === 'freefall' ? 'CAÍDA LIBRE · ESPACIO: desplegar' : 'PLANEADOR'}</div><div class="alt-speed">${Math.round(-p.vel.y)} m/s</div>`);
+      this.set('alt', e.altitude, 'html', `<div class="alt-val">${Math.max(0, Math.round(p.altitude))} m</div><div class="alt-label">${p.mode === 'freefall' ? (g.touch ? 'CAÍDA LIBRE · PLANEAR: desplegar' : 'CAÍDA LIBRE · ESPACIO: desplegar') : 'PLANEADOR'}</div><div class="alt-speed">${Math.round(-p.vel.y)} m/s</div>`);
     }
 
     // Nombre de la zona al entrar
@@ -444,10 +457,19 @@ export class HUD {
     this.set('buildShow', e.buildBar, 'display', b.active ? 'flex' : 'none');
     if (b.active) {
       const html = PIECES.map((pc, i) => `<div class="piece ${i === b.piece ? 'sel' : ''}"><span class="key">${pc.key}</span><span class="ico ${pc.id}"></span>${pc.name}</div>`).join('') +
-        `<div class="piece-mat" style="color:${MATERIALS[b.matId].color}">${MATERIALS[b.matId].name}<small>clic der.</small></div>`;
+        `<div class="piece-mat" style="color:${MATERIALS[b.matId].color}">${MATERIALS[b.matId].name}<small>${g.touch ? 'tocar: cambiar' : 'clic der.'}</small></div>`;
       this.set('buildBar', e.buildBar, 'html', html);
     }
     this.set('slotsShow', e.slots, 'display', b.active ? 'none' : 'flex');
+
+    // Edición y modo creativo
+    let hint = '';
+    if (b.editing) hint = g.touch ? 'EDITANDO · ✎ LISTO para confirmar' : 'EDITANDO · <kbd>F</kbd> confirmar · <kbd>Clic der.</kbd> reiniciar';
+    else if (b.editTarget && !g.touch) hint = '<kbd>F</kbd> Editar';
+    else if (g.creative?.selected) hint = g.touch ? `Colocando: ${g.creative.selected.name}` : `Colocando: ${g.creative.selected.name} · <kbd>R</kbd> girar · <kbd>Clic der.</kbd> cancelar`;
+    else if (g.creative?.erase) hint = g.touch ? 'BORRAR: apunta y dispara' : 'BORRAR: apunta y haz clic · <kbd>Clic der.</kbd> terminar';
+    this.set('editHint', e.editHint, 'html', hint);
+    this.set('editHintShow', e.editHint, 'display', hint ? 'block' : 'none');
 
     // Velocímetro
     this.set('speedShow', e.speed, 'display', p.vehicle ? 'block' : 'none');

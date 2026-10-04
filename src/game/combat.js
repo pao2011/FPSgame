@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, CONSUMABLES, MATERIALS, THROWABLES } from './items.js';
-import { makeItemModel, makeWeaponModel, mat, itemKey } from './models.js';
+import { makeItemModel, makeWeaponModel, mat, outfitColors, itemKey } from './models.js';
 import { lerp } from '../core/rng.js';
 
 const tmpV = new THREE.Vector3();
@@ -93,20 +93,23 @@ export class Combat {
   }
 
   ensureModel(item) {
-    const key = itemKey(item);
+    const camo = item.kind === 'weapon' ? this.player.outfit?.camo || null : null;
+    const look = `${this.player.outfitSig}`;
+    const key = (item.kind === 'weapon' ? `w_${item.type}_${item.rarity}_${camo || ''}` : itemKey(item)) + look;
     if (key === this.modelKey) return;
     this.modelKey = key;
     if (this.vm) this.viewmodel.remove(this.vm);
     const vm = new THREE.Group();
-    const model = item.kind === 'pickaxe' ? makeWeaponModel('pickaxe') : makeItemModel(item);
+    const model = item.kind === 'pickaxe' ? makeWeaponModel('pickaxe') : makeItemModel(item, camo);
     if (item.kind === 'throwable') {
       model.scale.setScalar(0.55);
       model.position.set(0.02, 0.0, -0.06);
     }
     vm.add(model);
     // Manos simples
-    const skin = mat(0xe0b48a);
-    const sleeve = mat(0x2f6fd6);
+    const oc = outfitColors(this.player.outfit);
+    const skin = mat(oc.skin);
+    const sleeve = mat(oc.shirt);
     const hand = (x, y, z, rx = 0) => {
       const g = new THREE.Group();
       const h = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.11), skin);
@@ -191,7 +194,7 @@ export class Combat {
     const p = this.player;
     this.updateProjectiles(dt);
     this.throwCd = Math.max(0, this.throwCd - dt);
-    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.active || p.knocked || g.spectating) {
+    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.busy || g.creative?.busy || p.knocked || g.spectating) {
       this.viewmodel.visible = false;
       this.adsBlend = 0;
       g.hud.setScope(false);
@@ -427,6 +430,7 @@ export class Combat {
       if (e.kind === 'dummy') killed = g.dummies.damage(target, e.dmg, e.head, e.point);
       else killed = this.damageCharacter(target, e.dmg, e.head, e.point, 'bullet');
       g.player.stats.damage += e.dmg;
+      if (e.head && e.kind !== 'dummy') g.player.stats.heads++;
       g.hud.hitMarker(e.head, killed);
       g.audio.hit(e.head);
     }

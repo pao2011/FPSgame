@@ -1,0 +1,11 @@
+# Render Blueprint: publica el servidor online (y el juego web) con un clic.
+# Render → New → Blueprint → elige este repositorio.
+services:
+  - type: web
+    name: isla-royale
+    runtime: node
+    plan: free
+    branch: claude/festive-babbage-xm10eq
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /estado

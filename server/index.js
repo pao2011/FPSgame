@@ -17,6 +17,7 @@ const DIST = join(ROOT, 'dist');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+  '.webmanifest': 'application/manifest+json',
 };
 
 const db = new DB();
@@ -28,12 +29,18 @@ if (!seed) {
   db.save();
 }
 const lobby = new Lobby(db, seed);
+// Direcciones IPv4 de la red local (Wi-Fi/cable) de este ordenador.
+function lanIps() {
+  return Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
+}
+lobby.addresses = lanIps().map((ip) => `${ip}:${PORT}`);
 
 async function serveStatic(req, res) {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/estado') {
-    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-    res.end(JSON.stringify({ ok: true, online: lobby.online.size, partidas: lobby.matches.size, isla: seed }));
+    // También lo usa la búsqueda de servidores en la red local de la app móvil.
+    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ ok: true, juego: 'isla-royale', online: lobby.online.size, partidas: lobby.matches.size, isla: seed, direcciones: lobby.addresses }));
     return;
   }
   let path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
@@ -86,10 +93,16 @@ server.on('error', (err) => {
 wss.on('error', () => {});
 
 server.listen(PORT, () => {
-  const ips = Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
+  const ips = lanIps();
+  lobby.addresses = ips.map((ip) => `${ip}:${PORT}`);
   console.log(`\n  Servidor online de Isla Royale en el puerto ${PORT} (isla #${seed})`);
   console.log(`  · Este ordenador:  http://localhost:${PORT}`);
   for (const ip of ips) console.log(`  · Red local:       http://${ip}:${PORT}`);
+  if (ips.length) {
+    console.log('\n  Amigos con móvil (misma Wi-Fi):');
+    console.log(`  · App Android: ONLINE → Cambiar servidor → escribe  ${ips[0]}:${PORT}  (o pulsa «Buscar en mi Wi-Fi»)`);
+    console.log(`  · Navegador del móvil: abre  http://${ips[0]}:${PORT}  (tras npm run build)`);
+  }
   console.log('');
 });
 

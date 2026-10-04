@@ -132,6 +132,10 @@ export class Match {
         m.from = me.id;
         this.broadcast(m, c);
         break;
+      case 'm.bedit':
+        if (typeof m.key !== 'string' || !this.builds.has(m.key)) return;
+        this.broadcast({ t: 'm.bedit', key: m.key, mask: m.mask | 0, dir: (m.dir | 0) & 3 }, c);
+        break;
       case 'm.brm':
         if (!this.builds.delete(m.key)) return;
         this.broadcast({ t: 'm.brm', key: m.key }, c);
