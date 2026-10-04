@@ -47,7 +47,7 @@ necesitas Node.js, npm ni terminal.
    1. Entra en <https://github.com/pao2011/FPSgame>.
    2. Arriba a la izquierda, en el selector de ramas (el botón con el icono de
       rama), comprueba que está seleccionada la rama
-      **`claude/compassionate-edison-em662m`** (es la que tiene el juego).
+      **`claude/festive-babbage-xm10eq`** (es la que tiene el juego).
    3. Pulsa el botón verde **`<> Code`** → **`Download ZIP`**.
 2. **Descomprime el ZIP**
    - **Windows:** clic derecho sobre el ZIP → **Extraer todo…** → **Extraer**.
@@ -91,11 +91,11 @@ instante en el navegador).
 ### Paso 2 — Descargar el proyecto
 
 - **Con ZIP:** igual que en la sección 1 (rama
-  `claude/compassionate-edison-em662m`, *Download ZIP* y **extraer**).
+  `claude/festive-babbage-xm10eq`, *Download ZIP* y **extraer**).
 - **Con Git:**
 
   ```bash
-  git clone -b claude/compassionate-edison-em662m https://github.com/pao2011/FPSgame.git
+  git clone -b claude/festive-babbage-xm10eq https://github.com/pao2011/FPSgame.git
   ```
 
 ### Paso 3 — Abrir una terminal *dentro* de la carpeta del proyecto
@@ -114,7 +114,7 @@ Comprueba que estás en el sitio correcto: el comando `dir` (Windows) o `ls`
 (Mac/Linux) debe mostrar `package.json`, `index.html` y la carpeta `src`.
 
 > Al descomprimir un ZIP a veces queda una carpeta dentro de otra
-> (`FPSgame-claude-compassionate-edison-em662m/FPSgame-...`). Entra hasta la
+> (`FPSgame-claude-festive-babbage-xm10eq/FPSgame-...`). Entra hasta la
 > que tenga `package.json`.
 
 ### Paso 4 — Instalar las dependencias
