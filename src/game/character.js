@@ -437,35 +437,53 @@ export class Character {
     root.rotation.set(0, this.yaw, 0);
     m.body.rotation.set(0, 0, 0);
     m.body.position.set(0, 0, 0);
+    m.head.rotation.set(0, 0, 0);
+    const joints = (kl, kr, el, er) => {
+      if (m.kneeL) {
+        m.kneeL.rotation.set(kl, 0, 0);
+        m.kneeR.rotation.set(kr, 0, 0);
+        m.elbowL.rotation.set(el, 0, 0);
+        m.elbowR.rotation.set(er, 0, 0);
+      }
+    };
+    if (this.emote && this.updateEmote?.(dt, m, joints)) return;
     if (this.mode === 'freefall') {
+      const t = (this.freefallTime || 0) * 3;
       m.body.rotation.x = -1.1 - this.diveAmount * 0.4;
       m.body.position.y = 1.2;
-      m.armL.rotation.set(0, 0, -2.2);
-      m.armR.rotation.set(0, 0, 2.2);
-      m.legL.rotation.set(0.3, 0, -0.25);
-      m.legR.rotation.set(0.3, 0, 0.25);
+      m.armL.rotation.set(Math.sin(t) * 0.1, 0, -2.2 + this.diveAmount * 0.9);
+      m.armR.rotation.set(-Math.sin(t) * 0.1, 0, 2.2 - this.diveAmount * 0.9);
+      m.legL.rotation.set(0.3 - this.diveAmount * 0.2, 0, -0.25);
+      m.legR.rotation.set(0.3 - this.diveAmount * 0.2, 0, 0.25);
+      joints(-0.5 + this.diveAmount * 0.4, -0.5 + this.diveAmount * 0.4, 0.3, 0.3);
       return;
     }
     if (this.mode === 'glide') {
       m.body.rotation.x = -0.15 - this.diveAmount * 0.3;
       m.armL.rotation.set(0, 0, -2.7);
       m.armR.rotation.set(0, 0, 2.7);
-      m.legL.rotation.set(0.15, 0, 0);
-      m.legR.rotation.set(-0.1, 0, 0);
+      m.legL.rotation.set(0.25, 0, 0);
+      m.legR.rotation.set(-0.05, 0, 0);
+      joints(-0.5, -0.25, 0.25, 0.25);
       this.glider.rotation.z = Math.sin(this.glideT * 1.5) * 0.05;
       return;
     }
     if (this.vehicle) {
-      m.legL.rotation.set(-1.4, 0, 0);
-      m.legR.rotation.set(-1.4, 0, 0);
-      m.armL.rotation.set(1.2, 0, 0);
-      m.armR.rotation.set(1.2, 0, 0);
-      m.body.position.y = -0.5;
+      m.legL.rotation.set(1.45, 0, 0.08);
+      m.legR.rotation.set(1.45, 0, -0.08);
+      m.armL.rotation.set(1.1, 0, 0.1);
+      m.armR.rotation.set(1.1, 0, -0.1);
+      joints(-1.5, -1.5, 0.5, 0.5);
+      m.body.position.y = -0.45;
       return;
     }
     const hs = this.hSpeed;
     this.walkPhase += dt * hs * 1.7;
-    const swing = Math.sin(this.walkPhase) * Math.min(1, hs / 5) * 0.8;
+    const amp = Math.min(1, hs / 5);
+    const swing = Math.sin(this.walkPhase) * amp * 0.8;
+    // Rodilla: se dobla al pasar la pierna por debajo y hacia atrás
+    const kneeL = -(0.08 + Math.max(0, Math.sin(this.walkPhase + 1.4)) * 1.1) * amp;
+    const kneeR = -(0.08 + Math.max(0, Math.sin(this.walkPhase + 1.4 + Math.PI)) * 1.1) * amp;
     if (this.knocked) {
       // arrastrándose por el suelo
       m.body.rotation.x = -1.25;
@@ -474,25 +492,45 @@ export class Character {
       m.armR.rotation.set(2.6 - swing, 0, 0.2);
       m.legL.rotation.set(0.1 + swing * 0.4, 0, 0);
       m.legR.rotation.set(0.1 - swing * 0.4, 0, 0);
+      joints(-0.4 - Math.max(0, swing) * 0.6, -0.4 - Math.max(0, -swing) * 0.6, 0.6, 0.6);
       return;
     }
+    let kl = kneeL, kr = kneeR;
     m.legL.rotation.set(swing, 0, 0);
     m.legR.rotation.set(-swing, 0, 0);
+    // Inclinación al correr y rebote al andar
+    m.body.rotation.x = this.sprinting ? 0.12 : 0.03 * amp;
+    m.body.position.y = -Math.abs(Math.sin(this.walkPhase)) * 0.04 * amp;
     if (this.crouching) {
-      m.body.position.y = -0.4;
-      m.legL.rotation.x = swing * 0.5 - 0.9;
-      m.legR.rotation.x = -swing * 0.5 - 0.9;
-      m.body.rotation.x = 0.1;
+      m.body.position.y = -0.35;
+      m.legL.rotation.x = 1.0 + swing * 0.4;
+      m.legR.rotation.x = 1.0 - swing * 0.4;
+      kl = kr = -1.7;
+      m.body.rotation.x = 0.18;
+    } else if (this.mode === 'ground' && !this.onGround && !this.swimming) {
+      // En el aire (salto): piernas recogidas
+      m.legL.rotation.x = 0.6;
+      m.legR.rotation.x = 0.15;
+      kl = -1.1;
+      kr = -0.5;
     }
+    let el = 0.35 + Math.max(0, swing) * 0.5, er = 0.35 + Math.max(0, -swing) * 0.5;
     if (item && item.kind === 'weapon') {
       const aim = Math.PI / 2 + this.pitch;
-      m.armR.rotation.set(aim, 0, 0);
-      m.armL.rotation.set(aim, 0, 0.55);
+      m.armR.rotation.set(aim, 0, -0.05);
+      m.armL.rotation.set(aim - 0.1, 0, 0.6);
+      el = 0.25;
+      er = 0.1;
       if (m.hand.children[0]) m.hand.children[0].rotation.x = -Math.PI / 2;
+      m.head.rotation.x = -this.pitch * 0.4;
     } else {
-      m.armR.rotation.set(-swing * 0.8 + 0.3, 0, 0);
-      m.armL.rotation.set(swing * 0.8, 0, 0);
+      m.armR.rotation.set(-swing * 0.8 + 0.2, 0, -0.06);
+      m.armL.rotation.set(swing * 0.8, 0, 0.06);
     }
-    if (item && item.kind === 'pickaxe' && swingT > 0) m.armR.rotation.x = 1.8 - (1 - swingT / 0.55) * 2.4;
+    if (item && item.kind === 'pickaxe' && swingT > 0) {
+      m.armR.rotation.x = 1.8 - (1 - swingT / 0.55) * 2.4;
+      er = 0.5;
+    }
+    joints(kl, kr, el, er);
   }
 }

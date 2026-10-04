@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MATERIALS, BUILD_COST } from './items.js';
 import { R } from './character.js';
+import { usesPBR } from './models.js';
 
 export const G = 4; // ancho de casilla
 export const H = 3.2; // altura de planta
@@ -74,42 +75,133 @@ export function yawToDir(yaw) {
   return fz > 0 ? 2 : 0;
 }
 
+// Texturas procedurales de las piezas: color + mapa de relieve (gris). Cada
+// cara de la pieza usa la textura completa, así que el marco de los bordes
+// coincide con los bordes de la pieza (como en Fortnite).
 function texture(kind) {
+  const S = 256;
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  const b = document.createElement('canvas');
+  c.width = c.height = b.width = b.height = S;
   const x = c.getContext('2d');
+  const y = b.getContext('2d'); // relieve: blanco = alto
+  let seed = kind.length * 99;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const both = (fx, fy, ...r) => {
+    x.fillStyle = fx;
+    x.fillRect(...r);
+    y.fillStyle = fy;
+    y.fillRect(...r);
+  };
   if (kind === 'wood') {
-    x.fillStyle = '#b07a40';
-    x.fillRect(0, 0, 128, 128);
-    for (let i = 0; i < 8; i++) {
-      x.fillStyle = i % 2 ? '#a06c36' : '#bb8749';
-      x.fillRect(0, i * 16, 128, 15);
-      x.fillStyle = '#6e4a22';
-      x.fillRect(0, i * 16 + 15, 128, 1);
-      x.fillRect(((i * 37) % 100) + 10, i * 16, 2, 15);
+    both('#a87238', '#808080', 0, 0, S, S);
+    // Tablones horizontales con veta, juntas y nudos
+    const n = 7, ph = (S - 36) / n;
+    for (let i = 0; i < n; i++) {
+      const top = 18 + i * ph;
+      const tone = 150 + Math.floor(rnd() * 40);
+      both(`rgb(${tone + 20},${tone - 20},${tone - 85})`, '#9a9a9a', 0, top, S, ph - 2);
+      for (let k = 0; k < 6; k++) {
+        x.strokeStyle = `rgba(90,55,20,${0.15 + rnd() * 0.2})`;
+        x.lineWidth = 1;
+        x.beginPath();
+        const yy = top + 3 + rnd() * (ph - 8);
+        x.moveTo(0, yy);
+        for (let xx = 0; xx <= S; xx += 32) x.lineTo(xx, yy + Math.sin(xx * 0.05 + i) * 1.5);
+        x.stroke();
+      }
+      if (rnd() > 0.4) {
+        x.fillStyle = 'rgba(80,45,15,0.55)';
+        x.beginPath();
+        x.ellipse(30 + rnd() * 190, top + ph / 2, 5, 2.5, 0, 0, Math.PI * 2);
+        x.fill();
+      }
+      both('#5b3a17', '#303030', 0, top + ph - 2, S, 2);
+      const seam = 40 + ((i * 83) % 170);
+      both('#5b3a17', '#303030', seam, top, 2, ph - 2);
     }
+    // Marco y travesaño en diagonal
+    const frame = (fx, fy, r) => both(fx, fy, ...r);
+    for (const r of [[0, 0, S, 18], [0, S - 18, S, 18], [0, 0, 18, S], [S - 18, 0, 18, S]]) frame('#7a4d22', '#d0d0d0', r);
+    x.save();
+    y.save();
+    for (const ctx of [x, y]) {
+      ctx.translate(S / 2, S / 2);
+      ctx.rotate(-Math.PI / 4);
+    }
+    both('#7a4d22', '#c8c8c8', -S * 0.7, -8, S * 1.4, 16);
+    x.restore();
+    y.restore();
+    // Clavos
+    for (const [cx, cy] of [[9, 9], [S - 9, 9], [9, S - 9], [S - 9, S - 9], [S / 2, 9], [S / 2, S - 9], [9, S / 2], [S - 9, S / 2]]) both('#2a2a2a', '#ffffff', cx - 2, cy - 2, 4, 4);
   } else if (kind === 'stone') {
-    x.fillStyle = '#8e939a';
-    x.fillRect(0, 0, 128, 128);
-    for (let r = 0; r < 6; r++) {
-      for (let k = 0; k < 4; k++) {
-        const ox = (r % 2) * 16;
-        const g = 140 + Math.floor(Math.random() * 30);
-        x.fillStyle = `rgb(${g},${g + 3},${g + 8})`;
-        x.fillRect(k * 32 + ox - 16 + 2, r * 21 + 2, 28, 18);
+    both('#6f6a64', '#202020', 0, 0, S, S); // mortero
+    const rows = 8, bh = S / rows;
+    for (let r = 0; r < rows; r++) {
+      const bw = S / 4;
+      const ox = (r % 2) * (bw / 2);
+      for (let k = -1; k < 5; k++) {
+        const g = 128 + Math.floor(rnd() * 36);
+        const x0 = k * bw + ox + 3, y0 = r * bh + 3, w = bw - 6, h = bh - 6;
+        both(`rgb(${g},${g + 2},${g + 6})`, '#b0b0b0', x0, y0, w, h);
+        // Bisel: arriba/izquierda claro, abajo/derecha oscuro
+        both(`rgba(255,255,255,0.18)`, '#e0e0e0', x0, y0, w, 3);
+        both(`rgba(0,0,0,0.18)`, '#707070', x0, y0 + h - 3, w, 3);
+        for (let d = 0; d < 6; d++) {
+          x.fillStyle = `rgba(${rnd() > 0.5 ? '255,255,255' : '0,0,0'},0.08)`;
+          x.fillRect(x0 + rnd() * w, y0 + rnd() * h, 2 + rnd() * 5, 2 + rnd() * 4);
+        }
       }
     }
+    for (const r of [[0, 0, S, 6], [0, S - 6, S, 6], [0, 0, 6, S], [S - 6, 0, 6, S]]) both('#55514c', '#606060', ...r);
   } else {
-    x.fillStyle = '#7f93a8';
-    x.fillRect(0, 0, 128, 128);
-    x.fillStyle = '#6b7f94';
-    for (let i = 0; i < 4; i++) x.fillRect(0, i * 32 + 30, 128, 3);
-    x.fillStyle = '#c9d5e0';
-    for (let i = 0; i < 4; i++) for (let k = 0; k < 4; k++) x.fillRect(k * 32 + 6, i * 32 + 6, 3, 3);
+    both('#8094a8', '#808080', 0, 0, S, S);
+    // Chapa corrugada vertical
+    for (let xx = 0; xx < S; xx += 16) {
+      const gx = x.createLinearGradient(xx, 0, xx + 16, 0);
+      gx.addColorStop(0, '#6c8095');
+      gx.addColorStop(0.5, '#a8bacb');
+      gx.addColorStop(1, '#6c8095');
+      x.fillStyle = gx;
+      x.fillRect(xx, 0, 16, S);
+      const gy = y.createLinearGradient(xx, 0, xx + 16, 0);
+      gy.addColorStop(0, '#404040');
+      gy.addColorStop(0.5, '#d0d0d0');
+      gy.addColorStop(1, '#404040');
+      y.fillStyle = gy;
+      y.fillRect(xx, 0, 16, S);
+    }
+    // Manchas de óxido/suciedad
+    for (let i = 0; i < 18; i++) {
+      x.fillStyle = `rgba(${rnd() > 0.6 ? '150,90,50' : '40,45,50'},${0.05 + rnd() * 0.08})`;
+      x.beginPath();
+      x.arc(rnd() * S, rnd() * S, 6 + rnd() * 18, 0, Math.PI * 2);
+      x.fill();
+    }
+    // Marco con remaches y refuerzo central
+    for (const r of [[0, 0, S, 20], [0, S - 20, S, 20], [0, 0, 20, S], [S - 20, 0, 20, S], [0, S / 2 - 8, S, 16]]) both('#56677a', '#e0e0e0', ...r);
+    for (let k = 0; k < 8; k++) {
+      const p = 10 + k * ((S - 20) / 7);
+      for (const [cx, cy] of [[p, 10], [p, S - 10], [10, p], [S - 10, p], [p, S / 2]]) {
+        both('#c9d5e0', '#ffffff', cx - 2.5, cy - 2.5, 5, 5);
+      }
+    }
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  t.anisotropy = 4;
+  const bt = new THREE.CanvasTexture(b);
+  return { map: t, bump: bt };
+}
+
+function buildMaterial(kind) {
+  const { map, bump } = texture(kind);
+  if (!usesPBR()) return new THREE.MeshLambertMaterial({ map });
+  const metal = kind === 'metal';
+  return new THREE.MeshStandardMaterial({
+    map, bumpMap: bump, bumpScale: metal ? 2.5 : 3.5,
+    roughness: metal ? 0.42 : kind === 'stone' ? 0.85 : 0.75, metalness: metal ? 0.55 : 0,
+  });
 }
 
 // Sistema de construcción por rejilla al estilo Fortnite, con edición de
@@ -126,7 +218,7 @@ export class BuildSystem {
     this.pieces = new Map();
     this.editing = null;
     this.materials = {};
-    for (const m of MAT_ORDER) this.materials[m] = new THREE.MeshLambertMaterial({ map: texture(m) });
+    for (const m of MAT_ORDER) this.materials[m] = buildMaterial(m);
     this.doorMat = new THREE.MeshLambertMaterial({ color: 0x7a4f2a });
     this.geoCache = new Map();
 

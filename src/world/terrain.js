@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MAP_SIZE, HALF, LOBBY } from './constants.js';
 import { smoothstep } from '../core/rng.js';
+import { usesPBR } from '../game/models.js';
 
 const tmpColor = new THREE.Color();
 
@@ -168,7 +169,7 @@ export class Terrain {
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const mat = usesPBR() ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }) : new THREE.MeshLambertMaterial({ vertexColors: true });
     addGroundDetail(mat);
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.receiveShadow = true;

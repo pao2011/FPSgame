@@ -1,5 +1,42 @@
 import * as THREE from 'three';
 import { ISLAND_RADIUS } from './constants.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { usesPBR } from '../game/models.js';
+
+// Geometría con color por vértice (para fusionar varias piezas en una).
+function tinted(geo, r, g, b) {
+  const ng = geo.index ? geo.toNonIndexed() : geo;
+  const n = ng.attributes.position.count;
+  const c = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    c[i * 3] = r;
+    c[i * 3 + 1] = g;
+    c[i * 3 + 2] = b;
+  }
+  ng.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  if (ng.attributes.uv) ng.deleteAttribute('uv');
+  return ng;
+}
+
+// Deforma una geometría con ruido determinista (rocas y copas irregulares).
+function lumpy(geo, amount, seed) {
+  const p = geo.attributes.position;
+  const v = new THREE.Vector3();
+  const cache = new Map();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    const k = `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`;
+    let f = cache.get(k);
+    if (f === undefined) {
+      f = 1 + (Math.sin(v.x * 12.9 + seed) * Math.cos(v.z * 7.3 - seed) + Math.sin(v.y * 9.1 + seed * 2)) * amount;
+      cache.set(k, f);
+    }
+    v.multiplyScalar(f);
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
 
 // Árboles, rocas y arbustos instanciados.
 export function createNature(world, rng) {
@@ -77,8 +114,10 @@ export function createNature(world, rng) {
     return mesh;
   };
 
-  const trunkGeo = new THREE.CylinderGeometry(0.22, 0.35, 1, 6).translate(0, 0.5, 0);
-  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2b });
+  const PBR = usesPBR();
+  const M = ({ roughness = 0.9, ...o }) => (PBR ? new THREE.MeshStandardMaterial({ roughness, metalness: 0, ...o }) : new THREE.MeshLambertMaterial(o));
+  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.36, 1, 7).translate(0, 0.5, 0);
+  const trunkMat = M({ color: 0x6b4a2b });
   const all = [...pines, ...rounds];
   const trunkMesh = instanced(trunkGeo, trunkMat, all, (t, i) => {
     const th = t.pine ? 2.2 : 2.8;
@@ -86,21 +125,29 @@ export function createNature(world, rng) {
     m.compose(new THREE.Vector3(t.x, t.y - 0.2, t.z), q, new THREE.Vector3(t.s, th * t.s, t.s));
   });
 
-  const pineGeo = new THREE.ConeGeometry(1.8, 5.5, 7).translate(0, 4.6, 0);
-  const pineGeo2 = new THREE.ConeGeometry(1.35, 3.8, 7).translate(0, 7.0, 0);
-  const pineMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  const pineMeshes = [];
-  for (const g of [pineGeo, pineGeo2]) {
-    pineMeshes.push(instanced(g, pineMat, pines, (t, i, mesh) => {
-      q.setFromAxisAngle(up, t.rot);
-      m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s, t.s, t.s));
-      col.setHSL(0.36 + rng.float(-0.03, 0.03), 0.5, 0.24 + rng.float(-0.04, 0.04));
-      mesh.setColorAt(i, col);
-    }));
-  }
+  // Pino: tres pisos de ramas (más oscuros abajo) en una sola geometría
+  const pineGeo = mergeGeometries([
+    tinted(new THREE.ConeGeometry(2.0, 4.0, 8).translate(0, 3.6, 0), 0.78, 0.82, 0.78),
+    tinted(new THREE.ConeGeometry(1.6, 3.4, 8).rotateY(0.4).translate(0, 5.6, 0), 0.9, 0.95, 0.9),
+    tinted(new THREE.ConeGeometry(1.1, 2.8, 8).rotateY(0.8).translate(0, 7.5, 0), 1.05, 1.08, 1.0),
+  ]);
+  const pineMat = M({ color: 0xffffff, vertexColors: true, flatShading: true });
+  const pineMeshes = [instanced(pineGeo, pineMat, pines, (t, i, mesh) => {
+    q.setFromAxisAngle(up, t.rot);
+    m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s, t.s, t.s));
+    col.setHSL(0.36 + rng.float(-0.03, 0.03), 0.5, 0.24 + rng.float(-0.04, 0.04));
+    mesh.setColorAt(i, col);
+  })];
 
-  const roundGeo = new THREE.IcosahedronGeometry(2.4, 0).translate(0, 4.6, 0);
-  const roundMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+  // Árbol frondoso: racimo de copas irregulares
+  const blob = (r, x, y, z, k, seed) => tinted(lumpy(new THREE.IcosahedronGeometry(r, 1), 0.08, seed).translate(x, y, z), k, k, k * 0.95);
+  const roundGeo = mergeGeometries([
+    blob(1.9, 0, 4.4, 0, 0.85, 1),
+    blob(1.4, 1.1, 5.2, 0.4, 1.0, 2),
+    blob(1.3, -0.9, 5.4, -0.5, 1.05, 3),
+    blob(1.1, 0.2, 6.2, -0.2, 1.15, 4),
+  ]);
+  const roundMat = M({ color: 0xffffff, vertexColors: true, flatShading: true });
   const roundMesh = instanced(roundGeo, roundMat, rounds, (t, i, mesh) => {
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s * 1.1, t.s, t.s * 1.1));
@@ -108,8 +155,8 @@ export function createNature(world, rng) {
     mesh.setColorAt(i, col);
   });
 
-  const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-  const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+  const rockGeo = lumpy(new THREE.IcosahedronGeometry(1, 1), 0.14, 7);
+  const rockMat = M({ color: 0xffffff, flatShading: true, roughness: 0.95 });
   const rockMesh = instanced(rockGeo, rockMat, rocks, (t, i, mesh) => {
     q.setFromEuler(new THREE.Euler(rng.float(0, 1), t.rot, rng.float(0, 1)));
     m.compose(new THREE.Vector3(t.x, t.y + t.s * 0.25, t.z), q, new THREE.Vector3(t.s * 1.2, t.s * 0.8, t.s));
@@ -118,7 +165,10 @@ export function createNature(world, rng) {
     mesh.setColorAt(i, col);
   });
 
-  const bushGeo = new THREE.IcosahedronGeometry(0.9, 0).translate(0, 0.5, 0);
+  const bushGeo = mergeGeometries([
+    tinted(lumpy(new THREE.IcosahedronGeometry(0.8, 1), 0.1, 11).translate(0, 0.5, 0), 0.9, 0.9, 0.9),
+    tinted(lumpy(new THREE.IcosahedronGeometry(0.55, 1), 0.1, 12).translate(0.45, 0.75, 0.2), 1.1, 1.1, 1.05),
+  ]);
   instanced(bushGeo, roundMat, bushes, (t, i, mesh) => {
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s * 1.3, t.s, t.s * 1.3));

@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { World } from '../world/world.js';
 import { NavGrid } from '../world/navgrid.js';
 import { createSky, SKY } from '../world/sky.js';
+import { Grass } from '../world/grass.js';
+import { makeEnvironment } from '../world/envmap.js';
+import { setModelQuality } from './models.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -50,6 +54,7 @@ export class Game {
     const low = this.settings.quality === 'baja' || mobile;
     const high = this.settings.quality === 'alta';
     this.quality = mobile ? 'movil' : low ? 'baja' : high ? 'alta' : 'normal';
+    setModelQuality(this.quality);
     const tc = this.settings.touchControls;
     this.isTouch = tc === 'on' || (tc !== 'off' && isTouchDevice());
 
@@ -61,7 +66,7 @@ export class Game {
     renderer.setPixelRatio(this.pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = !low;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = high ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.autoClear = false;
@@ -81,9 +86,22 @@ export class Game {
     this.viewScene.add(vd);
 
     this.sunDir = new THREE.Vector3(0.45, 0.8, 0.35).normalize();
+    vd.position.copy(this.sunDir);
     this.sky = createSky(this.scene, this.sunDir);
-    this.hemi = new THREE.HemisphereLight(0xd6ecff, 0x5f6e44, 1.5);
+    this.hemi = new THREE.HemisphereLight(0xd6ecff, 0x5f6e44, low ? 1.5 : 0.75);
     this.scene.add(this.hemi);
+    // Iluminación de entorno para los materiales PBR (calidad normal/alta)
+    if (!low) {
+      try {
+        const env = makeEnvironment(renderer, this.sunDir);
+        this.scene.environment = env;
+        this.scene.environmentIntensity = 0.75;
+        this.viewScene.environment = env;
+        this.viewScene.environmentIntensity = 0.9;
+      } catch (err) {
+        console.warn('Sin mapa de entorno:', err);
+      }
+    }
     const sun = (this.sun = new THREE.DirectionalLight(0xffefd2, 3.0));
     sun.castShadow = !low;
     sun.shadow.mapSize.set(high ? 4096 : 2048, high ? 4096 : 2048);
@@ -100,6 +118,7 @@ export class Game {
     // creativo usa su propia isla plana (sandbox, no es un mapa de partida).
     this.seed = MAP_SEED;
     this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
+    this.grass = new Grass(this.scene, this.world, this.quality);
 
     this.input = new Input(this.canvas);
     this.touch = null;
@@ -243,6 +262,17 @@ export class Game {
       this.viewPass.clearDepth = true;
       this.bloomPass = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.5, 1.2);
       composer.addPass(this.mainPass);
+      // Oclusión ambiental (rincones y bases de muros más oscuros) en calidad alta
+      if (this.quality === 'alta') {
+        try {
+          this.aoPass = new GTAOPass(this.scene, this.camera, size.x, size.y);
+          this.aoPass.updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.5, thickness: 1.5, scale: 1.2 });
+          this.aoPass.blendIntensity = 0.85;
+          composer.addPass(this.aoPass);
+        } catch (err) {
+          console.warn('Sin oclusión ambiental:', err);
+        }
+      }
       composer.addPass(this.viewPass);
       composer.addPass(this.bloomPass);
       composer.addPass(new OutputPass());
@@ -1209,6 +1239,7 @@ export class Game {
     this.dummies.update(dt);
     this.explosives.update(dt);
     this.effects.update(dt);
+    this.grass.update(dt, this.camera.position);
     this.updatePings(dt);
     this.updateAudio();
     if (this.noises.length && t - this.noises[0].t > 1.5) this.noises = this.noises.filter((n) => t - n.t < 1.5);

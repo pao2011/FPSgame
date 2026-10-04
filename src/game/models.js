@@ -1,35 +1,88 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RARITIES, AMMO } from './items.js';
 import { CAMOS } from './cosmetics.js';
 
+// Modelos low-poly construidos con primitivas. En calidad normal/alta se usan
+// materiales PBR (MeshStandardMaterial) con iluminación de entorno y piezas
+// con las aristas redondeadas; en calidad baja/móvil, Lambert y cajas.
 
-// Modelos low-poly construidos con primitivas.
+let PBR = true;
+export function setModelQuality(q) {
+  PBR = q !== 'baja' && q !== 'movil';
+}
+export const usesPBR = () => PBR;
 
 const matCache = new Map();
 export function mat(color, opts = {}) {
-  const key = color + '|' + JSON.stringify(opts);
+  const key = color + '|' + PBR + '|' + JSON.stringify(opts);
   let m = matCache.get(key);
   if (!m) {
-    const Ctor = opts.phong ? THREE.MeshPhongMaterial : THREE.MeshLambertMaterial;
     const o = { color, ...opts };
+    const metal = !!o.phong;
+    const shin = o.shininess ?? 30;
     delete o.phong;
-    m = new Ctor(o);
+    if (PBR) {
+      delete o.shininess;
+      delete o.specular;
+      const rough = o.roughness ?? (metal ? Math.max(0.18, Math.min(0.55, 1 - shin / 140)) : 0.72);
+      m = new THREE.MeshStandardMaterial({ ...o, roughness: rough, metalness: o.metalness ?? (metal ? 0.55 : 0.04) });
+    } else {
+      delete o.roughness;
+      delete o.metalness;
+      if (!metal) {
+        delete o.shininess;
+        delete o.specular;
+      }
+      m = new (metal ? THREE.MeshPhongMaterial : THREE.MeshLambertMaterial)(o);
+    }
     matCache.set(key, m);
   }
   return m;
 }
 
+// Cajas con las aristas suavizadas (radio proporcional al tamaño).
 const boxGeoCache = new Map();
-function boxGeo(w, h, d) {
-  const k = `${w},${h},${d}`;
+function boxGeo(w, h, d, sharp = false) {
+  const k = `${w},${h},${d},${PBR && !sharp}`;
   let g = boxGeoCache.get(k);
-  if (!g) boxGeoCache.set(k, (g = new THREE.BoxGeometry(w, h, d)));
+  if (!g) {
+    const r = Math.min(w, h, d) * 0.22;
+    g = PBR && !sharp && r > 0.004 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(r, 0.06)) : new THREE.BoxGeometry(w, h, d);
+    boxGeoCache.set(k, g);
+  }
   return g;
 }
 
 function box(parent, w, h, d, color, x = 0, y = 0, z = 0, opts) {
-  const m = new THREE.Mesh(boxGeo(w, h, d), mat(color, opts));
+  const sharp = opts?.sharp;
+  let o = opts;
+  if (sharp) {
+    o = { ...opts };
+    delete o.sharp;
+  }
+  const m = new THREE.Mesh(boxGeo(w, h, d, sharp), mat(color, o));
   m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+
+// Cápsula orientada en Y (extremidades redondeadas).
+const capCache = new Map();
+function capsule(parent, r, len, color, x = 0, y = 0, z = 0, opts) {
+  const k = `${r},${len}`;
+  let g = capCache.get(k);
+  if (!g) capCache.set(k, (g = PBR ? new THREE.CapsuleGeometry(r, Math.max(0.001, len - 2 * r), 4, 10) : new THREE.CylinderGeometry(r, r, len, 8)));
+  const m = new THREE.Mesh(g, mat(color, opts));
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+
+function sphere(parent, r, color, x = 0, y = 0, z = 0, opts, sx = 1, sy = 1, sz = 1) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, PBR ? 14 : 8, PBR ? 10 : 6), mat(color, opts));
+  m.position.set(x, y, z);
+  m.scale.set(sx, sy, sz);
   parent.add(m);
   return m;
 }
@@ -286,21 +339,124 @@ export function makeWeaponModel(type, rarity = 0, camo = null) {
       break;
     }
     case 'pickaxe': {
-      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.7, 8), mat(0x6b4a2b));
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.7, 10), mat(0x6b4a2b));
       handle.position.set(0, 0.2, 0);
       g.add(handle);
-      const head = box(g, 0.05, 0.06, 0.46, 0x9aa5b1, 0, 0.52, -0.05, METAL);
-      head.rotation.x = 0.1;
-      box(g, 0.055, 0.04, 0.1, 0x3fa9ff, 0, 0.52, 0.2, METAL);
+      // Empuñadura con cinta y pomo
+      for (let i = 0; i < 5; i++) {
+        const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.03, 10), mat(i % 2 ? 0x2b2f36 : 0x3fa9ff));
+        wrap.position.set(0, -0.08 + i * 0.032, 0);
+        wrap.rotation.z = 0.08;
+        g.add(wrap);
+      }
+      sphere(g, 0.032, 0x2b2f36, 0, -0.15, 0, METAL);
+      // Cabeza curvada: dos tramos que se afilan hacia las puntas
+      const headG = new THREE.Group();
+      headG.position.set(0, 0.52, 0);
+      g.add(headG);
+      box(headG, 0.07, 0.09, 0.12, 0x5d6670, 0, 0, 0, METAL);
+      const front = box(headG, 0.05, 0.055, 0.24, 0xb8c2cc, 0, -0.02, -0.16, METAL);
+      front.rotation.x = 0.22;
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 4).rotateX(-Math.PI / 2), mat(0xe4ebf2, METAL));
+      tip.position.set(0, -0.06, -0.32);
+      tip.rotation.x = 0.4;
+      headG.add(tip);
+      const back = box(headG, 0.055, 0.05, 0.12, 0x3fa9ff, 0, -0.01, 0.11, METAL);
+      back.rotation.x = -0.25;
+      box(headG, 0.075, 0.02, 0.13, 0x2b2f36, 0, 0.05, 0, METAL);
       muzzle.position.set(0, 0.52, -0.28);
       sightY = 0.1;
       break;
     }
   }
+  if (PBR && type !== 'pickaxe' && type !== 'boombow') weaponDetails(g, type, muzzle, sightY);
   if (camo && CAMOS[camo] && type !== 'pickaxe') applyCamo(g, CAMOS[camo], [mid, dark, wood]);
   g.add(muzzle);
   g.userData.muzzle = muzzle;
   g.userData.sightY = sightY;
+  return g;
+}
+
+// Detalles comunes que dan volumen a las armas (sólo en calidad normal/alta):
+// guardamonte y gatillo, ventana de expulsión, pasadores, raíl superior y
+// bocacha. Se colocan a partir de la caja de la primera pieza (el cajón).
+const RAILED = new Set(['ar', 'smg', 'burst', 'heavyar', 'dmr', 'tactical', 'plasma', 'glauncher']);
+const BRAKE = new Set(['ar', 'smg', 'burst', 'heavyar', 'sniper', 'hunting', 'dmr']);
+const PISTOLS = new Set(['pistol', 'handcannon', 'revolver']);
+function weaponDetails(g, type, muzzle, sightY) {
+  const first = g.children[0];
+  if (!first) return;
+  const bb = new THREE.Box3().setFromObject(first);
+  const w = bb.max.x - bb.min.x;
+  const steel = 0x1d1f23;
+  const pistol = PISTOLS.has(type);
+  // Guardamonte (medio aro) y gatillo, justo delante de la empuñadura
+  const gz = pistol ? -0.025 : 0.0;
+  const gy = pistol ? -0.005 : bb.min.y - 0.002;
+  const guard = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.0055, 6, 12, Math.PI).rotateY(Math.PI / 2).rotateX(Math.PI), mat(steel, METAL));
+  guard.position.set(0, gy, gz);
+  g.add(guard);
+  box(g, 0.008, 0.03, 0.01, 0x101010, 0, gy - 0.016, gz + 0.004, METAL).rotation.x = 0.3;
+  if (type === 'minigun' || type === 'rocket') return;
+  // Ventana de expulsión y pasadores en el lado derecho del cajón
+  if (!pistol) {
+    box(g, 0.006, Math.min(0.035, (bb.max.y - bb.min.y) * 0.4), 0.07, 0x0c0c0e, bb.max.x + 0.001, (bb.max.y + bb.min.y) / 2 + 0.008, bb.min.z + (bb.max.z - bb.min.z) * 0.62, { sharp: true });
+    for (const k of [0.25, 0.85]) {
+      for (const side of [-1, 1]) {
+        const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.006, 8).rotateZ(Math.PI / 2), mat(0x9aa0a8, METAL));
+        pin.position.set(side * (w / 2 + 0.002), bb.min.y + 0.025, bb.min.z + (bb.max.z - bb.min.z) * k);
+        g.add(pin);
+      }
+    }
+  } else {
+    // Estrías de la corredera
+    for (let i = 0; i < 4; i++) box(g, w + 0.004, 0.025, 0.005, 0x15161a, 0, bb.max.y - 0.025, bb.max.z - 0.02 - i * 0.012, { sharp: true });
+  }
+  // Raíl superior con ranuras
+  if (RAILED.has(type)) {
+    const top = Math.max(bb.max.y, sightY - 0.035);
+    const z0 = bb.min.z + 0.04, z1 = Math.min(bb.max.z - 0.04, z0 + 0.3);
+    box(g, 0.026, 0.008, z1 - z0, steel, 0, top + 0.004, (z0 + z1) / 2, { ...METAL, sharp: true });
+    for (let z = z0 + 0.015; z < z1 - 0.01; z += 0.025) box(g, 0.03, 0.007, 0.01, steel, 0, top + 0.011, z, { ...METAL, sharp: true });
+  }
+  // Bocacha / apagallamas
+  if (BRAKE.has(type)) {
+    const r = type === 'heavyar' ? 0.026 : 0.022;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.07, 8).rotateX(Math.PI / 2), mat(0x141518, METAL));
+    m.position.set(muzzle.position.x, muzzle.position.y, muzzle.position.z + 0.04);
+    g.add(m);
+    for (const s of [-1, 1]) box(g, 0.004, 0.012, 0.035, 0x050505, s * r * 0.95, muzzle.position.y, muzzle.position.z + 0.04, { sharp: true });
+  }
+  // Escopetas: estrías del guardamanos y cartuchos de repuesto en el lateral
+  if (type === 'shotgun' || type === 'tactical') {
+    for (let i = 0; i < 5; i++) box(g, 0.078, 0.006, 0.012, 0x3a2412, 0, -0.035 + 0.036, -0.29 - i * 0.033, { sharp: true });
+    for (let i = 0; i < 4; i++) {
+      const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.05, 8), mat(0xc0302a));
+      sh.position.set(-0.042, -0.005, 0.03 + i * 0.026);
+      g.add(sh);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0115, 0.012, 8), mat(0xd9a440, METAL));
+      cap.position.set(-0.042, -0.03, 0.03 + i * 0.026);
+      g.add(cap);
+    }
+  }
+}
+
+// Mano enguantada para la vista en primera persona: palma, dedos cerrados
+// sobre la empuñadura, pulgar, puño de la manga y antebrazo.
+export function makeViewHand(skin, sleeve) {
+  const g = new THREE.Group();
+  box(g, 0.075, 0.07, 0.09, skin, 0, 0, 0);
+  for (let i = 0; i < 4; i++) {
+    const f = box(g, 0.017, 0.022, 0.05, skin, -0.028 + i * 0.019, -0.03, -0.045 + (i === 0 || i === 3 ? 0.006 : 0));
+    f.rotation.x = 0.5;
+  }
+  box(g, 0.02, 0.022, 0.05, skin, 0.042, 0.018, -0.03).rotation.set(0.2, -0.4, 0);
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12).rotateX(Math.PI / 2), mat(sleeve));
+  cuff.position.z = 0.065;
+  cuff.material = mat(new THREE.Color(sleeve).multiplyScalar(0.75).getHex());
+  g.add(cuff);
+  const arm = capsule(g, 0.046, 0.36, sleeve, 0, 0, 0.24);
+  arm.rotation.x = Math.PI / 2;
   return g;
 }
 
@@ -590,39 +746,92 @@ export function makeCharacter(c = {}) {
   const shirt = look?.shirt ?? c.shirt ?? 0x2f6fd6;
   const pants = look?.pants ?? c.pants ?? 0x2b2b38;
   const hair = look?.hair ?? c.hair ?? 0x3a2a1a;
+  const shade = (hex, k) => new THREE.Color(hex).multiplyScalar(k).getHex();
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
 
-  const mkLimb = (x, y, w, h, color, color2) => {
-    const pivot = new THREE.Group();
-    pivot.position.set(x, y, 0);
-    const m = box(pivot, w, h, w, color, 0, -h / 2, 0);
-    m.castShadow = true;
-    if (color2) box(pivot, w + 0.01, 0.12, w + 0.01, color2, 0, -h + 0.06, 0);
-    body.add(pivot);
-    return pivot;
+  // Piernas: cadera → muslo → rodilla → espinilla → zapatilla
+  const mkLeg = (x) => {
+    const hip = new THREE.Group();
+    hip.position.set(x, 0.92, 0);
+    capsule(hip, 0.09, 0.47, pants, 0, -0.22, 0).castShadow = true;
+    box(hip, 0.05, 0.09, 0.02, shade(pants, 0.75), x > 0 ? 0.06 : -0.06, -0.12, -0.085); // bolsillo
+    const knee = new THREE.Group();
+    knee.position.y = -0.45;
+    hip.add(knee);
+    capsule(knee, 0.08, 0.42, pants, 0, -0.2, 0).castShadow = true;
+    box(knee, 0.16, 0.06, 0.18, shade(pants, 0.85), 0, -0.3, 0); // bajo del pantalón
+    box(knee, 0.15, 0.11, 0.27, 0x2a2d33, 0, -0.39, -0.04).castShadow = true; // zapatilla
+    box(knee, 0.155, 0.035, 0.28, 0xf2f2f2, 0, -0.455, -0.04); // suela
+    box(knee, 0.1, 0.02, 0.06, 0xf2f2f2, 0, -0.34, -0.13); // cordones
+    body.add(hip);
+    hip.userData.knee = knee;
+    return hip;
   };
-  const legL = mkLimb(-0.12, 0.92, 0.17, 0.9, pants, 0x222222);
-  const legR = mkLimb(0.12, 0.92, 0.17, 0.9, pants, 0x222222);
-  const torso = box(body, 0.48, 0.62, 0.26, shirt, 0, 1.23, 0);
+  const legL = mkLeg(-0.12);
+  const legR = mkLeg(0.12);
+  // Torso: pecho, cintura, cinturón y cuello
+  box(body, 0.38, 0.13, 0.23, pants, 0, 0.93, 0);
+  const torso = box(body, 0.47, 0.36, 0.27, shirt, 0, 1.36, 0);
   torso.castShadow = true;
-  box(body, 0.5, 0.1, 0.28, 0x1d1d1d, 0, 0.95, 0);
+  box(body, 0.41, 0.25, 0.24, shade(shirt, 0.88), 0, 1.09, 0).castShadow = true;
+  box(body, 0.43, 0.07, 0.26, 0x1d1d1d, 0, 0.98, 0);
+  box(body, 0.07, 0.05, 0.02, 0xc9a050, 0, 0.98, -0.135, { phong: true, shininess: 90 });
+  box(body, 0.2, 0.04, 0.28, shade(shirt, 0.7), 0, 1.53, 0); // cuello de la camiseta
+  box(body, 0.012, 0.3, 0.012, shade(shirt, 0.65), 0, 1.3, -0.137); // cremallera
+  capsule(body, 0.065, 0.14, skin, 0, 1.56, 0);
+  // Cabeza con cara
   const head = new THREE.Group();
   head.position.set(0, 1.56, 0);
   body.add(head);
-  box(head, 0.3, 0.32, 0.3, skin, 0, 0.17, 0).castShadow = true;
-  box(head, 0.32, 0.1, 0.32, hair, 0, 0.36, 0.0);
-  box(head, 0.32, 0.18, 0.06, hair, 0, 0.26, 0.15);
-  box(head, 0.05, 0.05, 0.02, 0x111111, -0.07, 0.2, -0.155);
-  box(head, 0.05, 0.05, 0.02, 0x111111, 0.07, 0.2, -0.155);
-  const armL = mkLimb(-0.32, 1.5, 0.14, 0.62, shirt, skin);
-  const armR = mkLimb(0.32, 1.5, 0.14, 0.62, shirt, skin);
-  if (!look || look.pack) box(body, 0.36, 0.4, 0.16, 0x6b4a2b, 0, 1.25, 0.2).castShadow = true; // mochila
+  box(head, 0.32, 0.33, 0.31, skin, 0, 0.17, 0).castShadow = true;
+  for (const x of [-1, 1]) {
+    box(head, 0.035, 0.08, 0.06, shade(skin, 0.92), 0.165 * x, 0.17, 0.01); // orejas
+    box(head, 0.075, 0.06, 0.02, 0xffffff, 0.07 * x, 0.2, -0.157, { sharp: true });
+    box(head, 0.036, 0.045, 0.02, 0x2a1d14, 0.068 * x, 0.198, -0.166, { sharp: true });
+    box(head, 0.012, 0.012, 0.01, 0xffffff, 0.06 * x, 0.212, -0.177, { sharp: true });
+    box(head, 0.085, 0.02, 0.02, hair, 0.072 * x, 0.255, -0.16, { sharp: true }); // cejas
+  }
+  box(head, 0.045, 0.06, 0.05, shade(skin, 0.9), 0, 0.15, -0.165); // nariz
+  box(head, 0.09, 0.016, 0.012, 0x8a3a32, 0, 0.085, -0.157, { sharp: true }); // boca
+  // Pelo con volumen
+  box(head, 0.345, 0.1, 0.34, hair, 0, 0.35, 0.005);
+  box(head, 0.34, 0.24, 0.08, hair, 0, 0.24, 0.135);
+  for (const x of [-1, 1]) box(head, 0.05, 0.16, 0.27, hair, 0.162 * x, 0.27, 0.03);
+  for (const [x, w] of [[-0.09, 0.12], [0.03, 0.14], [0.12, 0.08]]) box(head, w, 0.07, 0.06, hair, x, 0.31, -0.145);
+  // Brazos: hombro → brazo → codo → antebrazo → mano
+  const mkArm = (x) => {
+    const sh = new THREE.Group();
+    sh.position.set(x, 1.5, 0);
+    sphere(sh, 0.09, shirt, 0, -0.02, 0);
+    capsule(sh, 0.072, 0.34, shirt, 0, -0.16, 0).castShadow = true;
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.31;
+    sh.add(elbow);
+    capsule(elbow, 0.062, 0.26, skin, 0, -0.12, 0).castShadow = true;
+    box(elbow, 0.13, 0.05, 0.13, shade(shirt, 0.85), 0, -0.01, 0); // puño de la manga
+    box(elbow, 0.09, 0.1, 0.085, skin, 0, -0.27, -0.005); // mano
+    box(elbow, 0.03, 0.05, 0.03, skin, x > 0 ? -0.045 : 0.045, -0.25, -0.04); // pulgar
+    body.add(sh);
+    sh.userData.elbow = elbow;
+    return sh;
+  };
+  const armL = mkArm(-0.32);
+  const armR = mkArm(0.32);
+  if (!look || look.pack) {
+    box(body, 0.34, 0.4, 0.15, 0x6b4a2b, 0, 1.27, 0.21).castShadow = true; // mochila
+    box(body, 0.3, 0.12, 0.17, 0x5a3d22, 0, 1.43, 0.215);
+    box(body, 0.2, 0.12, 0.05, 0x7a5a38, 0, 1.15, 0.3);
+    for (const x of [-0.13, 0.13]) box(body, 0.045, 0.36, 0.02, 0x4a3420, x, 1.34, -0.14); // correas
+  }
   const hand = new THREE.Group();
-  hand.position.set(0, -0.6, 0);
-  armR.add(hand);
-  const parts = { root, body, legL, legR, armL, armR, head, torso, hand };
+  hand.position.set(0, -0.29, 0);
+  armR.userData.elbow.add(hand);
+  const parts = {
+    root, body, legL, legR, armL, armR, head, torso, hand,
+    kneeL: legL.userData.knee, kneeR: legR.userData.knee, elbowL: armL.userData.elbow, elbowR: armR.userData.elbow,
+  };
   if (look) addSuitParts(parts, c.suit);
   if (c.acc) addAccessory(parts, c.acc);
   return parts;
@@ -970,7 +1179,14 @@ export function getGlowTexture() {
 // ------------------------------------------------------------ FUSIÓN ---
 // Convierte un grupo de mallas (cada una con su color) en una sola geometría
 // con color por vértice: 1 draw call por objeto en lugar de ~10.
-const vcMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+let vcCache = null;
+function vcMat() {
+  if (!vcCache || vcCache.userData.pbr !== PBR) {
+    vcCache = PBR ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.06 }) : new THREE.MeshLambertMaterial({ vertexColors: true });
+    vcCache.userData.pbr = PBR;
+  }
+  return vcCache;
+}
 const mergedCache = new Map();
 const _inv = new THREE.Matrix4();
 const _m = new THREE.Matrix4();
@@ -990,10 +1206,13 @@ export function mergeGroupGeometry(root) {
     const n = g.attributes.normal.array;
     const c = o.material.color;
     const e = o.material.emissive || { r: 0, g: 0, b: 0 };
+    // Oclusión aproximada: las caras que miran hacia abajo, algo más oscuras
+    const glow = e.r + e.g + e.b > 0.05;
     for (let i = 0; i < p.length; i += 3) {
       pos.push(p[i], p[i + 1], p[i + 2]);
       nor.push(n[i], n[i + 1], n[i + 2]);
-      col.push(Math.min(1, c.r + e.r), Math.min(1, c.g + e.g), Math.min(1, c.b + e.b));
+      const ao = glow ? 1 : 0.8 + 0.2 * (n[i + 1] * 0.5 + 0.5);
+      col.push(Math.min(1, c.r * ao + e.r), Math.min(1, c.g * ao + e.g), Math.min(1, c.b * ao + e.b));
     }
     g.dispose();
   });
@@ -1008,7 +1227,7 @@ export function mergeGroupGeometry(root) {
 export function mergedMesh(key, build) {
   let geo = mergedCache.get(key);
   if (!geo) mergedCache.set(key, (geo = mergeGroupGeometry(build())));
-  const m = new THREE.Mesh(geo, vcMaterial);
+  const m = new THREE.Mesh(geo, vcMat());
   m.castShadow = true;
   return m;
 }
@@ -1036,12 +1255,12 @@ export function makeContainerFast(kind) {
     mergedCache.set(key, entry);
   }
   const g = new THREE.Group();
-  const body = new THREE.Mesh(entry.body, vcMaterial);
+  const body = new THREE.Mesh(entry.body, vcMat());
   body.castShadow = true;
   g.add(body);
   const pivot = new THREE.Group();
   pivot.position.copy(entry.lidPos);
-  const lid = new THREE.Mesh(entry.lid, vcMaterial);
+  const lid = new THREE.Mesh(entry.lid, vcMat());
   lid.castShadow = true;
   pivot.add(lid);
   g.add(pivot);
@@ -1052,7 +1271,8 @@ export function makeContainerFast(kind) {
 // Fusiona las mallas directas de cada parte del personaje (cuerpo, cabeza,
 // extremidades) para dibujarlo con ~6 draw calls en lugar de ~25.
 export function optimizeCharacter(c) {
-  for (const g of [c.body, c.head, c.legL, c.legR, c.armL, c.armR]) {
+  for (const g of [c.body, c.head, c.legL, c.legR, c.armL, c.armR, c.kneeL, c.kneeR, c.elbowL, c.elbowR]) {
+    if (!g) continue;
     const meshes = g.children.filter((o) => o.isMesh);
     if (meshes.length < 2) continue;
     const tmp = new THREE.Group();
@@ -1060,7 +1280,7 @@ export function optimizeCharacter(c) {
       g.remove(m);
       tmp.add(m);
     }
-    const merged = new THREE.Mesh(mergeGroupGeometry(tmp), vcMaterial);
+    const merged = new THREE.Mesh(mergeGroupGeometry(tmp), vcMat());
     merged.castShadow = true;
     g.add(merged);
   }

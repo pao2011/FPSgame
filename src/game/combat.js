@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, CONSUMABLES, MATERIALS, THROWABLES } from './items.js';
-import { makeItemModel, makeWeaponModel, makeLaunchPad, mat, outfitColors, itemKey } from './models.js';
+import { makeItemModel, makeWeaponModel, makeLaunchPad, makeViewHand, outfitColors, itemKey } from './models.js';
 import { lerp } from '../core/rng.js';
 
 const tmpV = new THREE.Vector3();
@@ -8,7 +8,7 @@ const tmpR = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-const HIP = new THREE.Vector3(0.2, -0.2, -0.42);
+const HIP = new THREE.Vector3(0.19, -0.19, -0.48);
 const HIP_PICK = new THREE.Vector3(0.42, -0.72, -0.72);
 const HIP_ITEM = new THREE.Vector3(0.16, -0.18, -0.38);
 
@@ -138,16 +138,10 @@ export class Combat {
       model.position.set(0.02, 0.0, -0.06);
     }
     vm.add(model);
-    // Manos simples
+    // Manos enguantadas
     const oc = outfitColors(this.player.outfit);
-    const skin = mat(oc.skin);
-    const sleeve = mat(oc.shirt);
     const hand = (x, y, z, rx = 0) => {
-      const g = new THREE.Group();
-      const h = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.11), skin);
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.085, 0.3), sleeve);
-      s.position.z = 0.2;
-      g.add(h, s);
+      const g = makeViewHand(oc.skin, oc.shirt);
       g.position.set(x, y, z);
       g.rotation.x = rx;
       vm.add(g);
@@ -415,6 +409,7 @@ export class Combat {
       viewPos = this.vm.userData.muzzle.getWorldPosition(new THREE.Vector3());
     }
     if (def.sound !== 'bow') g.effects.muzzleFlash(viewPos, muzzle);
+    if (!def.explosive && !def.projectile && !def.beam && def.sound !== 'bow') g.effects.shell(muzzle.clone().addScaledVector(dir, -0.45), p.yaw, !!def.pellets);
     if (item.mag === 0 && (p.ammo[def.ammo] > 0 || g.infiniteAmmo) && g.settings.autoReload !== false) this.autoReloadT = Math.min(0.35, this.cooldown);
   }
 

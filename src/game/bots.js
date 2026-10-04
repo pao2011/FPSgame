@@ -1018,6 +1018,7 @@ class Bot extends Character {
     const vol = clamp(1 - dCam / 260, 0, 1);
     if (vol > 0.03) g.audio.shot(def.sound, vol * vol * 0.9);
     if (dCam < 150) g.effects.muzzleFlash(null, muzzle);
+    if (dCam < 35 && !def.beam) g.effects.shell(muzzle.clone().addScaledVector(dir, -0.45), this.yaw, !!def.pellets);
     g.noise(this.pos, def.sound === 'sniper' || def.sound === 'dmr' ? 160 : 90, this);
   }
 
