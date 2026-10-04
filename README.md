@@ -4,11 +4,16 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
-**Incluye:** mapa con pueblos y ciudad, edificios con escaleras, cofres y
-botín por rarezas, 5 armas con apuntado, **24 bots con IA**, **construcción**
-(muros, suelos, rampas y techos), **recolección de materiales con el pico**,
-**coches conducibles**, autobús de batalla, caída libre con planeador,
-tormenta que se cierra y pantalla de **Victoria Magistral**.
+**Incluye:** menú principal con opciones, **6 modos de juego** (Solitario,
+Dúos, Escuadras, Duelo por equipos, Construcción cero y Práctica), **bots con
+IA** (navegan por el mapa, saquean, construyen, se curan, se reaniman y
+trabajan en equipo), una isla de 1,6 km con **carreteras y pueblos ordenados
+por calles** y muchos tipos de estructuras (casas, tiendas, gasolineras,
+iglesias, rascacielos, fábrica, puerto con muelle y grúa, base militar,
+estadio, granjas, faro, antena de radio, depósitos de agua, búnkeres,
+campamentos, ruinas…), cofres y botín por rarezas, 5 armas con apuntado,
+construcción, recolección de materiales con el pico, coches conducibles,
+autobús de batalla, planeador y tormenta.
 
 ---
 
@@ -145,9 +150,22 @@ arrancan el juego.
 
 ## 3. Cómo se juega
 
-1. **Menú.** Elige **JUGAR** (battle royale contra 24 bots) o **PRÁCTICA**
-   (isla para ti solo, con dianas para probar armas). Haz clic en la pantalla
-   para que el juego capture el ratón; **Esc** lo libera y pausa.
+1. **Menú principal.** A la izquierda tienes **Jugar**, **Modos de juego**,
+   **Opciones**, **Controles** y **Cómo jugar**. En *Jugar* eliges la
+   dificultad de los bots (Fácil, Normal, Difícil, Experto) y el número de
+   jugadores, y pulsas **¡A LA ISLA!**. *Nueva isla* genera otro mapa.
+   Durante la partida, **Esc** abre la pausa (continuar, opciones o
+   abandonar).
+
+   | Modo | Descripción |
+   | --- | --- |
+   | **Solitario** | Todos contra todos; gana el último en pie |
+   | **Dúos** | Equipos de 2 (tu compañero es un bot) |
+   | **Escuadras** | Equipos de 4 (tú + 3 bots) |
+   | **Duelo por equipos** | 2 equipos grandes, reaparición; gana el primero en llegar a 50 eliminaciones |
+   | **Construcción cero** | Solitario sin construir |
+   | **Práctica** | Sin bots, materiales infinitos y dianas |
+
 2. **Autobús de batalla.** Empiezas en un autobús colgado de un globo que
    cruza la isla. Mueve el ratón para mirar y pulsa **M** para ver el mapa y la
    ruta. Cuando aparezca *PULSA ESPACIO PARA SALTAR*, salta sobre la zona que
@@ -190,9 +208,27 @@ arrancan el juego.
 12. **Tormenta.** El muro morado se cierra por fases (mira el aviso arriba a
     la derecha y el círculo blanco del mapa: es la próxima zona segura).
     Fuera de la zona pierdes vida cada segundo (el escudo no protege).
-13. **Ganar.** Elimina a los bots y sobrevive a la tormenta. Si eres el último
-    en pie: **¡VICTORIA MAGISTRAL!** El contador 👤 de arriba a la derecha
-    muestra cuántos jugadores quedan; 💀 son tus eliminaciones.
+13. **Equipos.** En Dúos y Escuadras, si tu vida llega a 0 quedas
+    **derribado**: sólo puedes arrastrarte y te desangras. Un compañero puede
+    reanimarte (los bots lo hacen solos). Para reanimar tú a un compañero,
+    acércate y **mantén E** 5 segundos. Si todo el equipo cae, quedáis
+    eliminados. Si te eliminan y queda algún compañero, pasas a **espectar**
+    (clic para cambiar de compañero). Tus compañeros aparecen en azul en el
+    minimapa y con su nombre encima.
+14. **Ganar.** Sé el último jugador (o equipo) en pie: **¡VICTORIA
+    MAGISTRAL!** Arriba a la derecha: 👤 jugadores vivos, 🚩 equipos vivos,
+    💀 tus eliminaciones.
+
+**Cómo piensan los bots:** ven en un cono de ~130° y oyen los disparos
+cercanos; comparten lo que ven con su equipo; recorren la isla por caminos
+calculados (entran por las puertas, rodean muros y vallas); eligen el arma
+según la distancia (escopeta de cerca, fusil a media distancia,
+francotirador de lejos); tardan un poco en reaccionar y afinan la puntería
+cuanto más tiempo te siguen; disparan en ráfagas; se cubren con muros o se
+encierran para curarse; hacen rampas si estás más alto; disparan a tus
+construcciones si te escondes detrás; recogen materiales; rotan hacia la
+zona segura con antelación; y reaniman a sus compañeros. La dificultad
+cambia sus reflejos, su puntería y lo mucho que construyen.
 
 **Consejos:** aterriza lejos de la ruta del bus si quieres tranquilidad;
 construye un muro (**Q**, **1**, clic) cuando te disparen; el indicador rojo
@@ -211,7 +247,7 @@ alrededor de la mira señala de dónde vienen los disparos.
 | **Espacio** | Saltar · salir del autobús · abrir planeador · freno de mano |
 | **Shift** | Correr |
 | **C** | Agacharse |
-| **E** | Abrir cofre · recoger · subir/bajar del coche |
+| **E** | Abrir cofre · recoger · subir/bajar del coche · (mantener) reanimar |
 | **R** | Recargar |
 | **1–6 / rueda** | Cambiar de objeto · (construyendo) 1–4 cambia de pieza |
 | **Q** | Entrar/salir del modo construcción |
@@ -237,7 +273,7 @@ alrededor de la mira señala de dónde vienen los disparos.
 | `npm warn deprecated ...` · `found X vulnerabilities` | Avisos informativos | Puedes ignorarlos |
 | Pantalla negra · *Error al iniciar* · mensaje sobre **WebGL** | El navegador no tiene aceleración gráfica | Activa *Usar aceleración de hardware* en la configuración del navegador, actualiza el navegador y los drivers de la tarjeta gráfica |
 | El ratón no mueve la cámara | El juego no ha capturado el ratón | Haz clic dentro de la ventana del juego. **Esc** lo suelta |
-| Va lento / a tirones | Ordenador o gráfica modestos | Pulsa *¿Va lento? Prueba la calidad baja* en el menú (o añade `?calidad=baja` a la dirección), cierra otras pestañas o juega con menos bots (`?bots=10`) |
+| Va lento / a tirones | Ordenador o gráfica modestos | En **Opciones** elige *Calidad gráfica: Baja* (o añade `?calidad=baja` a la dirección), baja los *Jugadores por partida* en el panel *Jugar* y cierra otras pestañas |
 | Al abrir `index.html` con doble clic la página sale en blanco | `index.html` es para el modo desarrollo y necesita `npm run dev` | Para doble clic usa **`jugar.html`** |
 
 Si te sale otro error, copia el mensaje completo de la terminal: la primera
@@ -253,8 +289,11 @@ Se añaden al final de la dirección (por ejemplo
 | Opción | Efecto |
 | --- | --- |
 | `?seed=12345` | Genera siempre la misma isla |
-| `?bots=10` | Número de bots (0–60, por defecto 24) |
 | `?calidad=baja` | Sin sombras ni antialiasing y menor resolución |
+
+El resto de ajustes (modo, dificultad, jugadores, sensibilidad, campo de
+visión, volumen, invertir eje, mostrar FPS) están en el menú y se guardan en
+el navegador.
 
 ---
 
@@ -270,12 +309,19 @@ src/
   main.js             punto de entrada
   style.css           estilos del HUD y menús
   core/               números aleatorios + ruido, teclado/ratón, sonido
-  world/              terreno, colisiones, edificios, naturaleza, cielo, isla
+  world/
+    world.js          trazado de la isla: zonas, calles, carreteras, estructuras
+    roads.js          red de carreteras y su malla
+    buildings.js      casas y naves (con escaleras, porches, chimeneas…)
+    structures.js     gasolinera, iglesia, faro, búnker, estadio, muelle…
+    navgrid.js        rejilla de navegación + A* para la IA
+    terrain.js collision.js nature.js sky.js
   game/
     game.js           bucle principal, cámara, partida y victoria
     character.js      física y modelo compartidos por jugador y bots
     player.js         jugador (controles, inventario, materiales)
-    bots.js           IA de los bots
+    bots.js           IA de los bots (percepción, decisiones, combate…)
+    modes.js          modos de juego y ajustes guardados
     combat.js         armas, apuntado, retroceso, recarga, curas y pico
     build.js          sistema de construcción
     harvest.js        árboles, rocas y coches que dan materiales
@@ -283,7 +329,7 @@ src/
     loot.js           objetos en el suelo, cofres y cajas de munición
     items.js          definición de armas, curas, materiales y botín
     bus.js storm.js effects.js dummies.js models.js
-  ui/                 HUD, minimapa y mapa
+  ui/                 menú principal, HUD, minimapa y mapa
 ```
 
 Tecnologías: [Three.js](https://threejs.org) para el 3D y

@@ -10,7 +10,7 @@ export class Terrain {
     this.noise = noise;
     this.flats = []; // {x, z, radius, height}
     this.zones = []; // POIs para colorear el suelo
-    this.res = 256;
+    this.res = 400;
     this.cell = MAP_SIZE / this.res;
     this.heights = null;
     this.maxHeight = 0;
@@ -27,8 +27,10 @@ export class Terrain {
       f *= 2.03;
     }
     h /= sum;
+    // Montañas sólo en algunas regiones (máscara de baja frecuencia)
     const ridge = 1 - Math.abs(n(x * 0.0021 + 100, z * 0.0021 - 50));
-    const mountain = Math.pow(smoothstep(0.55, 1.0, ridge), 1.6) * 52;
+    const mask = smoothstep(0.15, 0.55, n(x * 0.0011 + 500, z * 0.0011 - 300));
+    const mountain = Math.pow(smoothstep(0.62, 1.0, ridge), 1.5) * 48 * mask;
     let height = 11 + h * 16 + mountain;
     const d = Math.sqrt(x * x + z * z) / HALF;
     const coast = smoothstep(0.78, 0.97, d + n(x * 0.008, z * 0.008) * 0.06);
@@ -36,9 +38,30 @@ export class Terrain {
     return height;
   }
 
+  // Índice espacial de las zonas aplanadas (pueblos, edificios y carreteras).
+  indexFlats() {
+    const B = 48;
+    this.flatGrid = new Map();
+    this.flats.forEach((p, i) => {
+      const r = p.radius * 1.6;
+      for (let gx = Math.floor((p.x - r) / B); gx <= Math.floor((p.x + r) / B); gx++) {
+        for (let gz = Math.floor((p.z - r) / B); gz <= Math.floor((p.z + r) / B); gz++) {
+          const k = gx * 10000 + gz;
+          let l = this.flatGrid.get(k);
+          if (!l) this.flatGrid.set(k, (l = []));
+          l.push(i);
+        }
+      }
+    });
+    this.flatB = B;
+  }
+
   shapedHeight(x, z) {
     let h = this.rawHeight(x, z);
-    for (const p of this.flats) {
+    const list = this.flatGrid.get(Math.floor(x / this.flatB) * 10000 + Math.floor(z / this.flatB));
+    if (!list) return h;
+    for (const i of list) {
+      const p = this.flats[i];
       const dx = x - p.x, dz = z - p.z;
       const r = p.radius;
       if (Math.abs(dx) > r * 1.7 || Math.abs(dz) > r * 1.7) continue;
@@ -50,6 +73,7 @@ export class Terrain {
   }
 
   build() {
+    this.indexFlats();
     const N = this.res;
     const V = N + 1;
     const heights = (this.heights = new Float32Array(V * V));
@@ -145,7 +169,7 @@ export class Terrain {
       const d = Math.sqrt(dx * dx + dz * dz);
       if (d > zn.radius * 0.95) continue;
       const edge = 1 - smoothstep(zn.radius * 0.75, zn.radius * 0.95, d);
-      if (zn.type === 'city' || zn.type === 'towers' || zn.type === 'industrial') {
+      if (zn.type === 'city' || zn.type === 'apartments' || zn.type === 'industrial' || zn.type === 'port' || zn.type === 'military') {
         const g = 0.36 + n2 * 0.05;
         out.lerp(tmpRock.setRGB(g, g, g * 1.03), edge * 0.9);
       } else if (zn.type === 'farm') {
@@ -164,7 +188,7 @@ export class Terrain {
     const N = this.res;
     const fx = (x + HALF) / this.cell;
     const fz = (z + HALF) / this.cell;
-    if (fx < 0 || fz < 0 || fx >= N || fz >= N) return -14;
+    if (fx < 0 || fz < 0 || fx >= N || fz >= N) return -16;
     const i = Math.floor(fx), j = Math.floor(fz);
     const u = fx - i, v = fz - j;
     const V = N + 1;

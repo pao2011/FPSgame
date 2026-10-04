@@ -171,7 +171,7 @@ export class Combat {
     const g = this.game;
     const p = this.player;
     this.updateProjectiles(dt);
-    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.active) {
+    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.active || p.knocked || g.spectating) {
       this.viewmodel.visible = false;
       this.adsBlend = 0;
       g.hud.setScope(false);
@@ -278,6 +278,7 @@ export class Combat {
     p.yaw += (Math.random() - 0.5) * rec * 0.6;
     this.kick = Math.min(1.5, this.kick + (def.pellets || def.scope ? 1.2 : 0.55));
     g.audio.shot(def.sound);
+    g.noise(p.pos, def.sound === 'sniper' ? 160 : 90, p);
     let viewPos = null;
     if (g.camMode === 'fp' && this.vm?.userData.muzzle && this.viewmodel.visible) {
       viewPos = this.vm.userData.muzzle.getWorldPosition(new THREE.Vector3());

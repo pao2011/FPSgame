@@ -18,7 +18,7 @@ export const MAT_ORDER = ['wood', 'stone', 'metal'];
 // Direcciones: 0 = norte (-Z), 1 = este (+X), 2 = sur (+Z), 3 = oeste (-X)
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
-function yawToDir(yaw) {
+export function yawToDir(yaw) {
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
   if (Math.abs(fx) > Math.abs(fz)) return fx > 0 ? 1 : 3;
   return fz > 0 ? 2 : 0;
@@ -231,21 +231,45 @@ export class BuildSystem {
     }
   }
 
-  canPlace(t) {
+  canPlace(t, owner = this.game.player, matId = this.matId) {
     if (this.pieces.has(t.key)) return 'occupied';
-    if (this.game.player.mats[this.matId] < BUILD_COST) return 'nomats';
-    const p = this.game.player.pos;
-    const h = this.game.player.height;
-    for (const b of this.boxesFor(t)) {
-      if (p.x - R < b[3] && p.x + R > b[0] && p.y < b[4] - 0.01 && p.y + h > b[1] && p.z - R < b[5] && p.z + R > b[2]) {
-        return 'player';
+    if (!this.game.infiniteMats && owner.mats[matId] < BUILD_COST) return 'nomats';
+    // No encerrar a nadie dentro de una pieza
+    const boxes = this.boxesFor(t);
+    for (const c of this.game.characters()) {
+      if (!c.alive || c.mode !== 'ground') continue;
+      const p = c.pos;
+      if (Math.abs(p.x - t.cx * G - G / 2) > 8 || Math.abs(p.z - t.cz * G - G / 2) > 8) continue;
+      const h = c.height;
+      for (const b of boxes) {
+        if (p.x - R < b[3] && p.x + R > b[0] && p.y < b[4] - 0.01 && p.y + h > b[1] && p.z - R < b[5] && p.z + R > b[2]) {
+          return 'player';
+        }
       }
     }
     return 'ok';
   }
 
-  place(t) {
-    const matId = this.matId;
+  // Coloca una pieza para un bot. kind: 'wall' | 'ramp' | 'cone' | 'floor'.
+  // dir = dirección (0-3) hacia la que mira la pieza.
+  placeFor(owner, kind, dir, opts = {}) {
+    const [dx, dz] = DIRS[dir];
+    const cx = Math.floor(owner.pos.x / G), cz = Math.floor(owner.pos.z / G);
+    const base = this.levelBase(owner.pos.y, owner.pos.x, owner.pos.z);
+    let t;
+    if (kind === 'wall') t = { type: 'wall', cx, cz, base, dir };
+    else if (kind === 'ramp') t = { type: 'ramp', cx: cx + dx, cz: cz + dz, base: opts.base ?? base, dir };
+    else if (kind === 'cone') t = { type: 'cone', cx, cz, base: base + H, dir };
+    else t = { type: 'floor', cx: cx + dx, cz: cz + dz, base, dir };
+    t.key = this.key(t.type, t.cx, t.cz, t.base, t.dir);
+    // material: el que más tenga
+    let matId = 'wood';
+    for (const m of MAT_ORDER) if (owner.mats[m] > owner.mats[matId]) matId = m;
+    if (this.canPlace(t, owner, matId) !== 'ok') return null;
+    return this.place(t, owner, matId);
+  }
+
+  place(t, owner = this.game.player, matId = this.matId) {
     const def = MATERIALS[matId];
     const mesh = new THREE.Mesh(this.geos[t.type], this.materials[matId]);
     mesh.castShadow = true;
@@ -260,9 +284,9 @@ export class BuildSystem {
       this.game.world.collision.add(b[0], b[1], b[2], b[3], b[4], b[5], { type: 'build', piece }),
     );
     this.pieces.set(t.key, piece);
-    this.game.player.mats[matId] -= BUILD_COST;
-    this.game.player.stats.built++;
-    this.game.audio.build();
+    if (!this.game.infiniteMats || !owner.isPlayer) owner.mats[matId] = Math.max(0, owner.mats[matId] - BUILD_COST);
+    if (owner.isPlayer) owner.stats.built++;
+    if (owner.isPlayer || mesh.position.distanceTo(this.game.player.pos) < 40) this.game.audio.build();
     return piece;
   }
 
@@ -296,8 +320,12 @@ export class BuildSystem {
       }
     }
     const player = this.game.player;
-    if (player.mode !== 'ground' || !player.alive || player.vehicle) {
+    if (player.mode !== 'ground' || !player.alive || player.vehicle || player.knocked) {
       if (this.active) this.setActive(false);
+      return;
+    }
+    if (input.wasPressed('KeyQ') && !this.game.mode.build) {
+      this.game.hud.toast('La construcción está desactivada en este modo');
       return;
     }
     if (input.wasPressed('KeyQ')) {

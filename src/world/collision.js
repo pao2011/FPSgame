@@ -9,6 +9,8 @@ export class CollisionWorld {
     this.boxes = [];
     this.cells = new Map();
     this.stamp = 0;
+    this.onAdd = null; // avisos para la rejilla de navegación
+    this.onRemove = null;
   }
 
   _key(cx, cz) {
@@ -30,10 +32,13 @@ export class CollisionWorld {
         b._cells.push(list);
       }
     }
+    this.onAdd?.(b);
     return b;
   }
 
   remove(b) {
+    if (!b._cells.length) return;
+    this.onRemove?.(b);
     for (const list of b._cells) {
       const i = list.indexOf(b);
       if (i >= 0) list.splice(i, 1);

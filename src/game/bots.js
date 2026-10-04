@@ -1,116 +1,206 @@
 import * as THREE from 'three';
 import { Character } from './character.js';
-import { WEAPONS, CONSUMABLES, PICKAXE } from './items.js';
+import { WEAPONS, CONSUMABLES, PICKAXE, MATERIALS } from './items.js';
 import { random, clamp } from '../core/rng.js';
 import { ISLAND_RADIUS } from '../world/constants.js';
+import { yawToDir } from './build.js';
 
 const NAMES = [
   'Lucía', 'Mateo', 'Sofía', 'Hugo', 'Valeria', 'Leo', 'Martina', 'Pablo', 'Paula', 'Álvaro',
   'Daniela', 'Diego', 'Carla', 'Marcos', 'Elena', 'Bruno', 'Noa', 'Iker', 'Alba', 'Adrián',
   'Vega', 'Gael', 'Lola', 'Thiago', 'Abril', 'Enzo', 'Irene', 'Unai', 'Julia', 'Izan',
+  'Nora', 'Dante', 'Olivia', 'Marco', 'Jimena', 'Rubén', 'Aitana', 'Óscar', 'Candela', 'Joel',
+  'Emma', 'Lucas', 'Chloe', 'Nico', 'Ariadna', 'Saúl', 'Mía', 'Teo', 'Laia', 'Gonzalo',
+  'Zoe', 'Ian', 'Clara', 'Rayan', 'Inés', 'Erik', 'Lara', 'Biel', 'Carmen', 'Liam',
 ];
+
+// Parámetros por dificultad: reacción (s), error de puntería (rad), velocidad
+// de seguimiento (rad/s), probabilidad de apuntar a la cabeza, de construir...
+export const DIFF = {
+  facil: { react: [0.8, 1.3], err: 0.075, track: 2.2, head: 0.04, build: 0, burst: [2, 3], pause: [0.6, 1.0], jump: 0, strafe: 0.4, see: 70, heal: 0.5 },
+  normal: { react: [0.45, 0.8], err: 0.048, track: 3.6, head: 0.1, build: 0.35, burst: [3, 5], pause: [0.35, 0.7], jump: 0.12, strafe: 0.8, see: 95, heal: 0.85 },
+  dificil: { react: [0.28, 0.5], err: 0.032, track: 5.5, head: 0.2, build: 0.65, burst: [4, 7], pause: [0.2, 0.45], jump: 0.25, strafe: 1, see: 115, heal: 1 },
+  experto: { react: [0.15, 0.32], err: 0.022, track: 8, head: 0.3, build: 0.9, burst: [5, 9], pause: [0.12, 0.3], jump: 0.4, strafe: 1, see: 135, heal: 1 },
+};
+
+const RANGE = { shotgun: [3, 9], smg: [6, 16], pistol: [8, 22], ar: [14, 42], sniper: [35, 110] };
+const EFFECTIVE = { shotgun: 24, smg: 50, pistol: 60, ar: 120, sniper: 240 };
+const THINK = 0.22;
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
 const wish = new THREE.Vector3();
 
-const THINK = 0.25;
+function angDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+// Preferencia de arma según la distancia al objetivo.
+function weaponScore(item, d) {
+  if (!item) return -1;
+  const t = item.type;
+  let s;
+  if (t === 'shotgun') s = d < 10 ? 3.2 : d < 18 ? 1.5 : 0.2;
+  else if (t === 'smg') s = d < 20 ? 2.5 : d < 40 ? 1.6 : 0.6;
+  else if (t === 'ar') s = d < 10 ? 1.5 : d < 90 ? 2.7 : 1.9;
+  else if (t === 'sniper') s = d > 50 ? 3.3 : d > 25 ? 1.6 : 0.3;
+  else s = d < 50 ? 1.3 : 0.6;
+  return s + item.rarity * 0.15;
+}
 
 class Bot extends Character {
   constructor(game, i) {
     super(game);
     this.isBot = true;
+    this.id = i;
     this.name = NAMES[i % NAMES.length];
     this.model.root.visible = false;
+    this.memory = new Map();
+    this.blacklist = new Set();
+    this.detour = new THREE.Vector3();
+    this.lastPos = new THREE.Vector3();
+    this.goal = null;
   }
 
-  reset() {
+  reset(diff = 'normal') {
     this.resetBody();
+    this.d = DIFF[diff] || DIFF.normal;
     this.mode = 'bus';
-    this.weapon = null;
-    this.mag = 0;
+    this.weapons = [null, null, null];
+    this.cur = 0;
+    this.heals = { bandage: 0, medkit: 0, smallshield: 0, shieldpot: 0 };
+    this.mats = { wood: random.int(0, 2) * 10, stone: 0, metal: 0 };
     this.cooldown = 0;
     this.reloadT = 0;
     this.swingT = 0;
-    this.skill = random.float(0.45, 1.0);
-    this.jumpFrac = random.float(0.1, 0.85);
-    this.deployAlt = random.float(70, 120);
-    this.landTarget = null;
-    this.goal = null;
-    this.goalKind = null;
-    this.goalTimer = 0;
+    this.swapT = 0;
+    this.burstLeft = 3;
+    this.burstPause = 0;
+    this.useT = 0;
+    this.using = null;
+    this.buildCd = 0;
+    this.memory.clear();
+    this.blacklist.clear();
     this.target = null;
-    this.targetSeen = false;
+    this.targetVisible = false;
+    this.timeOnTarget = 0;
     this.reaction = 0;
-    this.thinkT = random.float(0, THINK);
-    this.strafe = random.chance(0.5) ? 1 : -1;
-    this.strafeT = 0;
+    this.aimYaw = 0;
+    this.aimPitch = 0;
+    this.aimHead = false;
+    this.ph = [random.float(0, 6), random.float(0, 6), random.float(0, 6)];
+    this.task = 'idle';
+    this.goal = null;
+    this.goalRef = null;
+    this.goalT = 0;
+    this.path = null;
+    this.pathGoal = null;
+    this.pathT = -99;
+    this.pathPending = false;
+    this.wp = 0;
     this.stuckT = 0;
     this.stuckCount = 0;
     this.detourT = 0;
-    this.detour = new THREE.Vector3();
-    this.lastPos = new THREE.Vector3();
-    this.stormTick = 0;
+    this.strafe = random.chance(0.5) ? 1 : -1;
+    this.strafeT = 0;
+    this.thinkT = random.float(0, THINK);
+    this.jumpFrac = random.float(0.1, 0.85);
+    this.deployAlt = random.float(70, 120);
+    this.landTarget = null;
+    this.lastHurt = -99;
     this.lastAttacker = null;
-    this.mats = { wood: random.int(0, 3) * 10, stone: random.int(0, 2) * 10, metal: random.int(0, 1) * 10 };
-    this.extra = null; // consumible que soltará al morir
+    this.stormTick = 0;
+    this.respawnT = 0;
     this.model.root.visible = false;
     this.setHeld(PICKAXE);
   }
 
+  get weapon() {
+    return this.weapons[this.cur];
+  }
+
   get def() {
-    return this.weapon ? WEAPONS[this.weapon.type] : null;
+    const w = this.weapon;
+    return w ? WEAPONS[w.type] : null;
   }
 
-  // ------------------------------------------------------------------ DAÑO
-  damage(amount, type, attacker = null) {
-    if (!this.alive) return false;
-    this.absorb(amount, type);
-    if (attacker && attacker !== this && attacker.alive) {
-      this.lastAttacker = attacker;
-      if (!this.target || !this.targetSeen) {
-        this.target = attacker;
-        this.reaction = Math.min(this.reaction, 0.3);
-      }
-    }
-    if (this.health <= 0) {
-      this.health = 0;
-      this.die(type, attacker);
-      return true;
-    }
-    return false;
+  get hasWeapon() {
+    return this.weapons.some(Boolean);
   }
 
-  die(type, killer) {
-    this.alive = false;
+  get totalMats() {
+    return this.mats.wood + this.mats.stone + this.mats.metal;
+  }
+
+  // ------------------------------------------------------------ MEMORIA
+  remember(e, seen, pos = e.pos) {
+    const m = this.memory.get(e) || { pos: new THREE.Vector3(), vel: new THREE.Vector3(), time: -99, seen: false, seenAt: -99 };
+    m.pos.copy(pos);
+    m.vel.copy(e.vel);
+    m.time = this.game.time;
+    m.seen = seen;
+    if (seen) m.seenAt = this.game.time;
+    this.memory.set(e, m);
+    return m;
+  }
+
+  // ------------------------------------------------------------ DAÑO
+  onHurt(amount, type, attacker) {
+    this.lastHurt = this.game.time;
+    this.cancelUse();
+    if (!attacker || attacker === this || !attacker.alive) return;
+    this.remember(attacker, false);
+    this.lastAttacker = attacker;
+    if (!this.target || !this.targetVisible) {
+      this.target = attacker;
+      this.reaction = Math.min(this.reaction, 0.3);
+    }
+    this.game.shareIntel(this, attacker);
+    // Reacción de constructor: muro hacia el atacante
+    if (this.game.mode.build && this.mode === 'ground' && !this.knocked && this.buildCd <= 0 && this.totalMats >= 10 && random.chance(this.d.build)) {
+      this.buildWallToward(attacker.pos);
+    }
+  }
+
+  onEliminated(type, killer) {
     this.model.root.visible = false;
+    this.path = null;
     const g = this.game;
     const at = this.pos.clone();
     at.y += 0.8;
     const drops = [];
-    if (this.weapon) {
-      drops.push({ ...this.weapon, mag: WEAPONS[this.weapon.type].mag });
-      const a = WEAPONS[this.weapon.type].ammo;
+    for (const w of this.weapons) {
+      if (!w) continue;
+      drops.push({ ...w, mag: WEAPONS[w.type].mag });
+      const a = WEAPONS[w.type].ammo;
       drops.push({ kind: 'ammo', ammo: a, count: a === 'heavy' ? 8 : a === 'shells' ? 12 : 40 });
     }
-    if (this.extra) drops.push(this.extra);
-    for (const m in this.mats) if (this.mats[m] > 0) drops.push({ kind: 'material', mat: m, count: this.mats[m] });
-    g.pickups.burst(drops, at);
-    g.effects.debris(at, 0x9b5cff);
-    g.onElimination(this, killer, type);
+    for (const h in this.heals) if (this.heals[h] > 0) drops.push({ kind: 'consumable', type: h, count: this.heals[h] });
+    for (const m in this.mats) if (this.mats[m] > 0) drops.push({ kind: 'material', mat: m, count: Math.min(999, this.mats[m]) });
+    if (!g.mode.respawn) g.pickups.burst(drops.slice(0, 8), at);
+    if (at.distanceTo(g.camera.position) < 200) g.effects.debris(at, 0x9b5cff);
   }
 
-  // ------------------------------------------------------------- UPDATE
+  cancelUse() {
+    this.using = null;
+    this.useT = 0;
+  }
+
+  // ------------------------------------------------------------ UPDATE
   update(dt) {
     if (!this.alive) return;
     const g = this.game;
+    this.updateKnocked(dt);
+    if (!this.alive) return;
     switch (this.mode) {
       case 'bus': this.updateBus(); break;
       case 'freefall': this.updateAir(dt, false); break;
       case 'glide': this.updateAir(dt, true); break;
       case 'ground': this.updateGround(dt); break;
     }
-    // Tormenta
     if (this.mode !== 'bus' && g.storm.active && g.storm.isOutside(this.pos.x, this.pos.z)) {
       this.stormTick += dt;
       if (this.stormTick >= 1) {
@@ -119,45 +209,68 @@ class Bot extends Character {
       }
     }
     if (!this.alive) return;
-    const visible = this.mode !== 'bus' && this.pos.distanceToSquared(g.camera.position) < 320 * 320;
+    const visible = this.mode !== 'bus' && this.pos.distanceToSquared(g.camera.position) < 330 * 330;
     this.model.root.visible = visible;
     if (visible) this.updateModel(dt, this.weapon || PICKAXE, this.swingT);
   }
 
+  // ----------------------------------------------------------- AUTOBÚS/AIRE
   updateBus() {
-    const bus = this.game.bus;
+    const g = this.game;
+    const bus = g.bus;
     this.pos.copy(bus.pos);
     const frac = bus.t / bus.length;
-    if ((bus.doorsOpen && frac >= this.jumpFrac) || bus.mustEject || !bus.active) {
-      this.pos.y -= 3.5;
-      this.vel.copy(bus.velocity).multiplyScalar(0.35);
-      this.vel.y = -5;
-      this.mode = 'freefall';
-      this.freefallTime = 0;
-      this.landTarget = this.pickLanding();
-    }
+    const leader = g.teamLeader(this.team);
+    let go;
+    if (leader && leader !== this && leader.mode === 'bus') go = false; // espera al líder
+    else if (leader && leader !== this) go = true; // el líder ya saltó
+    else go = frac >= this.jumpFrac;
+    if ((bus.doorsOpen && go) || bus.mustEject || !bus.active) this.jump();
+  }
+
+  jump() {
+    const bus = this.game.bus;
+    this.pos.copy(bus.pos);
+    this.pos.y -= 3.5;
+    this.vel.copy(bus.velocity).multiplyScalar(0.35);
+    this.vel.y = -5;
+    this.mode = 'freefall';
+    this.freefallTime = 0;
+    const leader = this.game.teamLeader(this.team);
+    if (leader && leader !== this && leader.landTarget) {
+      this.landTarget = leader.landTarget.clone().add(new THREE.Vector3(random.float(-12, 12), 0, random.float(-12, 12)));
+    } else this.landTarget = this.pickLanding();
   }
 
   pickLanding() {
-    const w = this.game.world;
+    const g = this.game;
     const cands = [];
-    for (const s of w.lootSpots) {
-      const d = Math.hypot(s.x - this.pos.x, s.z - this.pos.z);
-      if (d < 280) cands.push(s);
+    // sólo botín a ras de suelo (no en tejados ni plantas altas)
+    const low = (p) => {
+      const k = g.nav.idx(p.x, p.z);
+      return k >= 0 && p.y - g.nav.ground[k] < 1.2 && !g.storm.isOutside(p.x, p.z);
+    };
+    for (const c of g.containers.list) {
+      if (c.active && c.kind === 'chest' && Math.hypot(c.pos.x - this.pos.x, c.pos.z - this.pos.z) < 300 && low(c.pos)) cands.push(c.pos);
     }
-    for (const c of this.game.containers.list) {
-      if (c.active && c.kind === 'chest' && Math.hypot(c.pos.x - this.pos.x, c.pos.z - this.pos.z) < 280) cands.push(c.pos);
-    }
+    for (const pk of g.pickups.items) if (pk.item.kind === 'weapon' && Math.hypot(pk.pos.x - this.pos.x, pk.pos.z - this.pos.z) < 300 && low(pk.pos)) cands.push(pk.pos);
     if (cands.length) {
       const s = random.pick(cands);
-      return new THREE.Vector3(s.x + random.float(-6, 6), 0, s.z + random.float(-6, 6));
+      return new THREE.Vector3(s.x + random.float(-5, 5), 0, s.z + random.float(-5, 5));
     }
+    const st = g.storm;
     const a = random.float(0, Math.PI * 2);
-    const r = Math.sqrt(random.next()) * ISLAND_RADIUS * 0.8;
-    return new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    const r = Math.sqrt(random.next()) * Math.min(ISLAND_RADIUS * 0.8, st.radius * 0.8);
+    return new THREE.Vector3(st.center.x + Math.cos(a) * r, 0, st.center.y + Math.sin(a) * r);
   }
 
   updateAir(dt, gliding) {
+    const g = this.game;
+    // Los compañeros del jugador le siguen en el aire
+    const leader = g.teamLeader(this.team);
+    if (leader && leader !== this && leader.isPlayer && leader.mode !== 'bus') {
+      this.landTarget.set(leader.pos.x + (this.id % 3 - 1) * 8, 0, leader.pos.z + ((this.id >> 1) % 3 - 1) * 8);
+    }
     const t = this.landTarget;
     tmpA.set(t.x - this.pos.x, 0, t.z - this.pos.z);
     const dist = tmpA.length();
@@ -165,9 +278,7 @@ class Bot extends Character {
     if (dist < 8) wish.multiplyScalar(dist / 8);
     this.yaw = Math.atan2(-wish.x, -wish.z);
     if (!gliding) {
-      // Cae en picado si el objetivo está cerca
-      const dive = dist < 120 ? 1 : 0.2;
-      this.freefallStep(dt, wish, dive);
+      this.freefallStep(dt, wish, dist < 140 ? 1 : 0.2);
       if (this.altitude < this.deployAlt) this.deployGlider();
     } else {
       this.glideStep(dt, wish, dist < 40 ? 1 : 0);
@@ -180,265 +291,594 @@ class Bot extends Character {
     }
   }
 
-  // --------------------------------------------------------------- SUELO
-  enemies() {
-    const g = this.game;
-    const out = [];
-    if (g.player.alive && g.player.mode !== 'bus' && g.player.mode !== 'lobby') out.push(g.player);
-    for (const b of g.bots.list) if (b !== this && b.alive && b.mode !== 'bus') out.push(b);
-    return out;
+  respawnAt(x, z, loadout) {
+    this.resetBody();
+    this.weapons = loadout.weapons.map((w) => (w ? { ...w } : null));
+    this.cur = 0;
+    this.heals = { ...loadout.heals };
+    this.mats = { wood: 150, stone: 80, metal: 40 };
+    this.memory.clear();
+    this.target = null;
+    this.task = 'idle';
+    this.path = null;
+    this.goal = null;
+    this.pos.set(x, 140, z);
+    this.vel.set(0, -10, 0);
+    this.mode = 'freefall';
+    this.landTarget = new THREE.Vector3(x, 0, z);
+    this.setHeld(this.weapon || PICKAXE);
   }
 
+  // ------------------------------------------------------------ PERCEPCIÓN
   canSee(other) {
     const eye = this.eye;
     const to = tmpB.copy(other.pos);
-    to.y += other.height * 0.75;
+    to.y += other.height * 0.7;
     const dir = to.sub(eye);
     const dist = dir.length();
+    if (dist < 0.01) return true;
     dir.divideScalar(dist);
     const hit = this.game.raycast(eye, dir, dist + 1, 0, this);
     return !!hit && hit.kind === 'character' && hit.entity === other;
   }
 
-  think() {
+  perceive() {
     const g = this.game;
-    const range = this.def ? Math.min(this.def.range, 90) : 12;
-    // Mantener el objetivo actual si sigue vivo y cerca
-    if (this.target && (!this.target.alive || this.target.pos.distanceTo(this.pos) > range * 1.4)) this.target = null;
-    if (!this.target || !this.targetSeen) {
-      let best = null, bd = range;
-      const fwdX = -Math.sin(this.yaw), fwdZ = -Math.cos(this.yaw);
-      for (const e of this.enemies()) {
-        const dx = e.pos.x - this.pos.x, dz = e.pos.z - this.pos.z;
-        const d = Math.hypot(dx, dz);
-        if (d > bd) continue;
-        const facing = (dx * fwdX + dz * fwdZ) / (d || 1);
-        if (d > 18 && facing < 0.2 && e !== this.lastAttacker) continue; // fuera de su campo de visión
-        if (!this.canSee(e)) continue;
-        best = e;
-        bd = d;
-      }
-      if (best && best !== this.target) {
-        this.target = best;
-        this.reaction = random.float(0.35, 0.9) * (1.4 - this.skill);
+    const now = g.time;
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+    const cands = [];
+    for (const e of g.characters()) {
+      if (e === this || !e.alive || e.team === this.team || e.mode === 'bus' || e.mode === 'lobby') continue;
+      const dx = e.pos.x - this.pos.x, dz = e.pos.z - this.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > this.d.see) continue;
+      const known = this.memory.get(e);
+      const facing = (dx * fx + dz * fz) / (d || 1);
+      // Campo de visión ~130°, pero de cerca o si ya lo conoce lo detecta igual
+      if (d > 14 && facing < -0.1 && !(known && now - known.time < 3)) continue;
+      cands.push({ e, d });
+    }
+    cands.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < Math.min(3, cands.length); i++) {
+      const { e } = cands[i];
+      if (this.canSee(e)) {
+        this.remember(e, true);
+        this.game.shareIntel(this, e);
+      } else {
+        const m = this.memory.get(e);
+        if (m) m.seen = false;
       }
     }
-    this.targetSeen = this.target ? this.canSee(this.target) : false;
-
-    // Objetivos de movimiento cuando no está peleando
-    this.goalTimer -= THINK;
-    const st = g.storm;
-    const outsideNext = st.active && st.state !== 'done' &&
-      Math.hypot(this.pos.x - st.next.x, this.pos.z - st.next.y) > st.nextRadius * 0.9 &&
-      (st.state === 'shrink' || st.timer < 35);
-    if (st.active && (st.isOutside(this.pos.x, this.pos.z) || outsideNext)) {
-      const c = st.isOutside(this.pos.x, this.pos.z) ? st.center : st.next;
-      this.goal = new THREE.Vector3(c.x, 0, c.y);
-      this.goalKind = 'storm';
-      return;
+    // Oído: disparos cercanos de enemigos
+    for (const n of g.noises) {
+      if (now - n.t > 0.8 || !n.src.alive || n.src.team === this.team) continue;
+      if (this.pos.distanceTo(n.pos) < n.r) {
+        const m = this.memory.get(n.src);
+        if (!m || now - m.time > 0.5) this.remember(n.src, false, n.pos);
+      }
     }
-    if (this.goalKind === 'storm') this.goal = null;
-    if (!this.weapon || this.goalTimer <= 0 || !this.goal) this.pickGoal();
   }
 
-  pickGoal() {
+  pickTarget() {
+    const now = this.game.time;
+    let best = null, bs = -Infinity;
+    for (const [e, m] of this.memory) {
+      if (!e.alive || now - m.time > 9) {
+        this.memory.delete(e);
+        continue;
+      }
+      const d = this.pos.distanceTo(m.pos);
+      let s = -d * 0.6;
+      if (m.seen && now - m.seenAt < 0.6) s += 60;
+      if (e === this.lastAttacker && now - this.lastHurt < 4) s += 35;
+      if (e.knocked) s -= 25;
+      if (e === this.target) s += 10; // no cambiar de objetivo a cada momento
+      if (s > bs) {
+        bs = s;
+        best = e;
+      }
+    }
+    if (best !== this.target) {
+      this.target = best;
+      this.timeOnTarget = 0;
+      this.aimHead = random.chance(this.d.head);
+      this.reaction = random.float(this.d.react[0], this.d.react[1]);
+    }
+    const m = best && this.memory.get(best);
+    this.targetVisible = !!m && m.seen && now - m.seenAt < 0.4;
+  }
+
+  // ------------------------------------------------------------ DECISIÓN
+  stormDanger() {
+    const st = this.game.storm;
+    if (!st.active) return 0;
+    const dNow = Math.hypot(this.pos.x - st.center.x, this.pos.z - st.center.y) - st.radius;
+    if (dNow > -6) return 2;
+    if (st.state === 'done') return 0;
+    const dNext = Math.hypot(this.pos.x - st.next.x, this.pos.z - st.next.y) - st.nextRadius * 0.8;
+    if (dNext <= 0) return 0;
+    const travel = dNext / 5.5;
+    const left = st.state === 'shrink' ? st.timer : st.timer + 25;
+    return travel + 15 > left ? 2 : travel + 45 > left ? 1 : 0;
+  }
+
+  safePoint() {
+    const st = this.game.storm;
+    const useNext = st.state !== 'done';
+    const cx = useNext ? st.next.x : st.center.x, cz = useNext ? st.next.y : st.center.y;
+    const r = (useNext ? st.nextRadius : st.radius) * 0.55;
+    tmpA.set(this.pos.x - cx, 0, this.pos.z - cz);
+    const d = tmpA.length() || 1;
+    return new THREE.Vector3(cx + (tmpA.x / d) * Math.min(d, r), 0, cz + (tmpA.z / d) * Math.min(d, r));
+  }
+
+  setTask(task, goal = null, ref = null) {
+    if (this.task !== task || ref !== this.goalRef || (goal && (!this.goal || this.goal.distanceTo(goal) > 6))) {
+      this.task = task;
+      this.goal = goal ? goal.clone() : null;
+      this.goalRef = ref;
+      this.goalT = 0;
+    }
+  }
+
+  healItem() {
+    const h = this.heals;
+    if (this.shield < 50 && h.smallshield > 0) return 'smallshield';
+    if (this.shield < 75 && h.shieldpot > 0) return 'shieldpot';
+    if (this.health < 50 && h.medkit > 0) return 'medkit';
+    if (this.health < 75 && h.bandage > 0) return 'bandage';
+    return null;
+  }
+
+  needsLoot() {
+    if (!this.hasWeapon) return true;
+    if (this.weapons.filter(Boolean).length < 2) return true;
+    const heals = this.heals.smallshield + this.heals.shieldpot + this.heals.medkit + this.heals.bandage;
+    return heals < 2 || this.weapons.some((w) => w && w.rarity < 2);
+  }
+
+  findLoot() {
     const g = this.game;
-    this.goalTimer = random.float(10, 18);
-    let best = null, bd = this.weapon ? 30 : 70;
-    // armas en el suelo
+    let best = null, bd = this.hasWeapon ? 55 : 85;
+    const worst = this.weapons.reduce((m, w) => Math.min(m, w ? w.rarity : -1), 9);
     for (const pk of g.pickups.items) {
-      if (pk.item.kind !== 'weapon' || !pk.settled) continue;
-      if (this.weapon && pk.item.rarity <= this.weapon.rarity) continue;
+      if (!pk.settled || this.blacklist.has(pk)) continue;
+      const it = pk.item;
+      let want = false;
+      if (it.kind === 'weapon') want = it.rarity > worst || this.weapons.some((w) => !w) || !this.weapons.some((w) => w && w.type === it.type && w.rarity >= it.rarity) && it.rarity >= worst;
+      else if (it.kind === 'consumable') want = (this.heals[it.type] || 0) < 4;
+      if (!want) continue;
       const d = pk.pos.distanceTo(this.pos);
-      if (d < bd && Math.abs(pk.pos.y - this.pos.y) < 4) {
+      if (d < bd && Math.abs(pk.pos.y - this.pos.y) < 2.5) {
         bd = d;
-        best = { pos: pk.pos, kind: 'pickup', ref: pk };
+        best = { pos: pk.pos, ref: pk, kind: 'pickup' };
       }
     }
     for (const c of g.containers.list) {
-      if (!c.active || c.opened || c.kind !== 'chest') continue;
+      if (!c.active || c.opened || c.kind !== 'chest' || this.blacklist.has(c)) continue;
       const d = c.pos.distanceTo(this.pos);
-      if (d < bd && Math.abs(c.pos.y - this.pos.y) < 4) {
+      if (d >= bd) continue;
+      // sólo cofres a ras de suelo (la IA no sube escaleras)
+      const k = g.nav.idx(c.pos.x, c.pos.z);
+      if (k < 0 || c.pos.y - g.nav.ground[k] > 1.2) continue;
+      bd = d;
+      best = { pos: c.pos, ref: c, kind: 'chest' };
+    }
+    return best;
+  }
+
+  findHarvest() {
+    let best = null, bd = 45;
+    for (const h of this.game.harvest.list) {
+      if (h.hp <= 0 || this.blacklist.has(h)) continue;
+      const d = Math.hypot(h.center.x - this.pos.x, h.center.z - this.pos.z);
+      if (d < bd) {
         bd = d;
-        best = { pos: c.pos, kind: 'chest', ref: c };
+        best = h;
       }
     }
-    if (best) {
-      this.goal = best.pos.clone();
-      this.goalKind = best.kind;
-      this.goalRef = best.ref;
+    return best;
+  }
+
+  decide() {
+    const g = this.game;
+    const now = g.time;
+    if (this.knocked) {
+      // Arrastrarse hacia el compañero en pie más cercano
+      const mate = g.teamMembers(this.team).find((c) => c !== this && c.alive && !c.knocked);
+      this.setTask('crawl', mate ? mate.pos : null, mate);
       return;
     }
-    // Paseo aleatorio dentro de la zona segura
+    const tm = this.target && this.memory.get(this.target);
+    const tDist = tm ? this.pos.distanceTo(tm.pos) : Infinity;
+    const enemyClose = tm && tDist < 25 && now - tm.time < 3;
+    const hpTot = this.health + this.shield;
+    const storm = this.stormDanger();
+
+    if (storm === 2 && !(this.targetVisible && enemyClose)) return this.setTask('rotate', this.safePoint());
+    if (this.targetVisible && this.target) {
+      const eff = this.def ? EFFECTIVE[this.weapon.type] : 0;
+      const bestW = this.weapons.reduce((m, w) => Math.max(m, w ? EFFECTIVE[w.type] : 0), 0);
+      if (this.hasWeapon && tDist < Math.max(eff, bestW) * 1.1) return this.setTask('fight', null, this.target);
+      // Sin arma sólo pelea a pico si le atacan o lo tiene encima
+      const attacked = this.target === this.lastAttacker && now - this.lastHurt < 4;
+      if (!this.hasWeapon && (attacked || tDist < 2.5)) return this.setTask('fight', null, this.target);
+    }
+    const item = this.healItem();
+    if (item && hpTot < 160 && now - this.lastHurt > 2.5 && !enemyClose && random.chance(this.d.heal)) return this.setTask('heal');
+    if (this.task === 'heal' && item && now - this.lastHurt > 2.5) return;
+    const downed = g.teamMembers(this.team).find((c) => c !== this && c.knocked && c.pos.distanceTo(this.pos) < 80);
+    if (downed && !enemyClose) return this.setTask('revive', downed.pos, downed);
+    if (tm && now - tm.time < 7 && this.hasWeapon && hpTot >= 70) return this.setTask('hunt', tm.pos, this.target);
+    if (storm === 1) return this.setTask('rotate', this.safePoint());
+    const leader = g.teamLeader(this.team);
+    if (leader && leader !== this && leader.alive && leader.mode === 'ground' && !g.storm.isOutside(leader.pos.x, leader.pos.z)) {
+      const d = leader.pos.distanceTo(this.pos);
+      if (d > 30 || (this.task === 'follow' && d > 12)) return this.setTask('follow', leader.pos, leader);
+    }
+    if (this.task === 'loot' && this.goalRef && this.goalT < 25 && this.lootValid(this.goalRef)) return;
+    if (this.needsLoot()) {
+      const l = this.findLoot();
+      if (l) return this.setTask('loot', l.pos, l.ref);
+    }
+    if (g.mode.build && this.totalMats < 150) {
+      if (this.task === 'harvest' && this.goalRef && this.goalRef.hp > 0 && this.goalT < 20) return;
+      const h = this.findHarvest();
+      if (h) return this.setTask('harvest', h.center, h);
+    }
+    if (this.task === 'roam' && this.goal && this.goalT < 30 && Math.hypot(this.goal.x - this.pos.x, this.goal.z - this.pos.z) > 4) return;
+    this.setTask('roam', this.roamPoint());
+  }
+
+  lootValid(ref) {
+    if (ref.item) return this.game.pickups.items.includes(ref);
+    return ref.active && !ref.opened;
+  }
+
+  roamPoint() {
+    const g = this.game;
     const st = g.storm;
     const cx = st.active ? st.next.x : 0, cz = st.active ? st.next.y : 0;
-    const r = st.active ? Math.max(10, st.nextRadius * 0.8) : 300;
-    for (let i = 0; i < 10; i++) {
+    const r = st.active ? Math.max(12, st.nextRadius * 0.75) : 400;
+    // preferir zonas con nombre cercanas dentro de la zona segura
+    const pois = g.world.pois.filter((p) => Math.hypot(p.x - cx, p.z - cz) < r && Math.hypot(p.x - this.pos.x, p.z - this.pos.z) < 260);
+    if (pois.length && random.chance(0.6)) {
+      const p = random.pick(pois);
+      return new THREE.Vector3(p.x + random.float(-p.radius, p.radius) * 0.5, 0, p.z + random.float(-p.radius, p.radius) * 0.5);
+    }
+    for (let i = 0; i < 12; i++) {
       const a = random.float(0, Math.PI * 2);
       const rr = Math.sqrt(random.next()) * r;
       const x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
-      if (g.world.terrain.heightAt(x, z) > 1 && Math.hypot(x - this.pos.x, z - this.pos.z) < 120) {
-        this.goal = new THREE.Vector3(x, 0, z);
-        this.goalKind = 'roam';
-        return;
-      }
+      if (g.world.terrain.heightAt(x, z) > 1 && Math.hypot(x - this.pos.x, z - this.pos.z) < 150) return new THREE.Vector3(x, 0, z);
     }
     const a = random.float(0, Math.PI * 2);
-    this.goal = new THREE.Vector3(this.pos.x + Math.cos(a) * 40, 0, this.pos.z + Math.sin(a) * 40);
-    this.goalKind = 'roam';
+    return new THREE.Vector3(this.pos.x + Math.cos(a) * 40, 0, this.pos.z + Math.sin(a) * 40);
   }
 
+  // ------------------------------------------------------------ MOVIMIENTO
+  // Devuelve true al llegar. Usa A* por la rejilla de navegación.
+  navigate(goal, arrive = 1.5) {
+    wish.set(0, 0, 0);
+    if (!goal) return true;
+    const g = this.game;
+    const dx = goal.x - this.pos.x, dz = goal.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < arrive) {
+      this.path = null;
+      return true;
+    }
+    if (dist < 16 && g.nav.lineFree(this.pos.x, this.pos.z, goal.x, goal.z)) {
+      wish.set(dx / dist, 0, dz / dist);
+      return false;
+    }
+    const now = g.time;
+    const stale = !this.pathGoal || this.pathGoal.distanceTo(goal) > 6 || now - this.pathT > 8;
+    if ((stale || !this.path) && !this.pathPending) g.requestPath(this, goal);
+    if (this.path && this.wp < this.path.pts.length) {
+      const p = this.path.pts[this.wp];
+      let px = p[0] - this.pos.x, pz = p[1] - this.pos.z;
+      let pd = Math.hypot(px, pz);
+      while (pd < 1.2 && this.wp < this.path.pts.length - 1) {
+        this.wp++;
+        const q = this.path.pts[this.wp];
+        px = q[0] - this.pos.x;
+        pz = q[1] - this.pos.z;
+        pd = Math.hypot(px, pz);
+      }
+      if (pd < 1.2 && this.wp >= this.path.pts.length - 1) {
+        // fin de un tramo parcial: pedir el siguiente
+        this.path = null;
+        this.pathT = -99;
+      }
+      if (pd > 0.01) wish.set(px / pd, 0, pz / pd);
+    } else {
+      wish.set(dx / dist, 0, dz / dist); // mientras llega el camino
+    }
+    return false;
+  }
+
+  setPath(res, goal) {
+    this.pathPending = false;
+    this.pathT = this.game.time;
+    this.pathGoal = goal.clone();
+    this.path = res && res.pts.length ? res : null;
+    this.wp = 0;
+    if (!res) {
+      if (this.goalRef && (this.task === 'loot' || this.task === 'harvest')) this.blacklist.add(this.goalRef);
+      // Sin camino (encerrado o encima de algo): desvío aleatorio con salto
+      const a = random.float(0, Math.PI * 2);
+      this.detour.set(Math.cos(a), 0, Math.sin(a));
+      this.detourT = random.float(1, 2);
+      if (this.onGround) this.vel.y = 8.2;
+    }
+  }
+
+  // ------------------------------------------------------------ SUELO
   updateGround(dt) {
     const g = this.game;
     this.thinkT -= dt;
-    if (this.thinkT <= 0) {
-      this.thinkT = THINK;
-      this.think();
-    }
+    this.goalT += dt;
     this.cooldown -= dt;
+    this.swapT = Math.max(0, this.swapT - dt);
+    this.buildCd -= dt;
     this.swingT = Math.max(0, this.swingT - dt);
+    this.burstPause -= dt;
     if (this.reloadT > 0) {
       this.reloadT -= dt;
-      if (this.reloadT <= 0) this.mag = this.def.mag;
+      if (this.reloadT <= 0 && this.weapon) this.weapon.mag = WEAPONS[this.weapon.type].mag;
+    }
+    if (this.thinkT <= 0) {
+      this.thinkT = THINK;
+      this.perceive();
+      this.pickTarget();
+      this.decide();
+      this.autoPickup();
+      if (g.infiniteMats) this.mats.wood = Math.max(this.mats.wood, 200);
     }
 
-    wish.set(0, 0, 0);
     let speed = 5.4;
-    const fighting = this.target && this.target.alive && (this.targetSeen || this.target === this.lastAttacker);
-    if (fighting) {
-      const tp = this.target.pos;
-      tmpA.set(tp.x - this.pos.x, 0, tp.z - this.pos.z);
-      const d = tmpA.length();
-      tmpA.normalize();
-      this.yaw = Math.atan2(-tmpA.x, -tmpA.z);
-      const dy = tp.y + this.target.height * 0.7 - (this.pos.y + this.eyeHeight);
-      this.pitch = Math.atan2(dy, d);
-      const ideal = !this.weapon ? 1.2 : this.def.pellets ? 6 : this.weapon.type === 'sniper' ? 50 : 18;
-      if (!this.targetSeen || d > ideal + 4) wish.copy(tmpA);
-      else if (d < ideal - 4) wish.copy(tmpA).negate();
-      this.strafeT -= dt;
-      if (this.strafeT <= 0) {
-        this.strafeT = random.float(0.7, 1.8);
-        this.strafe = -this.strafe;
+    let jump = false;
+    wish.set(0, 0, 0);
+    switch (this.task) {
+      case 'crawl':
+        if (this.goal && this.goalRef) this.goal.copy(this.goalRef.pos);
+        this.navigate(this.goal, 1.2);
+        speed = 1.6;
+        break;
+      case 'rotate':
+        this.navigate(this.goal, 4);
+        speed = 7.2;
+        if (this.targetVisible) this.aimAndShoot(dt);
+        break;
+      case 'fight':
+        speed = this.fightMove(dt);
+        this.aimAndShoot(dt);
+        break;
+      case 'hunt': {
+        const m = this.memory.get(this.goalRef);
+        if (m) this.goal.copy(m.pos);
+        if (this.navigate(this.goal, 3)) this.memory.delete(this.goalRef);
+        speed = 6.2;
+        if (this.target && this.memory.get(this.target)?.seen === false) this.shootBlockingBuild(dt);
+        break;
       }
-      if (this.weapon) wish.addScaledVector(tmpB.set(-tmpA.z, 0, tmpA.x), this.strafe * 0.8);
-      if (wish.lengthSq() > 0) wish.normalize();
-      speed = 4.6;
-      this.reaction -= dt;
-      if (this.targetSeen && this.reaction <= 0) this.attack(d);
-    } else if (this.goal) {
-      tmpA.set(this.goal.x - this.pos.x, 0, this.goal.z - this.pos.z);
-      const d = tmpA.length();
-      if (d < 1.6) this.arrive();
-      else {
-        wish.copy(tmpA).divideScalar(d);
-        this.yaw = Math.atan2(-wish.x, -wish.z);
-        this.pitch = 0;
-        if (d > 20) speed = 7.2;
+      case 'heal':
+        this.doHeal(dt);
+        break;
+      case 'revive':
+        this.doRevive(dt);
+        break;
+      case 'follow': {
+        const L = this.goalRef;
+        if (L) this.goal.set(L.pos.x + ((this.id % 3) - 1) * 4, 0, L.pos.z + (((this.id >> 1) % 3) - 1) * 4);
+        this.navigate(this.goal, 5);
+        speed = this.goal && this.goal.distanceTo(this.pos) > 20 ? 7.6 : 5.4;
+        break;
       }
-      if (this.goalKind === 'chest' && d < 2.4 && this.goalRef && !this.goalRef.opened) {
-        g.containers.open(this.goalRef, this);
-        this.goal = null;
-        this.goalTimer = 0.5;
-      }
+      case 'loot':
+        if (this.navigate(this.goal, this.goalRef?.item ? 1.0 : 2.0)) {
+          const c = this.goalRef;
+          if (c && c.kind === 'chest' && !c.opened) g.containers.open(c, this);
+          this.task = 'idle';
+          this.thinkT = 0.5;
+        }
+        speed = this.goal && this.goal.distanceTo(this.pos) > 25 ? 7.2 : 5.4;
+        break;
+      case 'harvest':
+        this.doHarvest(dt);
+        break;
+      default:
+        if (this.navigate(this.goal, 4)) this.goal = null;
+        speed = this.goal && this.goal.distanceTo(this.pos) > 30 ? 7.2 : 5.4;
     }
-    this.autoPickup();
+    if (this.task !== 'fight' && this.task !== 'rotate' && this.targetVisible && this.reaction <= 0) this.aimAndShoot(dt);
+    else if (this.task !== 'fight' && this.task !== 'heal' && this.task !== 'revive' && wish.lengthSq() > 0) {
+      this.yaw = Math.atan2(-wish.x, -wish.z);
+      this.pitch *= 0.9;
+    }
 
-    // Atasco: saltar y, si sigue, rodear
+    // Atascos: saltar, luego desvío y recalcular camino
     if (this.detourT > 0) {
       this.detourT -= dt;
       wish.copy(this.detour);
     }
     this.stuckT += dt;
-    if (this.stuckT > 0.5) {
+    if (this.stuckT > 0.6) {
       const moved = Math.hypot(this.pos.x - this.lastPos.x, this.pos.z - this.lastPos.z);
-      const wanted = wish.lengthSq() > 0.1;
-      if (wanted && moved < 0.5) this.stuckCount++;
+      if (wish.lengthSq() > 0.1 && moved < 0.35 * speed * 0.2 + 0.2) this.stuckCount++;
       else this.stuckCount = 0;
-      if (this.stuckCount >= 3 && this.detourT <= 0) {
+      if (this.stuckCount >= 2) {
+        this.path = null;
+        this.pathT = -99;
+      }
+      if (this.stuckCount >= 4 && this.detourT <= 0) {
         const a = Math.atan2(wish.z, wish.x) + (random.chance(0.5) ? 1 : -1) * random.float(1.2, 2.2);
         this.detour.set(Math.cos(a), 0, Math.sin(a));
-        this.detourT = random.float(1, 2);
+        this.detourT = random.float(0.6, 1.4);
         this.stuckCount = 0;
-        if (this.goalKind !== 'storm') this.goalTimer = Math.min(this.goalTimer, 2);
+        if (this.goalRef && (this.task === 'loot' || this.task === 'harvest')) this.blacklist.add(this.goalRef);
       }
       this.lastPos.copy(this.pos);
       this.stuckT = 0;
     }
-    const jump = this.stuckCount >= 1 && this.onGround;
-    const land = this.groundStep(dt, wish, speed, jump);
+    if (this.stuckCount >= 1 && this.onGround) jump = true;
+    if (wish.lengthSq() > 1) wish.normalize();
+    if (this.knocked) speed = Math.min(speed, 1.6);
+    const land = this.groundStep(dt, wish, speed, jump && !this.knocked);
     this.fallDamage(land);
   }
 
-  arrive() {
-    this.goal = null;
-    this.goalTimer = Math.min(this.goalTimer, random.float(0.5, 2));
+  // Movimiento de combate: distancia ideal según el arma, esquivas y saltos.
+  fightMove(dt) {
+    const tgt = this.target;
+    if (!tgt) return 5.4;
+    const m = this.memory.get(tgt);
+    tmpA.set(m.pos.x - this.pos.x, 0, m.pos.z - this.pos.z);
+    const d = tmpA.length() || 1;
+    tmpA.divideScalar(d);
+    const [rmin, rmax] = this.weapon ? RANGE[this.weapon.type] : [0, 1.5];
+    wish.set(0, 0, 0);
+    const low = this.health + this.shield < 50;
+    if (!this.targetVisible) {
+      this.navigate(m.pos, 2);
+      return 6.2;
+    }
+    if (low && d > 7 && this.weapon) wish.copy(tmpA).negate();
+    else if (d > rmax) wish.copy(tmpA);
+    else if (d < rmin) wish.copy(tmpA).negate();
+    this.strafeT -= dt;
+    if (this.strafeT <= 0) {
+      this.strafeT = random.float(0.5, 1.5);
+      this.strafe = -this.strafe;
+    }
+    if (this.weapon) wish.addScaledVector(tmpB.set(-tmpA.z, 0, tmpA.x), this.strafe * this.d.strafe);
+    if (this.onGround && random.chance(this.d.jump * dt)) this.groundJump = true;
+    // Ventaja de altura: rampa hacia el enemigo si está muy por encima
+    if (this.game.mode.build && tgt.pos.y - this.pos.y > 3.5 && d < 30 && this.buildCd <= 0 && random.chance(this.d.build * 0.5)) {
+      this.game.build.placeFor(this, 'ramp', yawToDir(Math.atan2(-tmpA.x, -tmpA.z)));
+      this.buildCd = 0.8;
+      wish.copy(tmpA);
+    }
+    if (this.groundJump) {
+      this.groundJump = false;
+      this.vel.y = this.onGround ? 8.2 : this.vel.y;
+    }
+    // Recargar detrás de un muro si el enemigo está cerca
+    if (this.reloadT > 0 && d < 25 && this.buildCd <= 0 && this.game.mode.build && random.chance(this.d.build * 0.6)) this.buildWallToward(tgt.pos);
+    return low ? 6.5 : 4.8;
   }
 
-  autoPickup() {
-    const g = this.game;
-    for (const pk of g.pickups.items) {
-      if (!pk.settled || pk.pos.distanceToSquared(this.pos) > 2.6) continue;
-      const it = pk.item;
-      if (it.kind === 'weapon') {
-        if (this.weapon && it.rarity <= this.weapon.rarity && !(this.weapon.type === 'pistol' && it.type !== 'pistol')) continue;
-        if (this.weapon) g.pickups.spawn(this.weapon, pk.pos.clone(), new THREE.Vector3(0, 3, 0));
-        this.weapon = { ...it };
-        this.mag = it.mag;
-        this.setHeld(this.weapon);
-      } else if (it.kind === 'consumable') {
-        const def = CONSUMABLES[it.type];
-        if (def.shield) this.shield = Math.min(def.cap, this.shield + def.shield * Math.min(2, it.count));
-        else this.health = Math.min(def.cap, this.health + def.heal * Math.min(2, it.count));
-        if (!this.extra && random.chance(0.4)) this.extra = { ...it, count: 1 };
-      } else if (it.kind === 'material') {
-        this.mats[it.mat] += it.count;
-      } else if (it.kind !== 'ammo') continue;
-      g.pickups.remove(pk);
-      if (this.goalKind === 'pickup' && this.goalRef === pk) this.arrive();
-      break;
+  // ------------------------------------------------------------ DISPARO
+  chooseWeapon(d) {
+    let best = this.cur, bs = weaponScore(this.weapon, d);
+    for (let i = 0; i < this.weapons.length; i++) {
+      const s = weaponScore(this.weapons[i], d);
+      if (s > bs + 0.25) {
+        bs = s;
+        best = i;
+      }
+    }
+    if (best !== this.cur) {
+      this.cur = best;
+      this.swapT = 0.35;
+      this.reloadT = 0;
+      this.setHeld(this.weapon || PICKAXE);
     }
   }
 
-  // --------------------------------------------------------------- COMBATE
-  attack(dist) {
+  aimAndShoot(dt) {
     const g = this.game;
-    if (!this.weapon) {
-      if (dist < 2.2 && this.swingT <= 0) {
+    const tgt = this.target;
+    if (!tgt || !tgt.alive) return;
+    const m = this.memory.get(tgt);
+    if (!m) return;
+    const eye = this.eye;
+    const aim = tmpA.copy(this.targetVisible ? tgt.pos : m.pos);
+    aim.y += tgt.height * (this.aimHead ? 0.9 : 0.62);
+    const dist = aim.distanceTo(eye);
+    this.chooseWeapon(dist);
+    const def = this.def;
+    if (def?.projectile) {
+      const t = dist / def.projectile.speed;
+      aim.addScaledVector(tgt.vel, t);
+      aim.y += 0.5 * def.projectile.gravity * t * t;
+    } else if (this.d.track > 5) aim.addScaledVector(tgt.vel, 0.05);
+    const dx = aim.x - eye.x, dy = aim.y - eye.y, dz = aim.z - eye.z;
+    const wantYaw = Math.atan2(-dx, -dz);
+    const wantPitch = Math.atan2(dy, Math.hypot(dx, dz));
+    const step = this.d.track * dt;
+    this.aimYaw += clamp(angDiff(this.aimYaw, wantYaw), -step, step);
+    this.aimPitch += clamp(wantPitch - this.aimPitch, -step, step);
+    this.yaw = this.aimYaw;
+    this.pitch = this.aimPitch;
+    this.timeOnTarget += dt;
+    this.reaction -= dt;
+    const aligned = Math.abs(angDiff(this.aimYaw, wantYaw)) < 0.15 && Math.abs(wantPitch - this.aimPitch) < 0.15;
+    if (this.reaction > 0 || !aligned || !this.targetVisible || this.swapT > 0 || this.using || this.knocked) return;
+
+    if (!def) {
+      // Sin arma: pico cuerpo a cuerpo
+      if (dist < 2.4 && this.swingT <= 0) {
         this.swingT = 0.55;
-        this.target.damage(20, 'pickaxe', this);
+        tgt.damage(20, 'pickaxe', this);
         g.audio.pickaxe();
       }
       return;
     }
-    const def = this.def;
-    if (this.reloadT > 0 || this.cooldown > 0) return;
-    if (this.mag <= 0) {
-      this.reloadT = def.reload[this.weapon.rarity] * 1.2;
+    if (this.reloadT > 0 || this.cooldown > 0 || this.burstPause > 0) return;
+    if (this.weapon.mag <= 0) {
+      this.startReload();
       return;
     }
     if (dist > def.range) return;
-    this.mag--;
-    this.cooldown = (1 / def.rate) * (def.auto ? 1.6 : 1.3) + random.float(0, 0.15);
-    const eye = this.eye;
-    const tgt = this.target;
-    const aim = tmpA.copy(tgt.pos);
-    aim.y += tgt.height * (random.chance(0.15 * this.skill) ? 0.92 : 0.6);
-    const dir = aim.sub(eye).normalize();
-    const moving = this.hSpeed > 1 ? 1.4 : 1;
-    const err = (def.pellets ? def.spread : def.spread * 0.6 + 0.02) * moving * (1.6 - this.skill * 0.8);
+
+    // Error de puntería persistente que se reduce al fijar el blanco
+    const t = g.time;
+    const settle = 1 + 1.8 * Math.exp(-this.timeOnTarget / 1.1);
+    const mov = (this.hSpeed > 1 ? 1.3 : 1) * (tgt.hSpeed > 3 ? 1.25 : 1) * (tgt.knocked ? 0.6 : 1);
+    const err = this.d.err * settle * mov;
+    const ey = (Math.sin(t * 1.7 + this.ph[0]) + 0.5 * Math.sin(t * 3.3 + this.ph[1])) * err;
+    const ep = (Math.sin(t * 2.1 + this.ph[2]) + 0.5 * Math.sin(t * 3.9 + this.ph[0])) * err * 0.7;
+    const yaw = this.aimYaw + ey, pitch = this.aimPitch + ep;
+    const dir = new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
+    this.fire(def, dir, eye);
+  }
+
+  startReload() {
+    const def = this.def;
+    if (!def || this.reloadT > 0) return;
+    const r = def.reload[this.weapon.rarity];
+    this.reloadT = def.shellReload ? r * (def.mag - this.weapon.mag) : r;
+  }
+
+  fire(def, dir, eye) {
+    const g = this.game;
+    const w = this.weapon;
+    w.mag--;
+    this.cooldown = 1 / def.rate + random.float(0, 0.05);
+    if (def.auto) {
+      this.burstLeft--;
+      if (this.burstLeft <= 0) {
+        this.burstLeft = random.int(this.d.burst[0], this.d.burst[1]);
+        this.burstPause = random.float(this.d.pause[0], this.d.pause[1]);
+      }
+    } else this.cooldown += random.float(0.05, 0.25);
+    const still = this.hSpeed < 1;
+    const spread = def.pellets ? def.spread : (still ? def.adsSpread * 2 + 0.006 : def.spread * 0.8);
     const pellets = def.pellets || 1;
     const muzzle = eye.clone().addScaledVector(dir, 0.6);
+    const near = this.pos.distanceToSquared(g.camera.position) < 200 * 200;
     const d = new THREE.Vector3();
     let total = 0, head = false, victim = null;
     for (let i = 0; i < pellets; i++) {
-      g.combat.coneDir(dir, err, d);
+      g.combat.coneDir(dir, spread, d);
       const hit = g.raycast(eye, d, def.range, 0, this);
-      const end = hit ? hit.point : eye.clone().addScaledVector(d, def.range);
-      if (this.pos.distanceToSquared(g.camera.position) < 200 * 200 && i < 4) g.effects.tracer(muzzle, end, 0xffe0a0, 0.02);
+      if (near && i < 4) g.effects.tracer(muzzle, hit ? hit.point : eye.clone().addScaledVector(d, def.range), 0xffe0a0, 0.02);
       if (!hit) continue;
       if (hit.kind === 'character') {
-        let dmg = def.damage[this.weapon.rarity] * (hit.head ? def.headMult : 1);
+        if (hit.entity.team === this.team) continue;
+        let dmg = def.damage[w.rarity] * (hit.head ? def.headMult : 1);
         if (def.falloff) {
           const [a, b] = def.falloff;
           if (hit.t > a) dmg *= Math.max(0.2, 1 - ((hit.t - a) / (b - a)) * 0.8);
@@ -447,9 +887,11 @@ class Bot extends Character {
         head = head || hit.head;
         victim = hit.entity;
       } else if (hit.kind === 'world' && hit.box?.data?.type === 'build') {
-        g.build.damage(hit.box.data.piece, def.damage[this.weapon.rarity]);
+        g.build.damage(hit.box.data.piece, def.damage[w.rarity]);
       } else if (hit.kind === 'dummy') {
-        g.dummies.damage(hit.dummy, def.damage[this.weapon.rarity], hit.head, hit.point);
+        g.dummies.damage(hit.dummy, def.damage[w.rarity], hit.head, hit.point);
+      } else if (near) {
+        g.effects.impact(hit.point, hit.normal);
       }
     }
     if (victim && total > 0) victim.damage(total, head ? 'headshot' : 'bullet', this);
@@ -457,22 +899,160 @@ class Bot extends Character {
     const vol = clamp(1 - dCam / 260, 0, 1);
     if (vol > 0.03) g.audio.shot(def.sound, vol * vol * 0.9);
     if (dCam < 150) g.effects.muzzleFlash(null, muzzle);
+    g.noise(this.pos, def.sound === 'sniper' ? 160 : 90, this);
+  }
+
+  // Si el objetivo se esconde tras una construcción, dispararla.
+  shootBlockingBuild(dt) {
+    const m = this.memory.get(this.target);
+    if (!m || this.game.time - m.seenAt > 5 || !this.def || this.reloadT > 0 || this.cooldown > 0) return;
+    const eye = this.eye;
+    const dir = tmpB.copy(m.pos).setY(m.pos.y + 1).sub(eye);
+    const dist = dir.length();
+    dir.divideScalar(dist);
+    const hit = this.game.raycast(eye, dir, Math.min(dist, 45), 0, this);
+    if (hit && hit.kind === 'world' && hit.box?.data?.type === 'build') {
+      this.yaw = Math.atan2(-dir.x, -dir.z);
+      this.pitch = Math.asin(clamp(dir.y, -1, 1));
+      if (this.weapon.mag <= 0) this.startReload();
+      else this.fire(this.def, dir.clone(), eye);
+    }
+  }
+
+  // ------------------------------------------------------------ CONSTRUIR
+  buildWallToward(p) {
+    const yaw = Math.atan2(-(p.x - this.pos.x), -(p.z - this.pos.z));
+    if (this.game.build.placeFor(this, 'wall', yawToDir(yaw))) this.buildCd = 2.2;
+  }
+
+  boxUp() {
+    const b = this.game.build;
+    let n = 0;
+    for (let dir = 0; dir < 4; dir++) if (b.placeFor(this, 'wall', dir)) n++;
+    if (b.placeFor(this, 'cone', 0)) n++;
+    if (n) this.buildCd = 3;
+  }
+
+  // ------------------------------------------------------------ ACCIONES
+  doHeal(dt) {
+    const item = this.using || this.healItem();
+    if (!item) {
+      this.task = 'idle';
+      return;
+    }
+    if (!this.using) {
+      if (this.game.mode.build && this.totalMats >= 50 && this.game.time - this.lastHurt < 12) this.boxUp();
+      this.using = item;
+      this.useT = CONSUMABLES[item].use;
+      this.crouching = true;
+    }
+    this.useT -= dt;
+    if (this.useT <= 0) {
+      const def = CONSUMABLES[this.using];
+      if (def.heal) this.health = Math.min(def.cap, this.health + def.heal);
+      if (def.shield) this.shield = Math.min(def.cap, this.shield + def.shield);
+      this.heals[this.using]--;
+      this.using = null;
+      this.crouching = false;
+    }
+  }
+
+  doRevive(dt) {
+    const mate = this.goalRef;
+    if (!mate || !mate.alive || !mate.knocked) {
+      this.task = 'idle';
+      return;
+    }
+    if (this.navigate(mate.pos, 1.6)) {
+      mate.reviveT += dt;
+      mate.reviver = this;
+      this.yaw = Math.atan2(-(mate.pos.x - this.pos.x), -(mate.pos.z - this.pos.z));
+      if (mate.reviveT >= 5) {
+        mate.revive();
+        this.game.onRevive(mate, this);
+        this.task = 'idle';
+      }
+    }
+  }
+
+  doHarvest(dt) {
+    const h = this.goalRef;
+    if (!h || h.hp <= 0) {
+      this.task = 'idle';
+      return;
+    }
+    const reach = h.kind === 'rock' ? h.s * 0.75 + 1.4 : 1.6;
+    if (this.navigate(h.center, reach)) {
+      this.yaw = Math.atan2(-(h.center.x - this.pos.x), -(h.center.z - this.pos.z));
+      if (this.swingT <= 0) {
+        this.swingT = 0.55;
+        this.game.harvest.hit(h, 50, this);
+        if (this.pos.distanceTo(this.game.camera.position) < 60) this.game.audio.harvest(h.mat);
+      }
+      if (this.totalMats >= 220) this.task = 'idle';
+    }
+  }
+
+  autoPickup() {
+    const g = this.game;
+    for (const pk of g.pickups.items) {
+      if (!pk.settled || pk.pos.distanceToSquared(this.pos) > 3.2 || Math.abs(pk.pos.y - this.pos.y) > 1.6) continue;
+      const it = pk.item;
+      if (it.kind === 'weapon') {
+        let slot = this.weapons.findIndex((w) => !w);
+        if (slot < 0) {
+          // sustituir el peor arma si la nueva es mejor (o el mismo tipo peor)
+          let worst = -1, wr = 99;
+          this.weapons.forEach((w, i) => {
+            const r = w.rarity + (w.type === it.type ? -0.5 : 0) + (w.type === 'pistol' ? -1 : 0);
+            if (r < wr) {
+              wr = r;
+              worst = i;
+            }
+          });
+          if (wr >= it.rarity) continue;
+          slot = worst;
+          g.pickups.spawn(this.weapons[slot], pk.pos.clone(), new THREE.Vector3(0, 3, 0));
+        }
+        this.weapons[slot] = { ...it };
+        if (!this.weapon) this.cur = slot;
+        this.setHeld(this.weapon || PICKAXE);
+      } else if (it.kind === 'consumable') {
+        this.heals[it.type] = (this.heals[it.type] || 0) + it.count;
+      } else if (it.kind === 'material') {
+        this.mats[it.mat] = Math.min(MATERIALS[it.mat].max, this.mats[it.mat] + it.count);
+      } else if (it.kind !== 'ammo') continue;
+      g.pickups.remove(pk);
+      if (this.goalRef === pk) this.task = 'idle';
+      break;
+    }
   }
 }
 
 export class BotManager {
-  constructor(game, count) {
+  constructor(game) {
     this.game = game;
     this.list = [];
-    for (let i = 0; i < count; i++) this.list.push(new Bot(game, i));
+    this.pool = [];
   }
 
-  reset(active = true) {
-    random.shuffle(this.list);
-    for (const b of this.list) {
-      b.reset();
-      if (!active) b.alive = false;
-    }
+  // Prepara `count` bots activos con sus equipos.
+  reset(count, teams, diff) {
+    while (this.pool.length < count) this.pool.push(new Bot(this.game, this.pool.length));
+    random.shuffle(this.pool);
+    this.list = this.pool.slice(0, count);
+    this.pool.forEach((b, i) => {
+      b.reset(diff);
+      if (i >= count) {
+        b.alive = false;
+        b.model.root.visible = false;
+      }
+    });
+    const names = random.shuffle(NAMES.slice());
+    this.list.forEach((b, i) => {
+      b.team = teams[i];
+      b.name = names[i % names.length] + (i >= names.length ? ` ${Math.floor(i / names.length) + 1}` : '');
+    });
   }
 
   get aliveCount() {
@@ -495,4 +1075,3 @@ export class BotManager {
     return best;
   }
 }
-

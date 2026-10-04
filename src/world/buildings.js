@@ -32,6 +32,47 @@ export class BuildingCtx {
     this.chestSpots = [];
     this.lootSpots = [];
     this.ammoSpots = [];
+    this.ladders = [];
+  }
+
+  // Contexto hijo desplazado (lx, lz locales) y girado dRot*90°; comparte
+  // las listas de puntos de botín con el padre.
+  sub(lx, lz, dRot = 0, dy = 0) {
+    const p = this.tp(lx, dy, lz);
+    const c = new BuildingCtx(this.geo, this.collision, p[0], p[1], p[2], this.rot + dRot);
+    c.chestSpots = this.chestSpots;
+    c.lootSpots = this.lootSpots;
+    c.ammoSpots = this.ammoSpots;
+    c.ladders = this.ladders;
+    return c;
+  }
+
+  // Volumen de escalera de mano (no sólido): el jugador sube al pulsar W.
+  ladder(x0, y0, z0, x1, y1, z1) {
+    const a = this.tp(x0, y0, z0);
+    const b = this.tp(x1, y1, z1);
+    this.ladders.push({
+      minX: Math.min(a[0], b[0]), minY: a[1], minZ: Math.min(a[2], b[2]),
+      maxX: Math.max(a[0], b[0]), maxY: b[1], maxZ: Math.max(a[2], b[2]),
+    });
+  }
+
+  // Escalera de mano visual + volumen de subida, apoyada en una pared.
+  // (x, z) = pie de la escalera; face = lado hacia el que mira el que sube.
+  ladderVisual(x, z, y0, y1, axis = 'x') {
+    const w = 0.5;
+    const c = 0x6b5a45;
+    if (axis === 'x') {
+      this.box(x - w, y0, z - 0.06, x - w + 0.08, y1 + 1, z + 0.06, c, false);
+      this.box(x + w - 0.08, y0, z - 0.06, x + w, y1 + 1, z + 0.06, c, false);
+      for (let y = y0 + 0.4; y < y1 + 0.9; y += 0.45) this.box(x - w, y, z - 0.04, x + w, y + 0.06, z + 0.04, c, false);
+      this.ladder(x - w, y0, z - 0.6, x + w, y1 + 1.1, z + 0.6);
+    } else {
+      this.box(x - 0.06, y0, z - w, x + 0.06, y1 + 1, z - w + 0.08, c, false);
+      this.box(x - 0.06, y0, z + w - 0.08, x + 0.06, y1 + 1, z + w, c, false);
+      for (let y = y0 + 0.4; y < y1 + 0.9; y += 0.45) this.box(x - 0.04, y, z - w, x + 0.04, y + 0.06, z + w, c, false);
+      this.ladder(x - 0.6, y0, z - w, x + 0.6, y1 + 1.1, z + w);
+    }
   }
 
   tp(x, y, z) {
@@ -167,14 +208,16 @@ export class BuildingCtx {
   }
 }
 
-function windowsFor(a0, a1, y0, rng, avoid = []) {
+export function windowsFor(a0, a1, y0, rng, avoid = [], big = false) {
   const len = a1 - a0;
-  const n = Math.max(0, Math.floor((len - 1.5) / 3.2));
+  const step = big ? 3.0 : 3.2;
+  const half = big ? 1.15 : 0.7;
+  const n = Math.max(0, Math.floor((len - 1.5) / step));
   const ops = [];
   for (let i = 0; i < n; i++) {
     const c = a0 + (len * (i + 1)) / (n + 1);
-    if (avoid.some(([p, q]) => c + 0.8 > p && c - 0.8 < q)) continue;
-    if (rng.chance(0.85)) ops.push({ a: c - 0.7, b: c + 0.7, bottom: y0 + 1.0, top: y0 + 2.3 });
+    if (avoid.some(([p, q]) => c + half + 0.1 > p && c - half - 0.1 < q)) continue;
+    if (big || rng.chance(0.85)) ops.push({ a: c - half, b: c + half, bottom: y0 + (big ? 0.8 : 1.0), top: y0 + (big ? 2.75 : 2.3) });
   }
   return ops;
 }
@@ -205,16 +248,17 @@ export function genHouse(ctx, rng, o) {
     const hasStairs = f < floors - 1 || o.roofAccess;
 
     // Muros exteriores
-    const frontOps = windowsFor(-hw + t, hw - t, y0, rng, f === 0 ? [[doorX - 0.9, doorX + 0.9]] : []);
+    const big = !!o.bigWindows;
+    const frontOps = windowsFor(-hw + t, hw - t, y0, rng, f === 0 ? [[doorX - 0.9, doorX + 0.9]] : [], big);
     if (f === 0) frontOps.push({ a: doorX - 0.8, b: doorX + 0.8, bottom: y0, top: y0 + 2.5 });
     ctx.wall('x', -hw, hw, hd - t, hd, y0, y1, frontOps, wallColor);
 
     const bx = side < 0 ? hw * 0.5 : -hw * 0.5;
-    const backOps = windowsFor(-hw + t, hw - t, y0, rng, f === 0 ? [[bx - 0.9, bx + 0.9]] : []);
+    const backOps = windowsFor(-hw + t, hw - t, y0, rng, f === 0 ? [[bx - 0.9, bx + 0.9]] : [], big);
     if (f === 0) backOps.push({ a: bx - 0.75, b: bx + 0.75, bottom: y0, top: y0 + 2.5 });
     ctx.wall('x', -hw, hw, -hd, -hd + t, y0, y1, backOps, wallColor);
-    ctx.wall('z', -hd + t, hd - t, -hw, -hw + t, y0, y1, windowsFor(-hd + t, hd - t, y0, rng), wallColor);
-    ctx.wall('z', -hd + t, hd - t, hw - t, hw, y0, y1, windowsFor(-hd + t, hd - t, y0, rng), wallColor);
+    ctx.wall('z', -hd + t, hd - t, -hw, -hw + t, y0, y1, windowsFor(-hd + t, hd - t, y0, rng, [], big), wallColor);
+    ctx.wall('z', -hd + t, hd - t, hw - t, hw, y0, y1, windowsFor(-hd + t, hd - t, y0, rng, [], big), wallColor);
 
     // Cornisa decorativa entre plantas
     if (f > 0) {
@@ -234,17 +278,30 @@ export function genHouse(ctx, rng, o) {
       [hw - t - 0.7, hd - t - 0.6],
     ];
     if (f === 0) corners.push([-side * (hw - t - 0.7), -hd + t + 0.6]);
+    // Candidatos: el mundo elige como mucho 1 cofre por casa (ver world.js)
     for (const [cx, cz] of corners) {
       if (f === 0 && Math.abs(cx - doorX) < 1.6 && cz > 0) continue;
-      if (rng.chance(0.5)) ctx.spot(ctx.chestSpots, cx, y0, cz, 0, 0);
+      ctx.spot(ctx.chestSpots, cx, y0, cz, 0, 0);
     }
     const lx = side < 0 ? hw * 0.25 : -hw * 0.25;
     ctx.spot(ctx.lootSpots, lx, y0, hd * 0.25);
-    if (rng.chance(0.4)) ctx.spot(ctx.ammoSpots, -lx, y0, hd - t - 0.5, 0, 0);
+    if (f === 0 && rng.chance(0.3)) ctx.spot(ctx.ammoSpots, -lx, y0, hd - t - 0.5, 0, 0);
   }
 
+  // Porche delante de la puerta
+  if (o.porch) {
+    const px0 = doorX - 2.2, px1 = doorX + 2.2;
+    ctx.box(px0, -0.5, hd, px1, BASE + 0.05, hd + 2.2, 0x9a7a55);
+    ctx.box(px0, 2.9, hd, px1, 3.05, hd + 2.3, o.roofColor ?? 0x8a3b32, false);
+    for (const x of [px0 + 0.1, px1 - 0.25]) ctx.box(x, BASE, hd + 2.0, x + 0.15, 2.9, hd + 2.15, TRIM);
+  }
   if (o.roof === 'gable') {
-    ctx.gableRoof(hw + 0.5, hd + 0.5, topY, Math.min(W, D) * 0.32, roofColor, wallColor);
+    const rh = Math.min(W, D) * 0.32;
+    ctx.gableRoof(hw + 0.5, hd + 0.5, topY, rh, roofColor, wallColor);
+    if (o.chimney) {
+      const cx = hw * 0.55;
+      ctx.box(cx - 0.45, topY, -0.45 - hd * 0.3, cx + 0.45, topY + rh + 1.0, 0.45 - hd * 0.3, 0x8a5040, false);
+    }
   } else {
     // Azotea con parapeto
     const p = 0.25;
@@ -254,7 +311,7 @@ export function genHouse(ctx, rng, o) {
     ctx.box(hw - p, topY, -hd + p, hw, topY + 1.0, hd - p, wallColor);
     if (o.roofAccess) {
       ctx.spot(ctx.lootSpots, (floors % 2 === 0 ? 1 : -1) * -hw * 0.3, topY, hd * 0.3);
-      if (rng.chance(0.5)) ctx.spot(ctx.chestSpots, hw - 1.2, topY, hd - 1.0, 0, 0);
+      ctx.spot(ctx.chestSpots, hw - 1.2, topY, hd - 1.0, 0, 0);
     }
     // Detalles: aire acondicionado / depósito
     if (rng.chance(0.7)) ctx.box(hw * 0.2, topY, hd * 0.1, hw * 0.2 + 1.6, topY + 1.1, hd * 0.1 + 1.2, 0xb8bcc0);

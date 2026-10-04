@@ -90,7 +90,14 @@ export class HUD {
       feed: $('kill-feed'),
       dmgDir: $('damage-dir'),
       speed: $('speedo'),
+      team: $('team-panel'),
+      tags: $('name-tags'),
+      score: $('score-bar'),
+      fps: $('fps'),
     };
+    this.tagEls = new Map();
+    this.fpsAcc = 0;
+    this.fpsN = 0;
     this.miniCtx = this.el.mini.getContext('2d');
     this.fullCtx = this.el.fullmapCanvas.getContext('2d');
     this.buildSlots();
@@ -106,7 +113,72 @@ export class HUD {
     this.dirs = [];
   }
 
+  fps(dt) {
+    this.fpsAcc += dt;
+    this.fpsN++;
+    if (this.fpsAcc > 0.5) {
+      this.el.fps.textContent = `${Math.round(this.fpsN / this.fpsAcc)} FPS`;
+      this.fpsAcc = 0;
+      this.fpsN = 0;
+    }
+  }
+
+  // Panel de compañeros + nombres sobre sus cabezas.
+  updateTeam() {
+    const g = this.game;
+    const p = g.player;
+    const teamMode = (g.mode.teamSize || 1) > 1 || g.mode.teams;
+    const mates = teamMode ? g.chars.filter((c) => c !== p && c.team === p.team) : [];
+    const panelMates = g.mode.teams ? mates.slice(0, 0) : mates;
+    let html = '';
+    for (const c of panelMates) {
+      const st = !c.alive ? 'dead' : c.knocked ? 'down' : '';
+      const hp = c.knocked ? c.knockHp : c.health;
+      html += `<div class="mate ${st}"><span class="mname">${c.name}${c.knocked ? ' · DERRIBADO' : !c.alive ? ' · ELIMINADO' : ''}</span>
+        <div class="mbar"><i class="sh" style="width:${c.alive && !c.knocked ? c.shield : 0}%"></i></div>
+        <div class="mbar"><i class="${c.knocked ? 'kn' : 'hp'}" style="width:${c.alive ? hp : 0}%"></i></div></div>`;
+    }
+    this.set('team', this.el.team, 'html', html);
+    // Etiquetas proyectadas
+    const cam = g.camera;
+    const w = innerWidth, h = innerHeight;
+    const seen = new Set();
+    for (const c of mates) {
+      if (!c.alive || c.mode === 'bus') continue;
+      const v = this.tagV || (this.tagV = new THREE.Vector3());
+      v.copy(c.pos);
+      v.y += c.height + 0.5;
+      const d = v.distanceTo(cam.position);
+      v.project(cam);
+      if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) continue;
+      let el = this.tagEls.get(c);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'name-tag';
+        this.el.tags.appendChild(el);
+        this.tagEls.set(c, el);
+      }
+      seen.add(c);
+      el.textContent = `${c.knocked ? '✚ ' : ''}${c.name} · ${Math.round(d)} m`;
+      el.classList.toggle('down', c.knocked);
+      el.style.transform = `translate(${(v.x * 0.5 + 0.5) * w}px, ${(-v.y * 0.5 + 0.5) * h}px) translate(-50%, -100%)`;
+      el.style.display = '';
+    }
+    for (const [c, el] of this.tagEls) {
+      if (!seen.has(c)) el.style.display = 'none';
+    }
+    // Marcador del duelo por equipos
+    if (g.mode.respawn) {
+      const mine = g.score[p.team], other = g.score[1 - p.team];
+      const lim = g.mode.scoreLimit;
+      this.set('score', this.el.score, 'html', `<span class="ally">${mine}</span><div class="sb"><i class="ally" style="width:${(mine / lim) * 50}%"></i><i class="enemy" style="width:${(other / lim) * 50}%"></i></div><span class="enemy">${other}</span><small>Primero a ${lim}</small>`);
+      this.set('scoreShow', this.el.score, 'display', 'flex');
+    } else this.set('scoreShow', this.el.score, 'display', 'none');
+  }
+
   resetFeed() {
+    for (const el of this.tagEls.values()) el.remove();
+    this.tagEls.clear();
     this.feed.length = 0;
     this.el.feed.innerHTML = '';
     for (const d of this.dirs) d.el.remove();
@@ -173,7 +245,7 @@ export class HUD {
 
   hitMarker(head, kill) {
     const h = this.el.hit;
-    h.className = 'show' + (head ? ' head' : '') + (kill ? ' kill' : '');
+    h.className = 'show' + (head ? ' head' : '') + (kill === 'knock' ? ' knock' : kill ? ' kill' : '');
     this.hitT = 0.18;
   }
 
@@ -218,9 +290,12 @@ export class HUD {
     const p = g.player;
     const e = this.el;
 
-    // Salud / escudo
-    this.set('hp', e.hpFill, 'width', `${p.health}%`);
-    this.set('hpv', e.hpVal, 'text', `${Math.ceil(p.health)}`);
+    // Salud / escudo (derribado: barra roja de desangrado)
+    const hpShown = p.knocked ? p.knockHp : p.health;
+    this.set('hp', e.hpFill, 'width', `${Math.max(0, hpShown)}%`);
+    this.set('hpv', e.hpVal, 'text', `${Math.max(0, Math.ceil(hpShown))}`);
+    e.hpFill.classList.toggle('knocked', p.knocked);
+    this.updateTeam();
     this.set('sh', e.shFill, 'width', `${p.shield}%`);
     this.set('shv', e.shVal, 'text', `${Math.ceil(p.shield)}`);
 
@@ -341,7 +416,9 @@ export class HUD {
       }
     }
 
-    this.set('stats', e.stats, 'html', `<span title="Jugadores vivos">👤 ${g.aliveCount}</span><span title="Eliminaciones">💀 ${p.stats.kills}</span><span title="Cofres">📦 ${p.stats.chests}</span>`);
+    const teamsTxt = (g.mode.teamSize || 1) > 1 ? `<span title="Equipos vivos">🚩 ${g.teamsAlive().size}</span>` : '';
+    const aliveTxt = g.mode.respawn ? '' : `<span title="Jugadores vivos">👤 ${g.aliveCount}</span>`;
+    this.set('stats', e.stats, 'html', `${aliveTxt}${teamsTxt}<span title="Eliminaciones">💀 ${p.stats.kills}</span><span title="Cofres">📦 ${p.stats.chests}</span>`);
 
     // Materiales
     const b = g.build;

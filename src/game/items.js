@@ -86,7 +86,7 @@ export function itemRarity(item) {
   return 0;
 }
 
-function makeWeapon(type, rarity) {
+export function makeWeapon(type, rarity) {
   return { kind: 'weapon', type, rarity, mag: WEAPONS[type].mag };
 }
 

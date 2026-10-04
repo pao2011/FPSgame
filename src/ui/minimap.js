@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MAP_SIZE, HALF } from '../world/constants.js';
 
-const SIZE = 768;
+const SIZE = 1024;
 
 // Renderiza el mapa base una vez y dibuja minimapa / mapa completo encima.
 export class MapRenderer {
@@ -48,8 +48,24 @@ export class MapRenderer {
     // Edificios
     ctx.fillStyle = 'rgba(60,55,50,0.85)';
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    // Carreteras
+    ctx.lineCap = 'round';
+    for (const road of this.world.roads.roads) {
+      ctx.strokeStyle = road.kind === 'street' ? 'rgba(85,88,94,0.95)' : 'rgba(70,72,78,0.95)';
+      ctx.lineWidth = Math.max(2, (road.width / MAP_SIZE) * SIZE);
+      ctx.beginPath();
+      road.pts.forEach(([x, z], i) => {
+        const [px, py] = this.toPx(x, z);
+        if (i) ctx.lineTo(px, py);
+        else ctx.moveTo(px, py);
+      });
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(60,55,50,0.85)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
     for (const p of this.world.plans) {
-      if (p.kind === 'hay') continue;
+      if (p.kind === 'hay' || p.noMap) continue;
       const [x0, z0] = this.toPx(p.x - p.fw / 2, p.z - p.fd / 2);
       const [x1, z1] = this.toPx(p.x + p.fw / 2, p.z + p.fd / 2);
       ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
@@ -133,8 +149,24 @@ export class MapRenderer {
     ctx.drawImage(this.base, bx, by, metersShown * srcScale, metersShown * srcScale, 0, 0, w, h);
     this.drawStormOverlay(ctx, game.storm, scale, ox, oy, w, h);
     if (p.mode === 'bus' || (game.bus.active && p.mode === 'lobby')) this.drawBusPath(ctx, game.bus, scale, ox, oy);
-    if (game.marker) this.drawMarker(ctx, ox + game.marker.x * scale, oy + game.marker.z * scale);
+    this.drawMates(ctx, game, scale, ox, oy);
     this.drawPlayer(ctx, w / 2, h / 2, p.yaw, 6);
+  }
+
+  // Compañeros de equipo (puntos de color)
+  drawMates(ctx, game, scale, ox, oy) {
+    const p = game.player;
+    if ((game.mode.teamSize || 1) < 2 && !game.mode.teams) return;
+    for (const c of game.chars) {
+      if (c === p || c.team !== p.team || !c.alive || c.mode === 'bus') continue;
+      ctx.beginPath();
+      ctx.arc(ox + c.pos.x * scale, oy + c.pos.z * scale, 4, 0, Math.PI * 2);
+      ctx.fillStyle = c.knocked ? '#ff6b6b' : '#3fa9ff';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 
   drawMarker(ctx, x, y) {
@@ -187,7 +219,7 @@ export class MapRenderer {
       ctx.fillText(poi.name.toUpperCase(), x, y);
     }
     ctx.textAlign = 'left';
-    if (game.marker) this.drawMarker(ctx, ox + game.marker.x * scale, oy + game.marker.z * scale);
+    this.drawMates(ctx, game, scale, ox, oy);
     const p = game.player;
     if (p.mode !== 'lobby') this.drawPlayer(ctx, ox + p.pos.x * scale, oy + p.pos.z * scale, p.yaw, 8);
   }

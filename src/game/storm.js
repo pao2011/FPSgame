@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import { random } from '../core/rng.js';
 
 const PHASES = [
-  { wait: 80, shrink: 60, radius: 320, dps: 1 },
+  { wait: 90, shrink: 70, radius: 520, dps: 1 },
+  { wait: 70, shrink: 60, radius: 320, dps: 1 },
   { wait: 60, shrink: 50, radius: 190, dps: 2 },
-  { wait: 50, shrink: 40, radius: 110, dps: 5 },
-  { wait: 40, shrink: 35, radius: 55, dps: 8 },
-  { wait: 30, shrink: 30, radius: 22, dps: 10 },
+  { wait: 50, shrink: 40, radius: 100, dps: 5 },
+  { wait: 40, shrink: 35, radius: 48, dps: 8 },
+  { wait: 30, shrink: 30, radius: 18, dps: 10 },
   { wait: 20, shrink: 25, radius: 0, dps: 10 },
 ];
 
@@ -34,6 +35,9 @@ function stormTexture() {
   return t;
 }
 
+// Duelo por equipos: se cierra una vez y se queda fija.
+const RUMBLE = [{ wait: 0, shrink: 0, radius: 450, dps: 2 }];
+
 // Tormenta que se cierra por fases.
 export class Storm {
   constructor(scene, world) {
@@ -55,22 +59,30 @@ export class Storm {
     this.active = false;
   }
 
-  reset() {
+  reset(kind = 'br') {
+    this.phases = kind === 'rumble' ? RUMBLE : PHASES;
     this.phase = 0;
-    this.radius = 900;
+    this.radius = 1300;
     this.center.set(0, 0);
     this.fromRadius = this.radius;
     this.state = 'wait';
-    this.timer = PHASES[0].wait;
+    this.timer = this.phases[0].wait;
     this._pickNext();
+    if (kind === 'rumble') {
+      // Zona fija desde el principio (cerca del centro de la isla)
+      this.center.set(random.float(-150, 150), random.float(-150, 150));
+      this.radius = this.nextRadius = 450;
+      this.next.copy(this.center);
+      this.state = 'done';
+    }
     this.active = true;
     this._syncMesh();
   }
 
   _pickNext() {
-    const p = PHASES[this.phase];
+    const p = this.phases[this.phase];
     const target = p.radius;
-    const curR = Math.min(this.radius, 420);
+    const curR = Math.min(this.radius, 640);
     const maxOff = Math.max(0, curR - target) * 0.8;
     for (let i = 0; i < 40; i++) {
       const a = random.float(0, Math.PI * 2);
@@ -85,7 +97,7 @@ export class Storm {
   }
 
   get dps() {
-    return PHASES[Math.min(this.phase, PHASES.length - 1)].dps;
+    return this.phases[Math.min(this.phase, this.phases.length - 1)].dps;
   }
 
   isOutside(x, z) {
@@ -105,23 +117,23 @@ export class Storm {
     if (this.state === 'wait') {
       if (this.timer <= 0) {
         this.state = 'shrink';
-        this.timer = PHASES[this.phase].shrink;
+        this.timer = this.phases[this.phase].shrink;
         this.from.copy(this.center);
         this.fromRadius = this.radius;
       }
     } else if (this.state === 'shrink') {
-      const p = PHASES[this.phase];
+      const p = this.phases[this.phase];
       const k = 1 - Math.max(0, this.timer) / p.shrink;
       this.center.lerpVectors(this.from, this.next, k);
       this.radius = this.fromRadius + (this.nextRadius - this.fromRadius) * k;
       if (this.timer <= 0) {
         this.phase++;
-        if (this.phase >= PHASES.length) {
+        if (this.phase >= this.phases.length) {
           this.state = 'done';
-          this.phase = PHASES.length - 1;
+          this.phase = this.phases.length - 1;
         } else {
           this.state = 'wait';
-          this.timer = PHASES[this.phase].wait;
+          this.timer = this.phases[this.phase].wait;
           this._pickNext();
         }
       }

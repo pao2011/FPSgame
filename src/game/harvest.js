@@ -36,10 +36,10 @@ export class Harvest {
     this.shaking = new Set();
   }
 
-  // Golpe de pico. Devuelve los materiales conseguidos.
-  hit(obj, dmg) {
+  // Golpe de pico. Devuelve los materiales conseguidos por `who`.
+  hit(obj, dmg, who = this.game.player) {
     if (obj.hp <= 0) return 0;
-    const p = this.game.player;
+    const p = who;
     obj.hp -= dmg;
     let gain = YIELD[obj.mat];
     obj.shakeT = 0.3;
@@ -69,7 +69,7 @@ export class Harvest {
     } else obj.mesh.visible = false;
     this.shaking.delete(obj);
     this.destroyed.push(obj);
-    this.game.effects.debris(obj.center.clone().setY(obj.center.y + 1.2), MATERIALS[obj.mat].hex);
+    if (obj.center.distanceTo(this.game.camera.position) < 200) this.game.effects.debris(obj.center.clone().setY(obj.center.y + 1.2), MATERIALS[obj.mat].hex);
   }
 
   reset() {

@@ -4,9 +4,9 @@ import { Game } from './game/game.js';
 requestAnimationFrame(() =>
   setTimeout(() => {
     try {
-      new Game(document.getElementById('app'));
+      const game = new Game(document.getElementById('app'));
       document.getElementById('loading').style.display = 'none';
-      document.getElementById('menu').style.display = 'flex';
+      game.menu.showMain();
     } catch (err) {
       console.error(err);
       document.querySelector('#loading .loading-text').textContent = 'Error al iniciar: ' + err.message;

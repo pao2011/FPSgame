@@ -33,6 +33,7 @@ export class Character {
     this.heldKey = null;
     this.yaw = 0;
     this.pitch = 0;
+    this.team = 0;
   }
 
   resetBody() {
@@ -54,6 +55,11 @@ export class Character {
     this.glideT = 0;
     this.diveAmount = 0;
     this.glider.visible = false;
+    this.knocked = false;
+    this.knockHp = 0;
+    this.knocker = null;
+    this.reviveT = 0;
+    this.invuln = 0;
   }
 
   get height() {
@@ -267,6 +273,73 @@ export class Character {
     return best;
   }
 
+  // Daño común: sin fuego amigo, derribo si quedan compañeros en pie y
+  // eliminación. Devuelve true (eliminado), 'knock' (derribado) o false.
+  damage(amount, type, attacker = null) {
+    if (!this.alive || amount <= 0) return false;
+    if (attacker && attacker !== this && attacker.team === this.team) return false;
+    if (this.invuln > 0 && type !== 'storm') return false;
+    if (this.knocked) {
+      this.knockHp -= amount;
+      this.onHurt(amount, type, attacker);
+      if (this.knockHp <= 0) {
+        this.eliminate(type, attacker || this.knocker);
+        return true;
+      }
+      return false;
+    }
+    this.absorb(amount, type);
+    this.onHurt(amount, type, attacker);
+    if (this.health <= 0) {
+      this.health = 0;
+      if (this.game.canKnock(this)) {
+        this.knock(type, attacker);
+        return 'knock';
+      }
+      this.eliminate(type, attacker);
+      return true;
+    }
+    return false;
+  }
+
+  onHurt() {}
+  onEliminated() {}
+
+  knock(type, attacker) {
+    this.knocked = true;
+    this.knockHp = 100;
+    this.knocker = attacker;
+    this.crouching = true;
+    this.reviveT = 0;
+    this.game.onKnock(this, attacker, type);
+  }
+
+  revive() {
+    this.knocked = false;
+    this.health = 30;
+    this.shield = 0;
+    this.crouching = false;
+    this.knocker = null;
+    this.reviveT = 0;
+    this.invuln = 1;
+  }
+
+  eliminate(type, killer) {
+    if (!this.alive) return;
+    this.alive = false;
+    this.knocked = false;
+    this.onEliminated(type, killer);
+    this.game.onElimination(this, killer, type);
+  }
+
+  // Desangrado mientras está derribado.
+  updateKnocked(dt) {
+    this.invuln = Math.max(0, this.invuln - dt);
+    if (!this.knocked) return;
+    this.knockHp -= dt * 3;
+    if (this.knockHp <= 0) this.eliminate('bleed', this.knocker);
+  }
+
   // Aplica el daño (el escudo absorbe salvo tormenta/caída). Devuelve el
   // reparto para poder mostrar los números.
   absorb(amount, type) {
@@ -343,6 +416,16 @@ export class Character {
     const hs = this.hSpeed;
     this.walkPhase += dt * hs * 1.7;
     const swing = Math.sin(this.walkPhase) * Math.min(1, hs / 5) * 0.8;
+    if (this.knocked) {
+      // arrastrándose por el suelo
+      m.body.rotation.x = -1.25;
+      m.body.position.set(0, 0.35, 0.6);
+      m.armL.rotation.set(2.6 + swing, 0, -0.2);
+      m.armR.rotation.set(2.6 - swing, 0, 0.2);
+      m.legL.rotation.set(0.1 + swing * 0.4, 0, 0);
+      m.legR.rotation.set(0.1 - swing * 0.4, 0, 0);
+      return;
+    }
     m.legL.rotation.set(swing, 0, 0);
     m.legR.rotation.set(-swing, 0, 0);
     if (this.crouching) {

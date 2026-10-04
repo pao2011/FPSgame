@@ -78,6 +78,7 @@ export class Player extends Character {
         else this.updateGround(dt, input);
         break;
     }
+    this.updateKnocked(dt);
     this.eyeOffset *= Math.exp(-dt * 14);
     const item = this.game.build?.active ? null : this.item;
     this.updateModel(dt, item, this.game.combat?.swingT ?? 0);
@@ -148,6 +149,13 @@ export class Player extends Character {
   }
 
   updateGround(dt, input) {
+    if (this.knocked) {
+      // Derribado: sólo puede arrastrarse
+      const w = this.moveWish(input);
+      this.sprinting = false;
+      this.groundStep(dt, w, 1.6, false);
+      return;
+    }
     const wantCrouch = input.down('KeyC') || input.down('ControlLeft');
     if (wantCrouch && !this.crouching) {
       this.crouching = true;
@@ -188,17 +196,12 @@ export class Player extends Character {
   }
 
   // ------------------------------------------------------------ DAÑO
-  damage(amount, type, attacker = null) {
-    if (!this.alive) return false;
-    this.absorb(amount, type);
+  onHurt(amount, type, attacker) {
     this.game.hud.flashDamage(type, attacker);
     this.game.audio.hurt();
-    if (this.health <= 0) {
-      this.health = 0;
-      this.alive = false;
-      this.game.onDeath(type, attacker);
-      return true;
-    }
-    return false;
+  }
+
+  onEliminated(type, killer) {
+    this.game.onPlayerEliminated(type, killer);
   }
 }

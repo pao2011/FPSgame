@@ -14,13 +14,14 @@ export function createNature(world, rng) {
     if (h < 2.5 || h > 58) return null;
     if (terrain.slopeAt(x, z) > 0.8) return null;
     if (world.occupied(x, z, margin)) return null;
+    if (world.roads.edgeDistance(x, z, 24) < margin + 1) return null;
     const poi = world.poiAt(x, z);
-    if (poi && (poi.type === 'city' || poi.type === 'towers' || poi.type === 'industrial')) return null;
-    if (poi && !rng.chance(0.15)) return null;
+    if (poi && poi.type !== 'town' && poi.type !== 'farm') return null;
+    if (poi && !rng.chance(0.12)) return null;
     return h;
   };
 
-  for (let i = 0; i < 9000 && pines.length + rounds.length < 1700; i++) {
+  for (let i = 0; i < 20000 && pines.length + rounds.length < 3600; i++) {
     const ang = rng.float(0, Math.PI * 2);
     const r = Math.sqrt(rng.next()) * ISLAND_RADIUS;
     const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
@@ -34,16 +35,16 @@ export function createNature(world, rng) {
     if (t.pine) pines.push(t);
     else rounds.push(t);
   }
-  for (let i = 0; i < 3000 && rocks.length < 260; i++) {
+  for (let i = 0; i < 6000 && rocks.length < 520; i++) {
     const ang = rng.float(0, Math.PI * 2);
     const r = Math.sqrt(rng.next()) * (ISLAND_RADIUS + 10);
     const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
     const h = terrain.heightAt(x, z);
     if (h < 0.5) continue;
-    if (world.occupied(x, z, 2) || world.poiAt(x, z)) continue;
+    if (world.occupied(x, z, 2) || world.poiAt(x, z) || world.roads.edgeDistance(x, z, 24) < 3) continue;
     rocks.push({ x, y: h, z, s: rng.float(0.8, 3.2), rot: rng.float(0, Math.PI * 2) });
   }
-  for (let i = 0; i < 4000 && bushes.length < 700; i++) {
+  for (let i = 0; i < 9000 && bushes.length < 1400; i++) {
     const ang = rng.float(0, Math.PI * 2);
     const r = Math.sqrt(rng.next()) * ISLAND_RADIUS;
     const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
