@@ -54,9 +54,29 @@ class Vehicle {
     this.pitch = 0;
     this.roll = 0;
     this.driver = null;
+    this.remoteDriver = null;
+    this.netTarget = null;
     this.spin = 0;
     this.sync();
     this.setCollider(true);
+  }
+
+  // Conducido por otro jugador: se acerca suavemente al último estado recibido.
+  followNet(dt) {
+    const t = this.netTarget;
+    if (!t) return;
+    const k = Math.min(1, dt * 12);
+    this.pos.x += (t.p[0] - this.pos.x) * k;
+    this.pos.y += (t.p[1] - this.pos.y) * k;
+    this.pos.z += (t.p[2] - this.pos.z) * k;
+    let dh = t.h - this.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    this.heading += dh * k;
+    this.speed = t.s;
+    this.steer = t.st || 0;
+    this.spin -= (this.speed * dt) / 0.4;
+    this.sync();
   }
 
   // Colisión estática mientras está aparcado (se quita al conducir).
@@ -164,16 +184,25 @@ class Vehicle {
     this.sync();
   }
 
-  // Atropellar dianas y bots.
+  // Atropellar dianas, bots y otros jugadores.
   runOver() {
     const g = this.game;
     const sp = Math.abs(this.speed);
+    this.hitCd = Math.max(0, (this.hitCd || 0) - 1 / 60);
     for (const b of g.bots.list) {
       if (!b.alive || b.mode !== 'ground') continue;
       if (b.pos.distanceToSquared(this.pos) < 6) {
         b.damage(sp * 3, 'car', this.driver);
         b.vel.copy(this.forward).multiplyScalar(sp * 0.6).setY(6);
         b.pos.addScaledVector(this.forward, 1.5);
+      }
+    }
+    if (g.net && this.hitCd <= 0) {
+      for (const r of g.net.remotes) {
+        if (r.alive && r.mode === 'ground' && !r.vehicle && r.pos.distanceToSquared(this.pos) < 6) {
+          r.damage(sp * 3, 'car', this.driver);
+          this.hitCd = 0.5;
+        }
       }
     }
     for (const d of g.dummies.list) {
@@ -196,6 +225,7 @@ export class Vehicles {
   constructor(game, spots) {
     this.game = game;
     this.list = spots.map((s, i) => new Vehicle(game, s, COLORS[i % COLORS.length]));
+    this.list.forEach((v, i) => (v.index = i));
   }
 
   reset() {
@@ -205,7 +235,7 @@ export class Vehicles {
   findNear(pos, maxDist = 3.6) {
     let best = null, bd = maxDist;
     for (const v of this.list) {
-      if (v.driver) continue;
+      if (v.driver || v.remoteDriver || v.pendingEnter) continue;
       const d = Math.hypot(v.pos.x - pos.x, v.pos.z - pos.z);
       if (d < bd && Math.abs(v.pos.y - pos.y) < 2.5) {
         bd = d;
@@ -215,7 +245,17 @@ export class Vehicles {
     return best;
   }
 
+  // En online se pide el coche al servidor (puede que otro llegue antes).
   enter(player, v) {
+    const net = this.game.net;
+    if (net && !v.netGranted) {
+      v.pendingEnter = true;
+      net.requestVehicle(v, player);
+      setTimeout(() => (v.pendingEnter = false), 1500);
+      return;
+    }
+    v.netGranted = false;
+    v.pendingEnter = false;
     v.driver = player;
     v.setCollider(false);
     player.vehicle = v;
@@ -246,6 +286,44 @@ export class Vehicles {
     player.vehicle = null;
     v.driver = null;
     this.game.audio.engine(false);
+    this.game.net?.sendVehicleExit(v);
+  }
+
+  // El servidor confirma quién conduce el coche `i`.
+  netEnter(i, who) {
+    const v = this.list[i];
+    if (!v) return;
+    v.pendingEnter = false;
+    const g = this.game;
+    if (who === g.player) {
+      if (g.player.vehicle || !g.player.alive || g.player.knocked) {
+        g.net?.sendVehicleExit(v);
+        return;
+      }
+      g.build.setActive(false);
+      v.netGranted = true;
+      this.enter(g.player, v);
+      return;
+    }
+    if (!who) return;
+    v.remoteDriver = who;
+    v.netTarget = null;
+    v.setCollider(false);
+  }
+
+  netExit(i, m) {
+    const v = this.list[i];
+    if (!v || v.driver) return;
+    v.remoteDriver = null;
+    v.netTarget = null;
+    if (m.p) {
+      v.pos.set(m.p[0], m.p[1], m.p[2]);
+      v.heading = m.h ?? v.heading;
+    }
+    v.speed = 0;
+    v.vy = 0;
+    v.sync();
+    v.setCollider(true);
   }
 
   update(dt, input) {
@@ -253,6 +331,10 @@ export class Vehicles {
     for (const v of this.list) {
       const near = v.pos.distanceToSquared(cam) < 260 * 260;
       v.root.visible = near;
+      if (v.remoteDriver) {
+        v.followNet(dt);
+        continue;
+      }
       if (v.driver || Math.abs(v.speed) > 0.01 || v.vy !== 0) {
         if (v.collider) v.setCollider(false);
         v.update(dt, v.driver ? input : null);

@@ -37,6 +37,8 @@ function stormTexture() {
 
 // Duelo por equipos: se cierra una vez y se queda fija.
 const RUMBLE = [{ wait: 0, shrink: 0, radius: 450, dps: 2 }];
+// 1v1: arena pequeña y fija.
+const DUEL = [{ wait: 0, shrink: 0, radius: 55, dps: 5 }];
 
 // Tormenta que se cierra por fases.
 export class Storm {
@@ -59,8 +61,10 @@ export class Storm {
     this.active = false;
   }
 
-  reset(kind = 'br') {
-    this.phases = kind === 'rumble' ? RUMBLE : PHASES;
+  // rng: en online, la misma semilla para todos para que la zona coincida.
+  reset(kind = 'br', rng = random) {
+    this.rng = rng;
+    this.phases = kind === 'rumble' ? RUMBLE : kind === 'duel' ? DUEL : PHASES;
     this.phase = 0;
     this.radius = 1300;
     this.center.set(0, 0);
@@ -68,10 +72,19 @@ export class Storm {
     this.state = 'wait';
     this.timer = this.phases[0].wait;
     this._pickNext();
-    if (kind === 'rumble') {
+    if (kind === 'rumble' || kind === 'duel') {
       // Zona fija desde el principio (cerca del centro de la isla)
-      this.center.set(random.float(-150, 150), random.float(-150, 150));
-      this.radius = this.nextRadius = 450;
+      const r = this.phases[0].radius;
+      if (kind === 'duel') {
+        // Arena en terreno firme, mejor si hay estructuras para cubrirse
+        for (let i = 0; i < 60; i++) {
+          const a = rng.float(0, Math.PI * 2), d = Math.sqrt(rng.next()) * 520;
+          const x = Math.cos(a) * d, z = Math.sin(a) * d;
+          this.center.set(x, z);
+          if (this.landRatio(x, z, r) > 0.92) break;
+        }
+      } else this.center.set(rng.float(-150, 150), rng.float(-150, 150));
+      this.radius = this.nextRadius = r;
       this.next.copy(this.center);
       this.state = 'done';
     }
@@ -79,14 +92,29 @@ export class Storm {
     this._syncMesh();
   }
 
+  // Fracción de tierra firme dentro de un círculo.
+  landRatio(x, z, r) {
+    let land = 0, n = 0;
+    for (let k = 0; k < 3; k++) {
+      const rr = r * (k + 1) / 3;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        n++;
+        if (this.world.terrain.heightAt(x + Math.cos(a) * rr, z + Math.sin(a) * rr) > 1.5) land++;
+      }
+    }
+    return land / n;
+  }
+
   _pickNext() {
+    const rng = this.rng || random;
     const p = this.phases[this.phase];
     const target = p.radius;
     const curR = Math.min(this.radius, 640);
     const maxOff = Math.max(0, curR - target) * 0.8;
     for (let i = 0; i < 40; i++) {
-      const a = random.float(0, Math.PI * 2);
-      const r = Math.sqrt(random.next()) * maxOff;
+      const a = rng.float(0, Math.PI * 2);
+      const r = Math.sqrt(rng.next()) * maxOff;
       const x = this.center.x + Math.cos(a) * r, z = this.center.y + Math.sin(a) * r;
       if (this.world.terrain.heightAt(x, z) > 1.5 || i === 39) {
         this.next.set(x, z);
@@ -139,6 +167,12 @@ export class Storm {
       }
     }
     this._syncMesh();
+  }
+
+  // El muro se difumina cuando está lejos de la cámara (no tapa el horizonte).
+  updateVisual(cam) {
+    const d = Math.abs(Math.hypot(cam.x - this.center.x, cam.z - this.center.y) - this.radius);
+    this.mesh.material.opacity = 0.42 * Math.max(0.1, Math.min(1, 1 - (d - 120) / 420));
   }
 
   _syncMesh() {

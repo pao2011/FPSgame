@@ -22,11 +22,10 @@ export class BattleBus {
     this.doorsTime = 0;
   }
 
-  launch() {
-    const ang = Math.random() * Math.PI * 2;
+  // ang/off: ruta (en online la decide el servidor para que sea común).
+  launch(ang = Math.random() * Math.PI * 2, off = (Math.random() - 0.5) * 420) {
     this.dir.set(Math.cos(ang), 0, Math.sin(ang));
     const perp = new THREE.Vector3(-this.dir.z, 0, this.dir.x);
-    const off = (Math.random() - 0.5) * 420;
     const half = ISLAND_RADIUS + 160;
     this.start.copy(perp).multiplyScalar(off).addScaledVector(this.dir, -half);
     this.end.copy(perp).multiplyScalar(off).addScaledVector(this.dir, half);

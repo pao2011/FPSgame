@@ -418,7 +418,8 @@ export class HUD {
 
     const teamsTxt = (g.mode.teamSize || 1) > 1 ? `<span title="Equipos vivos">🚩 ${g.teamsAlive().size}</span>` : '';
     const aliveTxt = g.mode.respawn ? '' : `<span title="Jugadores vivos">👤 ${g.aliveCount}</span>`;
-    this.set('stats', e.stats, 'html', `${aliveTxt}${teamsTxt}<span title="Eliminaciones">💀 ${p.stats.kills}</span><span title="Cofres">📦 ${p.stats.chests}</span>`);
+    const pingTxt = g.net ? `<span class="ping" title="Ping con el servidor">📶 ${g.netClient.ping || '–'}</span>` : '';
+    this.set('stats', e.stats, 'html', `${aliveTxt}${teamsTxt}<span title="Eliminaciones">💀 ${p.stats.kills}</span><span title="Cofres">📦 ${p.stats.chests}</span>${pingTxt}`);
 
     // Materiales
     const b = g.build;

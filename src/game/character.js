@@ -8,32 +8,50 @@ export const R = 0.35; // medio ancho de la caja de colisión
 const STEP = 0.55; // altura máxima de escalón
 const SWIM_Y = WATER_LEVEL - 1.25;
 
-const SKINS = [0xe0b48a, 0xc68a5a, 0x8d5a3a, 0xf1c9a5, 0xa86f48];
-const SHIRTS = [0x2f6fd6, 0xd63a2f, 0x2fa84f, 0xe0a020, 0x8a3fd6, 0x1fb5b0, 0xe05a9a, 0x444a55];
-const PANTS = [0x2b2b38, 0x3a4a6a, 0x5a4632, 0x2f4a2f, 0x1d1d1d];
-const HAIR = [0x3a2a1a, 0x111111, 0xc9a050, 0x7a3a1a, 0xdddddd];
+export const SKINS = [0xf1c9a5, 0xe0b48a, 0xc68a5a, 0xa86f48, 0x8d5a3a, 0x5e3a24];
+export const SHIRTS = [0x2f6fd6, 0xd63a2f, 0x2fa84f, 0xe0a020, 0x8a3fd6, 0x1fb5b0, 0xe05a9a, 0x444a55, 0xff7a1a, 0xf2f2f2, 0x1b1b22, 0x7ad0ff];
+export const PANTS = [0x2b2b38, 0x3a4a6a, 0x5a4632, 0x2f4a2f, 0x1d1d1d, 0x8a2a2a, 0xc9b28a, 0x4a3a6a];
+export const HAIR = [0x3a2a1a, 0x111111, 0xc9a050, 0x7a3a1a, 0xdddddd, 0xd23a6a, 0x3a7ad2, 0x4fd27a];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+export function randomOutfit() {
+  return { skin: pick(SKINS), shirt: pick(SHIRTS), pants: pick(PANTS), hair: pick(HAIR) };
+}
 const MUZZLES = new Map();
 
 // Personaje físico compartido por el jugador y los bots: colisiones contra
 // cajas + terreno, modos de caída/planeo/suelo, daño y modelo animado.
 export class Character {
-  constructor(game) {
+  constructor(game, outfit = null) {
     this.game = game;
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
     this._q = [];
-    this.model = optimizeCharacter(
-      makeCharacter({ skin: pick(SKINS), shirt: pick(SHIRTS), pants: pick(PANTS), hair: pick(HAIR) }),
-    );
-    game.scene.add(this.model.root);
     this.glider = makeGlider();
     this.glider.visible = false;
-    this.model.root.add(this.glider);
+    this.setOutfit(outfit || randomOutfit());
     this.heldKey = null;
     this.yaw = 0;
     this.pitch = 0;
     this.team = 0;
+  }
+
+  // (Re)construye el modelo con los colores indicados.
+  setOutfit(outfit) {
+    const o = { ...randomOutfit(), ...outfit };
+    const sig = `${o.skin}|${o.shirt}|${o.pants}|${o.hair}`;
+    if (sig === this.outfitSig) return;
+    this.outfitSig = sig;
+    this.outfit = o;
+    const old = this.model;
+    this.model = optimizeCharacter(makeCharacter(o));
+    if (old) {
+      this.game.scene.remove(old.root);
+      this.model.root.visible = old.root.visible;
+    }
+    this.game.scene.add(this.model.root);
+    this.model.root.add(this.glider);
+    this.heldKey = null;
   }
 
   resetBody() {

@@ -10,6 +10,7 @@ import {
 } from './structures.js';
 import { RoadNetwork, RectIndex } from './roads.js';
 import { createNature } from './nature.js';
+import { createWater } from './water.js';
 import { HALF, ISLAND_RADIUS } from './constants.js';
 
 const POI_NAMES = {
@@ -825,14 +826,7 @@ export class World {
   }
 
   addWater() {
-    const geo = new THREE.PlaneGeometry(8000, 8000, 1, 1).rotateX(-Math.PI / 2);
-    const m = new THREE.MeshPhongMaterial({
-      color: 0x2a8fd0, transparent: true, opacity: 0.82, shininess: 120, specular: 0x88ccff,
-    });
-    this.water = new THREE.Mesh(geo, m);
-    this.water.position.y = 0;
-    this.water.receiveShadow = true;
-    this.scene.add(this.water);
+    this.water = createWater(this.scene, this.terrain, new THREE.Vector3(0.45, 0.8, 0.35));
   }
 
   addClouds() {

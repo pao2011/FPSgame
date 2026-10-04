@@ -58,6 +58,7 @@ export class Effects {
         depthWrite: false, transparent: true,
       }),
     );
+    if (game.composer) this.flashSprite.material.color.multiplyScalar(2.5);
     this.flashSprite.scale.setScalar(0.5);
     this.flashSprite.visible = false;
     this.game.viewScene.add(this.flashSprite);
@@ -79,7 +80,7 @@ export class Effects {
     t.mesh.position.copy(from);
     t.mesh.lookAt(to);
     t.mesh.scale.set(width, width, len);
-    t.mesh.material.color.setHex(color);
+    t.mesh.material.color.setHex(color).multiplyScalar(this.game.composer ? 3.2 : 1);
     t.mesh.material.opacity = 0.9;
     t.mesh.visible = true;
     t.life = life;

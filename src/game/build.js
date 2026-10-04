@@ -14,6 +14,7 @@ export const PIECES = [
   { id: 'cone', name: 'Techo', key: '4' },
 ];
 export const MAT_ORDER = ['wood', 'stone', 'metal'];
+const NET_OWNER = { mats: { wood: 999, stone: 999, metal: 999 }, isPlayer: false };
 
 // Direcciones: 0 = norte (-Z), 1 = este (+X), 2 = sur (+Z), 3 = oeste (-X)
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -269,7 +270,7 @@ export class BuildSystem {
     return this.place(t, owner, matId);
   }
 
-  place(t, owner = this.game.player, matId = this.matId) {
+  place(t, owner = this.game.player, matId = this.matId, fromNet = false) {
     const def = MATERIALS[matId];
     const mesh = new THREE.Mesh(this.geos[t.type], this.materials[matId]);
     mesh.castShadow = true;
@@ -284,16 +285,29 @@ export class BuildSystem {
       this.game.world.collision.add(b[0], b[1], b[2], b[3], b[4], b[5], { type: 'build', piece }),
     );
     this.pieces.set(t.key, piece);
-    if (!this.game.infiniteMats || !owner.isPlayer) owner.mats[matId] = Math.max(0, owner.mats[matId] - BUILD_COST);
+    if (!fromNet && (!this.game.infiniteMats || !owner.isPlayer)) owner.mats[matId] = Math.max(0, owner.mats[matId] - BUILD_COST);
     if (owner.isPlayer) owner.stats.built++;
     if (owner.isPlayer || mesh.position.distanceTo(this.game.player.pos) < 40) this.game.audio.build();
+    if (!fromNet) this.game.net?.sendBuild(piece);
     return piece;
   }
 
-  damage(piece, amount) {
+  // Pieza colocada por otro jugador (partida online).
+  netPlace(m) {
+    if (this.pieces.has(m.key) || !this.geos[m.type] || !MATERIALS[m.mat]) return;
+    const t = { type: m.type, cx: m.cx, cz: m.cz, base: m.base, dir: m.dir, key: m.key };
+    this.place(t, NET_OWNER, m.mat, true);
+  }
+
+  damage(piece, amount, fromNet = false) {
     if (!this.pieces.has(piece.key)) return;
     piece.hp -= amount;
-    if (piece.hp <= 0) this.remove(piece, true);
+    const net = this.game.net;
+    if (net && !fromNet) net.sendBuildDamage(piece, amount);
+    if (piece.hp <= 0) {
+      this.remove(piece, true);
+      if (net && !fromNet) net.sendBuildRemove(piece);
+    }
   }
 
   remove(piece, fx) {

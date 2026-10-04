@@ -1,20 +1,24 @@
 {
   "name": "isla-royale",
   "private": true,
-  "version": "0.2.0",
-  "description": "Battle royale 3D estilo Fortnite en el navegador (Three.js)",
+  "version": "0.3.0",
+  "description": "Battle royale 3D estilo Fortnite en el navegador (Three.js), con modo online",
   "type": "module",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "dev": "vite --open",
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "vite --open",
+    "server": "node server/index.js",
+    "start": "node server/index.js",
     "build": "vite build",
     "build:standalone": "vite build && node scripts/standalone.mjs",
     "preview": "vite preview --open"
   },
   "dependencies": {
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "vite": "^6.4.3"

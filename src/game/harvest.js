@@ -32,15 +32,18 @@ export class Harvest {
       w.colliders = w.boxes.map((b) => world.collision.add(b[0], b[1], b[2], b[3], b[4], b[5], { type: b[6], ref: w }));
       this.list.push(w);
     }
+    this.list.forEach((o, i) => (o.hid = i));
     this.destroyed = [];
     this.shaking = new Set();
   }
 
   // Golpe de pico. Devuelve los materiales conseguidos por `who`.
-  hit(obj, dmg, who = this.game.player) {
+  // fromNet: golpe de otro jugador online (sólo se aplica el daño).
+  hit(obj, dmg, who = this.game.player, fromNet = false) {
     if (obj.hp <= 0) return 0;
     const p = who;
     obj.hp -= dmg;
+    if (!fromNet) this.game.net?.sendHarvest(obj, dmg);
     let gain = YIELD[obj.mat];
     obj.shakeT = 0.3;
     this.shaking.add(obj);
@@ -48,6 +51,7 @@ export class Harvest {
       gain += 12;
       this.destroy(obj);
     }
+    if (!p) return 0;
     const before = p.mats[obj.mat];
     p.mats[obj.mat] = Math.min(MATERIALS[obj.mat].max, before + gain);
     return p.mats[obj.mat] - before;

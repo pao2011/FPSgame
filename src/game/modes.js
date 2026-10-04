@@ -1,31 +1,51 @@
 // Modos de juego y ajustes del jugador (guardados en localStorage).
 
+// online: disponible en partidas online. maxPlayers: plazas por partida
+// (jugadores reales + bots de relleno). Este archivo también lo usa el
+// servidor (server/), así que no debe depender del navegador al importarse.
 export const MODES = {
   solo: {
-    id: 'solo', name: 'Solitario', icon: '👤', teamSize: 1, build: true,
+    id: 'solo', name: 'Solitario', icon: '👤', teamSize: 1, build: true, online: true, maxPlayers: 24,
     desc: 'Todos contra todos. Salta del autobús, equípate y sé el último en pie.',
   },
   duos: {
-    id: 'duos', name: 'Dúos', icon: '👥', teamSize: 2, build: true,
-    desc: 'Equipos de 2. Tu compañero bot te sigue, te cubre y te reanima si te derriban.',
+    id: 'duos', name: 'Dúos', icon: '👥', teamSize: 2, build: true, online: true, maxPlayers: 24,
+    desc: 'Equipos de 2. Juega con un amigo (o con un bot) y reanimaos cuando os derriben.',
+  },
+  trios: {
+    id: 'trios', name: 'Tríos', icon: '🔺', teamSize: 3, build: true, online: true, maxPlayers: 24,
+    desc: 'Equipos de 3. Coordinaos para cubriros, saquear y rotar juntos.',
   },
   squads: {
-    id: 'squads', name: 'Escuadras', icon: '👨‍👩‍👧‍👦', teamSize: 4, build: true,
-    desc: 'Equipos de 4. Coordínate con tus 3 compañeros bot contra otras escuadras.',
+    id: 'squads', name: 'Escuadras', icon: '🛡️', teamSize: 4, build: true, online: true, maxPlayers: 24,
+    desc: 'Equipos de 4 contra otras escuadras. El trabajo en equipo lo es todo.',
+  },
+  duel: {
+    id: 'duel', name: '1v1 Práctica', icon: '🤺', teamSize: 1, build: true, online: true, maxPlayers: 2,
+    respawn: true, scoreLimit: 5, infinite: true, arena: true, loadout: true, noBus: true, noBotFill: true,
+    desc: 'Duelo uno contra uno en una arena pequeña: equipo completo, materiales infinitos y reaparición. Gana quien llegue a 5.',
   },
   rumble: {
     id: 'rumble', name: 'Duelo por equipos', icon: '⚔️', teams: 2, build: true, respawn: true, scoreLimit: 50,
-    desc: 'Dos equipos grandes con reaparición. El primero en llegar a 50 eliminaciones gana.',
+    online: true, maxPlayers: 16, onlineScoreLimit: 30, noBus: true, loadout: true,
+    desc: 'Dos equipos grandes con reaparición. El primero en llegar al límite de eliminaciones gana.',
   },
   zerobuild: {
-    id: 'zerobuild', name: 'Construcción cero', icon: '🚫', teamSize: 1, build: false,
+    id: 'zerobuild', name: 'Construcción cero', icon: '🚫', teamSize: 1, build: false, online: true, maxPlayers: 24,
     desc: 'Solitario sin construir: sólo movimiento, coberturas del mapa y puntería.',
   },
   practice: {
-    id: 'practice', name: 'Práctica', icon: '🎯', teamSize: 1, build: true, noBots: true, infinite: true,
+    id: 'practice', name: 'Práctica libre', icon: '🎯', teamSize: 1, build: true, noBots: true, infinite: true,
     desc: 'La isla para ti solo, con materiales infinitos y dianas para entrenar.',
   },
 };
+
+// Tamaño máximo de grupo para entrar en un modo online.
+export function partyLimit(mode) {
+  if (mode.id === 'duel') return 2;
+  if (mode.teams) return 4;
+  return mode.teamSize || 1;
+}
 
 export const DIFFICULTIES = {
   facil: { name: 'Fácil' },
@@ -46,16 +66,22 @@ export const DEFAULT_SETTINGS = {
   invertY: false,
   showFps: false,
   quality: 'normal',
+  server: '',
+  online: { mode: 'duos', bots: true, difficulty: 'normal' },
 };
 
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) {
+      const s = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      s.online = { ...DEFAULT_SETTINGS.online, ...s.online };
+      return s;
+    }
   } catch {
     /* almacenamiento no disponible */
   }
-  return { ...DEFAULT_SETTINGS };
+  return { ...DEFAULT_SETTINGS, online: { ...DEFAULT_SETTINGS.online } };
 }
 
 export function saveSettings(s) {

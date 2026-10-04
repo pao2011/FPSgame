@@ -10,11 +10,14 @@ export class PickupManager {
   constructor(game) {
     this.game = game;
     this.items = [];
+    this.byNid = new Map(); // id de red -> objeto (partidas online)
     this.ringGeo = new THREE.RingGeometry(0.25, 0.45, 24).rotateX(-Math.PI / 2);
     this.beamGeo = new THREE.CylinderGeometry(0.05, 0.12, 4, 8, 1, true).translate(0, 2, 0);
   }
 
-  spawn(item, pos, vel = null) {
+  // nid: identificador de red. En una partida online, lo que se suelta
+  // localmente (sin nid) se anuncia a los demás jugadores.
+  spawn(item, pos, vel = null, nid = undefined) {
     const group = new THREE.Group();
     const model = new THREE.Group();
     model.add(mergedMesh(itemKey(item), () => makeItemModel(item)));
@@ -47,11 +50,18 @@ export class PickupManager {
     };
     if (!vel) p.groundY = pos.y;
     this.items.push(p);
+    const net = this.game.net;
+    if (net && nid === undefined) {
+      p.nid = net.dropId();
+      net.sendDrop(p);
+    } else p.nid = nid ?? null;
+    if (p.nid) this.byNid.set(p.nid, p);
     return p;
   }
 
   remove(p) {
     this.game.scene.remove(p.group);
+    if (p.nid) this.byNid.delete(p.nid);
     const i = this.items.indexOf(p);
     if (i >= 0) this.items.splice(i, 1);
   }
@@ -59,14 +69,16 @@ export class PickupManager {
   clear() {
     for (const p of this.items) this.game.scene.remove(p.group);
     this.items.length = 0;
+    this.byNid.clear();
   }
 
   // Lanza varios objetos desde un punto en abanico.
-  burst(items, origin, dirYaw = null) {
+  burst(items, origin, dirYaw = null, ids = null) {
+    const base = dirYaw ?? random.float(0, Math.PI * 2);
     items.forEach((it, i) => {
-      const a = (dirYaw ?? random.float(0, Math.PI * 2)) + (i - (items.length - 1) / 2) * 0.7;
+      const a = base + (i - (items.length - 1) / 2) * 0.7;
       const v = new THREE.Vector3(Math.sin(a) * 2.2, 4.5, Math.cos(a) * 2.2);
-      this.spawn(it, origin.clone(), v);
+      this.spawn(it, origin.clone(), v, ids ? ids[i] : undefined);
     });
   }
 
@@ -137,7 +149,7 @@ export class ContainerManager {
       glow.position.set(s.x, s.y + 0.6, s.z);
       this.game.scene.add(glow);
     }
-    const c = { kind, model, glow, pos: model.position, rotY: s.rotY, opened: false, active: true, openT: 0, collider: null };
+    const c = { kind, model, glow, pos: model.position, rotY: s.rotY, opened: false, active: true, openT: 0, collider: null, index: this.list.length };
     this._setCollider(c, true);
     this.list.push(c);
   }
@@ -152,13 +164,16 @@ export class ContainerManager {
     c.collider = col.add(p.x - e, p.y, p.z - e, p.x + e, p.y + (c.kind === 'chest' ? 0.7 : 0.45), p.z + e, { type: 'chest' });
   }
 
-  // Desactiva al azar parte de los cofres para cada partida.
-  reset() {
+  // Desactiva al azar parte de los cofres para cada partida (con la misma
+  // semilla en todos los jugadores de una partida online).
+  reset(rng = random) {
     for (const c of this.list) {
       c.opened = false;
       c.openT = 0;
       c.pending = null;
-      c.active = random.chance(c.kind === 'chest' ? 0.65 : 0.55);
+      c.pendingIds = null;
+      c.requested = false;
+      c.active = rng.chance(c.kind === 'chest' ? 0.65 : 0.55);
       c.model.visible = c.active;
       this._setCollider(c, c.active);
       c.model.userData.lid.rotation.x = 0;
@@ -167,11 +182,26 @@ export class ContainerManager {
   }
 
   // opener: quien lo abre (jugador o bot). El botín sale tras la animación.
+  // En online se pide al servidor, que decide quién lo abre y qué contiene.
   open(c, opener = null) {
     if (c.opened) return;
+    if (this.game.net) {
+      this.game.net.requestChest(c, opener);
+      return;
+    }
+    this._open(c, c.kind === 'chest' ? lootForChest(random) : lootForAmmoBox(random), null, opener);
+  }
+
+  openNet(c, items, opener) {
+    if (c.opened) return;
+    this._open(c, items.map((x) => x[1]), items.map((x) => x[0]), opener);
+  }
+
+  _open(c, loot, ids, opener) {
     c.opened = true;
     if (c.glow) c.glow.visible = false;
-    c.pending = c.kind === 'chest' ? lootForChest(random) : lootForAmmoBox(random);
+    c.pending = loot;
+    c.pendingIds = ids;
     c.pendingT = 0.22;
     const near = !opener || opener.isPlayer || c.pos.distanceTo(this.game.player.pos) < 25;
     if (!near) return;
@@ -190,8 +220,9 @@ export class ContainerManager {
           origin.y += 0.6;
           origin.x += Math.sin(c.rotY) * 0.5;
           origin.z += Math.cos(c.rotY) * 0.5;
-          this.game.pickups.burst(c.pending, origin, c.rotY);
+          this.game.pickups.burst(c.pending, origin, c.rotY, c.pendingIds);
           c.pending = null;
+          c.pendingIds = null;
         }
       }
       const vis = c.pos.distanceToSquared(cam) < 160 * 160;
@@ -240,13 +271,14 @@ export class ContainerManager {
   }
 }
 
-export function spawnFloorLoot(game, spots) {
-  for (const s of spots) {
-    if (!random.chance(0.6)) continue;
-    const items = lootForFloor(random);
+// online = true: botín idéntico para todos (misma semilla) con ids de red.
+export function spawnFloorLoot(game, spots, rng = random, online = false) {
+  spots.forEach((s, si) => {
+    if (!rng.chance(0.6)) return;
+    const items = lootForFloor(rng);
     items.forEach((it, i) => {
-      game.pickups.spawn(it, new THREE.Vector3(s.x + (i ? 0.6 : 0), s.y, s.z + (i ? 0.3 : 0)));
+      game.pickups.spawn(it, new THREE.Vector3(s.x + (i ? 0.6 : 0), s.y, s.z + (i ? 0.3 : 0)), null, online ? `f${si}_${i}` : null);
     });
-  }
+  });
 }
 
