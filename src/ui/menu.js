@@ -3,7 +3,7 @@ import { MODES, DIFFICULTIES } from '../game/modes.js';
 const $ = (id) => document.getElementById(id);
 
 const CONTROLS = [
-  ['W A S D', 'Moverse'], ['Ratón', 'Mirar'], ['Clic izquierdo', 'Disparar · usar · golpear · colocar pieza'],
+  ['W A S D', 'Moverse · W/S en una escalera de mano: trepar/bajar'], ['Ratón', 'Mirar'], ['Clic izquierdo', 'Disparar · usar · golpear · colocar pieza'],
   ['Clic derecho', 'Apuntar · (construyendo) cambiar material'], ['Espacio', 'Saltar · salir del bus · planeador · freno de mano'],
   ['Shift', 'Correr'], ['C', 'Agacharse'], ['E', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
   ['R', 'Recargar'], ['1–6 / rueda', 'Inventario · (construyendo) 1–4 pieza'], ['Q', 'Modo construcción'],

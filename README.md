@@ -241,6 +241,7 @@ alrededor de la mira señala de dónde vienen los disparos.
 | Tecla | Acción |
 | --- | --- |
 | **W A S D** | Moverse |
+| **W** junto a una escalera de mano | Trepar (faro, antena, depósitos, torres de vigilancia) · **S** para bajar |
 | **Ratón** | Mirar |
 | **Clic izquierdo** | Disparar · usar curas · golpear con el pico · colocar pieza |
 | **Clic derecho** | Apuntar · (construyendo) cambiar material |

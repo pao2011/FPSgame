@@ -178,8 +178,23 @@ export class Player extends Character {
     if (combat.using) speed = Math.min(speed, 2.6);
     if (this.swimming) speed = Math.min(speed, 3.4);
 
+    // Escaleras de mano: W para subir; sin pulsar, se baja despacio
+    const ladder = this.game.world.ladderAt(this.pos.x, this.pos.y, this.pos.z);
+    if (ladder) {
+      if (input.down('KeyW')) this.vel.y = 4.5 + 24 * dt;
+      else if (input.down('KeyS')) this.vel.y = -3 + 24 * dt;
+      else this.vel.y = Math.max(this.vel.y, -1.5);
+      this.onGround = false;
+    }
     const before = this.pos.clone();
-    const landSpeed = this.groundStep(dt, w, speed, input.wasPressed('Space'));
+    // mientras trepa no avanza; arriba del todo ya puede pasar a la plataforma
+    const atTop = ladder && this.pos.y > ladder.maxY - 1.0;
+    if (ladder && !atTop) {
+      // pegado a la escalera: sin deriva horizontal mientras sube
+      this.vel.x = 0;
+      this.vel.z = 0;
+    }
+    const landSpeed = this.groundStep(dt, w, ladder && !atTop ? speed * 0.02 : speed, input.wasPressed('Space') && !ladder);
     this.stats.distance += Math.hypot(this.pos.x - before.x, this.pos.z - before.z);
     if (landSpeed > 17) {
       this.fallDamage(landSpeed);
