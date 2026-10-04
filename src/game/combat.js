@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WEAPONS, CONSUMABLES } from './items.js';
+import { WEAPONS, CONSUMABLES, MATERIALS } from './items.js';
 import { makeItemModel, makeWeaponModel, mat } from './models.js';
 import { lerp } from '../core/rng.js';
 
@@ -171,7 +171,7 @@ export class Combat {
     const g = this.game;
     const p = this.player;
     this.updateProjectiles(dt);
-    if (p.mode !== 'ground' || !p.alive) {
+    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.active) {
       this.viewmodel.visible = false;
       this.adsBlend = 0;
       g.hud.setScope(false);
@@ -266,7 +266,7 @@ export class Combat {
         });
         continue;
       }
-      const hit = g.raycast(origin, d, def.range, skip);
+      const hit = g.raycast(origin, d, def.range, skip, p);
       const end = hit ? hit.point : origin.clone().addScaledVector(d, def.range);
       g.effects.tracer(muzzle, end, 0xfff1b0, def.pellets ? 0.015 : 0.022);
       if (hit) this.collectHit(hit, def, item, hits);
@@ -287,29 +287,44 @@ export class Combat {
   }
 
   collectHit(hit, def, item, hits) {
-    if (hit.kind === 'dummy') {
-      let dmg = def.damage[item.rarity] * (hit.head ? def.headMult : 1);
+    const base = def.damage[item.rarity];
+    if (hit.kind === 'dummy' || hit.kind === 'character') {
+      let dmg = base * (hit.head ? def.headMult : 1);
       if (def.falloff) {
         const [a, b] = def.falloff;
         if (hit.t > a) dmg *= Math.max(0.2, 1 - ((hit.t - a) / (b - a)) * 0.8);
       }
-      const e = hits.get(hit.dummy) || { dmg: 0, head: false, point: hit.point };
+      const target = hit.kind === 'dummy' ? hit.dummy : hit.entity;
+      const e = hits.get(target) || { dmg: 0, head: false, point: hit.point, kind: hit.kind };
       e.dmg += dmg;
       e.head = e.head || hit.head;
-      hits.set(hit.dummy, e);
-    } else {
-      this.game.effects.impact(hit.point, hit.normal, hit.kind === 'terrain' ? 0xb59a6a : 0xffd27a);
+      hits.set(target, e);
+      return;
     }
+    this.game.effects.impact(hit.point, hit.normal, hit.kind === 'terrain' ? 0xb59a6a : 0xffd27a);
+    const data = hit.box?.data;
+    if (data?.type === 'build') this.game.build.damage(data.piece, base);
   }
 
+  // Aplica el daño acumulado por objetivo (la escopeta suma sus perdigones).
   applyHits(hits) {
     const g = this.game;
-    for (const [dummy, e] of hits) {
-      const killed = g.dummies.damage(dummy, e.dmg, e.head, e.point);
+    for (const [target, e] of hits) {
+      let killed;
+      if (e.kind === 'dummy') killed = g.dummies.damage(target, e.dmg, e.head, e.point);
+      else killed = this.damageCharacter(target, e.dmg, e.head, e.point, 'bullet');
       g.player.stats.damage += e.dmg;
       g.hud.hitMarker(e.head, killed);
       g.audio.hit(e.head);
     }
+  }
+
+  damageCharacter(target, dmg, head, point, type) {
+    const fx = this.game.effects;
+    const sh = Math.min(target.shield, dmg);
+    if (sh > 0) fx.damageNumber(point, sh, head ? 'head shield' : 'shield');
+    if (dmg - sh > 0) fx.damageNumber(point, dmg - sh, head ? 'head' : '');
+    return target.damage(dmg, type, this.player);
   }
 
   updateProjectiles(dt) {
@@ -320,7 +335,7 @@ export class Combat {
       const step = tmpV.copy(pr.vel).multiplyScalar(dt);
       const len = step.length();
       const dir = step.clone().divideScalar(len);
-      const hit = g.raycast(pr.pos, dir, len, 0);
+      const hit = g.raycast(pr.pos, dir, len, 0, g.player);
       const prev = pr.traveled < 1 ? pr.from : pr.pos.clone();
       if (hit) {
         g.effects.tracer(prev, hit.point, 0xffffff, 0.04, 0.12);
@@ -347,16 +362,28 @@ export class Combat {
     }
     if (this.swingHit && this.swingT < 0.36) {
       this.swingHit = false;
-      const hit = g.raycast(g.aimOrigin, g.aimDir, 2.6, g.aimSkip);
-      if (hit) {
-        if (hit.kind === 'dummy') {
-          const killed = g.dummies.damage(hit.dummy, 20, false, hit.point);
-          g.hud.hitMarker(false, killed);
-          g.audio.hit(false);
-        } else {
-          g.effects.impact(hit.point, hit.normal, 0xcccccc);
-          g.audio.pickaxe();
-        }
+      const hit = g.raycast(g.aimOrigin, g.aimDir, 2.6 + g.aimSkip, g.aimSkip, this.player);
+      if (!hit) return;
+      const data = hit.box?.data;
+      if (hit.kind === 'dummy') {
+        const killed = g.dummies.damage(hit.dummy, 20, false, hit.point);
+        g.hud.hitMarker(false, killed);
+        g.audio.hit(false);
+      } else if (hit.kind === 'character') {
+        const killed = this.damageCharacter(hit.entity, 20, false, hit.point, 'pickaxe');
+        g.hud.hitMarker(false, killed);
+        g.audio.hit(false);
+      } else if (data?.ref?.mat) {
+        // Recolección de materiales
+        const gain = g.harvest.hit(data.ref, 50);
+        g.effects.impact(hit.point, hit.normal, MATERIALS[data.ref.mat].hex);
+        if (gain > 0) g.effects.damageNumber(hit.point, `+${gain} ${MATERIALS[data.ref.mat].name}`, 'mat');
+        else g.hud.toast(`Tienes el máximo de ${MATERIALS[data.ref.mat].name.toLowerCase()}`);
+        g.audio.harvest(data.ref.mat);
+      } else {
+        if (data?.type === 'build') g.build.damage(data.piece, 50);
+        g.effects.impact(hit.point, hit.normal, 0xcccccc);
+        g.audio.pickaxe();
       }
     }
   }

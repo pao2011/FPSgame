@@ -10,12 +10,17 @@ import { BattleBus } from './bus.js';
 import { Storm } from './storm.js';
 import { Player } from './player.js';
 import { Combat } from './combat.js';
+import { Harvest } from './harvest.js';
+import { BuildSystem } from './build.js';
+import { Vehicles } from './vehicles.js';
+import { BotManager } from './bots.js';
 import { HUD } from '../ui/hud.js';
 import { MapRenderer } from '../ui/minimap.js';
-import { itemName, itemRarity, RARITIES } from './items.js';
+import { itemName, itemRarity, RARITIES, MATERIALS } from './items.js';
 import { clamp } from '../core/rng.js';
 
 const BASE_FOV = 80;
+const BOT_COUNT = 24;
 const SKY_COLOR = 0xbfe3ff;
 const tmpV = new THREE.Vector3();
 const tmpF = new THREE.Vector3();
@@ -24,10 +29,13 @@ const tmpR = new THREE.Vector3();
 export class Game {
   constructor(container) {
     // ------------------------------------------------------------ RENDER
-    const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }));
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    const params = new URLSearchParams(location.search);
+    // ?calidad=baja → sin sombras ni antialiasing y menos resolución (PCs modestos)
+    const low = params.get('calidad') === 'baja';
+    const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: !low, powerPreference: 'high-performance' }));
+    renderer.setPixelRatio(low ? Math.min(devicePixelRatio, 1) * 0.75 : Math.min(devicePixelRatio, 1.5));
     renderer.setSize(innerWidth, innerHeight);
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !low;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
@@ -60,7 +68,6 @@ export class Game {
     this.scene.add(sun, sun.target);
 
     // ------------------------------------------------------------ MUNDO
-    const params = new URLSearchParams(location.search);
     this.seed = Number(params.get('seed')) || Math.floor(Math.random() * 1e9);
     this.world = new World(this.scene, this.seed);
 
@@ -76,6 +83,12 @@ export class Game {
     this.storm.mesh.visible = false;
     this.player = new Player(this);
     this.combat = new Combat(this);
+    this.harvest = new Harvest(this);
+    this.build = new BuildSystem(this);
+    this.vehicles = new Vehicles(this, this.world.carSpots);
+    const nBots = params.has('bots') ? Math.max(0, Math.min(60, Number(params.get('bots')) || 0)) : BOT_COUNT;
+    this.bots = new BotManager(this, nBots);
+    this.botsEnabled = true;
     this.mapRenderer = new MapRenderer(this.world);
     this.hud = new HUD(this);
 
@@ -105,10 +118,30 @@ export class Game {
   setupUI() {
     const $ = (id) => document.getElementById(id);
     $('seed-label').textContent = `Isla #${this.seed}`;
+    const q = new URLSearchParams(location.search);
+    const ql = $('quality-link');
+    if (q.get('calidad') === 'baja') {
+      q.delete('calidad');
+      ql.textContent = 'Calidad baja activada · volver a calidad normal';
+    } else {
+      q.set('calidad', 'baja');
+    }
+    ql.href = '?' + q.toString();
+    $('bot-count').textContent = this.bots.list.length;
     $('play-btn').addEventListener('click', () => {
       this.audio.init();
       this.input.lock();
-      this.startMatch();
+      this.startMatch(true);
+    });
+    $('practice-btn').addEventListener('click', () => {
+      this.audio.init();
+      this.input.lock();
+      this.startMatch(false);
+    });
+    $('win-again-btn').addEventListener('click', () => {
+      this.audio.init();
+      this.input.lock();
+      this.startMatch(this.botsEnabled);
     });
     $('pause').addEventListener('click', () => {
       this.input.lock();
@@ -117,7 +150,7 @@ export class Game {
     $('again-btn').addEventListener('click', () => {
       this.audio.init();
       this.input.lock();
-      this.startMatch();
+      this.startMatch(this.botsEnabled);
     });
     this.canvas.addEventListener('click', () => {
       if (this.state === 'playing' && !this.input.locked) this.input.lock();
@@ -147,10 +180,14 @@ export class Game {
     if (p) this.audio.setWind(0);
   }
 
-  startMatch() {
-    document.getElementById('menu').style.display = 'none';
-    document.getElementById('death').style.display = 'none';
+  startMatch(withBots = true) {
+    this.botsEnabled = withBots;
+    for (const id of ['menu', 'death', 'victory']) document.getElementById(id).style.display = 'none';
+    if (this.player.vehicle) this.vehicles.exit(this.player);
     this.player.reset();
+    this.build.reset();
+    this.harvest.reset();
+    this.vehicles.reset();
     this.combat.reset();
     this.effects.clear();
     this.pickups.clear();
@@ -161,6 +198,8 @@ export class Game {
     this.player.mode = 'bus';
     this.player.yaw = Math.atan2(-this.bus.dir.x, -this.bus.dir.z) + 0.6;
     this.player.pitch = -0.35;
+    this.bots.reset(withBots);
+    this.hud.resetFeed();
     this.storm.reset();
     this.storm.mesh.visible = true;
     this.state = 'playing';
@@ -176,41 +215,97 @@ export class Game {
   }
 
   onLanded() {
-    this.hud.toast('¡Has aterrizado! Busca cofres y armas');
+    this.hud.toast('¡Has aterrizado! Busca cofres y armas · Q para construir');
   }
 
-  onDeath(type) {
-    this.state = 'dead';
-    this.player.model.root.visible = false;
-    document.exitPointerLock?.();
+  get aliveCount() {
+    return (this.player.alive ? 1 : 0) + this.bots.aliveCount;
+  }
+
+  // Un bot ha sido eliminado (por el jugador, otro bot o la tormenta).
+  onElimination(victim, killer, type) {
+    const how = type === 'storm' ? 'la tormenta' : type === 'fall' ? 'una caída' : null;
+    let text;
+    if (how) text = `<b>${victim.name}</b> fue eliminado por ${how}`;
+    else if (killer) text = `<b class="${killer.isPlayer ? 'me' : ''}">${killer.name}</b> eliminó a <b>${victim.name}</b>`;
+    else text = `<b>${victim.name}</b> fue eliminado`;
+    this.hud.killFeed(text, killer?.isPlayer);
+    if (killer?.isPlayer) {
+      this.player.stats.kills++;
+      this.audio.elim();
+      this.hud.toast(`Has eliminado a ${victim.name} · Quedan ${this.aliveCount}`);
+    }
+    if (this.state === 'playing' && this.player.alive && this.botsEnabled && this.bots.aliveCount === 0) this.onVictory();
+  }
+
+  statsHTML() {
     const p = this.player;
     const t = Math.floor(this.matchTime);
-    const cause = type === 'storm' ? 'La tormenta te ha eliminado' : type === 'fall' ? 'Has muerto por la caída' : 'Has sido eliminado';
-    document.getElementById('death-cause').textContent = cause;
-    document.getElementById('death-stats').innerHTML = `
+    return `
       <div><b>${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}</b><span>Tiempo vivo</span></div>
+      <div><b>${p.stats.kills}</b><span>Eliminaciones</span></div>
+      <div><b>${Math.round(p.stats.damage)}</b><span>Daño causado</span></div>
       <div><b>${p.stats.chests}</b><span>Cofres abiertos</span></div>
-      <div><b>${Math.round(p.stats.damage)}</b><span>Daño a dianas</span></div>
+      <div><b>${p.stats.built}</b><span>Piezas construidas</span></div>
       <div><b>${Math.round(p.stats.distance)} m</b><span>Recorrido</span></div>`;
-    document.getElementById('death').style.display = 'flex';
+  }
+
+  endMatchUI() {
+    document.exitPointerLock?.();
     this.hud.setScope(false);
+    this.hud.toggleMap(false);
+    this.build.setActive(false);
     this.audio.setWind(0);
     this.audio.setStorm(0);
     this.audio.setChest(0, 0);
+    this.audio.engine(false);
+  }
+
+  onVictory() {
+    this.state = 'won';
+    this.endMatchUI();
+    this.audio.victory();
+    document.getElementById('victory-stats').innerHTML = this.statsHTML();
+    document.getElementById('victory').style.display = 'flex';
+  }
+
+  onDeath(type, attacker) {
+    this.state = 'dead';
+    if (this.player.vehicle) this.vehicles.exit(this.player);
+    this.player.model.root.visible = false;
+    this.endMatchUI();
+    const place = this.aliveCount + 1;
+    let cause = 'Has sido eliminado';
+    if (type === 'storm') cause = 'La tormenta te ha eliminado';
+    else if (type === 'fall') cause = 'Has muerto por la caída';
+    else if (attacker) cause = `${attacker.name} te ha eliminado`;
+    if (this.botsEnabled && this.bots.list.length) cause += ` · Puesto #${place}`;
+    if (attacker) this.hud.killFeed(`<b>${attacker.name}</b> eliminó a <b class="me">ti</b>`, false);
+    document.getElementById('death-cause').textContent = cause;
+    document.getElementById('death-stats').innerHTML = this.statsHTML();
+    document.getElementById('death').style.display = 'flex';
   }
 
   // ---------------------------------------------------------- RAYCAST
-  raycast(origin, dir, maxDist, skip = 0) {
+  // Rayo contra el mundo, el terreno, las dianas y los personajes.
+  // ignore: personaje que dispara (no se impacta a sí mismo).
+  raycast(origin, dir, maxDist, skip = 0, ignore = null) {
     const o = tmpV.copy(origin).addScaledVector(dir, skip);
     let best = null;
-    let maxT = maxDist - skip;
+    const maxT = maxDist - skip;
     if (maxT <= 0) return null;
     const hb = this.world.collision.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, maxT);
-    if (hb) best = { t: hb.t, kind: 'world', normal: new THREE.Vector3(hb.nx, hb.ny, hb.nz) };
+    if (hb) best = { t: hb.t, kind: 'world', box: hb.box, normal: new THREE.Vector3(hb.nx, hb.ny, hb.nz) };
     const ht = this.world.terrain.raycast(o, dir, best ? best.t : maxT);
     if (ht && (!best || ht.t < best.t)) best = { t: ht.t, kind: 'terrain', normal: null };
     const hd = this.dummies.raycast(o, dir, best ? best.t : maxT);
     if (hd) best = { t: hd.t, kind: 'dummy', dummy: hd.dummy, head: hd.head, normal: dir.clone().negate() };
+    const hc = this.bots.raycast(o, dir, best ? best.t : maxT, ignore);
+    if (hc) best = { t: hc.t, kind: 'character', entity: hc.entity, head: hc.head, normal: dir.clone().negate() };
+    if (ignore !== this.player) {
+      const hp = this.player.raycastHit(o, dir, best ? best.t : maxT);
+      if (hp) best = { t: hp.t, kind: 'character', entity: this.player, head: hp.head, normal: dir.clone().negate() };
+    }
     if (!best) return null;
     best.point = o.clone().addScaledVector(dir, best.t);
     if (best.kind === 'terrain') best.normal = this.world.terrain.normalAt(best.point.x, best.point.z, new THREE.Vector3());
@@ -254,16 +349,21 @@ export class Game {
       p.yaw -= input.mouseDX * sens;
       p.pitch -= input.mouseDY * sens;
       p.pitch = clamp(p.pitch, -1.5, 1.5);
+      this.vehicles.update(dt, input);
       p.update(dt, input);
       this.updateCamera(dt);
+      this.build.update(dt, input);
       this.combat.update(dt, input);
       this.updateInteraction(input);
       this.updateStorm(dt);
       this.updateBanner();
     } else {
+      this.vehicles.update(dt, null);
       this.updateCamera(dt);
     }
 
+    this.bots.update(dt);
+    this.harvest.update(dt);
     this.bus.update(dt, t);
     this.storm.update(dt);
     this.pickups.update(dt, t);
@@ -283,7 +383,17 @@ export class Game {
       this.camMode = this.camMode === 'fp' ? 'tp' : 'fp';
       this.hud.toast(this.camMode === 'fp' ? 'Cámara: primera persona' : 'Cámara: tercera persona');
     }
-    if (p.mode !== 'ground') return;
+    if (p.mode !== 'ground' || p.vehicle) return;
+    if (this.build.active) {
+      // En modo construcción las teclas 1-4 eligen pieza (ver build.js); 5-6 vuelven al combate.
+      for (let i = 4; i < 6; i++) {
+        if (input.wasPressed('Digit' + (i + 1))) {
+          this.build.setActive(false);
+          this.combat.select(i);
+        }
+      }
+      return;
+    }
     for (let i = 0; i < 6; i++) if (input.wasPressed('Digit' + (i + 1))) this.combat.select(i);
     if (input.wheel) this.combat.cycle(input.wheel > 0 ? 1 : -1);
     if (input.wasPressed('KeyG')) this.dropSelected();
@@ -332,6 +442,11 @@ export class Game {
       this.hud.setPrompt(null);
       return;
     }
+    if (p.vehicle) {
+      this.hud.setPrompt('<kbd>E</kbd> Salir del coche');
+      if (input.wasPressed('KeyE')) this.vehicles.exit(p);
+      return;
+    }
     const eye = p.eye;
     const dir = this.aimDir;
     const c = this.containers.findInteract(eye, dir);
@@ -340,18 +455,29 @@ export class Game {
     if (c && (!k || c.score >= k.score)) target = c;
     else if (k) target = k;
 
-    // Recogida automática de munición
+    // Recogida automática de munición y materiales
     for (const pk of this.pickups.items.slice()) {
-      if (pk.item.kind === 'ammo' && pk.settled && pk.pos.distanceTo(p.pos) < 1.3) {
+      const kind = pk.item.kind;
+      if ((kind === 'ammo' || kind === 'material') && pk.settled && pk.pos.distanceTo(p.pos) < 1.4) {
         p.addItem(pk.item);
         this.pickups.remove(pk);
         this.audio.pickup();
-        this.hud.toast(`+${pk.item.count} ${pk.item.ammo === 'shells' ? 'cartuchos' : 'munición ' + { light: 'ligera', medium: 'media', heavy: 'pesada' }[pk.item.ammo]}`);
+        const it = pk.item;
+        const what = kind === 'material' ? MATERIALS[it.mat].name.toLowerCase()
+          : it.ammo === 'shells' ? 'cartuchos' : 'munición ' + { light: 'ligera', medium: 'media', heavy: 'pesada' }[it.ammo];
+        this.hud.toast(`+${it.count} ${what}`);
       }
     }
 
     if (!target) {
-      this.hud.setPrompt(null);
+      const car = this.vehicles.findNear(p.pos);
+      if (car) {
+        this.hud.setPrompt('<kbd>E</kbd> Conducir coche');
+        if (input.wasPressed('KeyE')) {
+          this.build.setActive(false);
+          this.vehicles.enter(p, car);
+        }
+      } else this.hud.setPrompt(null);
       return;
     }
     if (target.container) {
@@ -437,6 +563,17 @@ export class Game {
       p.model.root.visible = false;
       this.scene.fog.near = 300;
       this.scene.fog.far = 1700;
+    } else if (p.vehicle) {
+      const target = p.vehicle.pos.clone();
+      target.y += 2.2;
+      cam.position.copy(target).addScaledVector(f, -9);
+      const th = this.world.terrain.heightAt(cam.position.x, cam.position.z) + 0.6;
+      if (cam.position.y < th) cam.position.y = th;
+      this.aimOrigin.copy(cam.position);
+      p.model.root.visible = true;
+      fov = BASE_FOV + Math.min(10, Math.abs(p.vehicle.speed) / 2.5);
+      this.scene.fog.near = 200;
+      this.scene.fog.far = 1200;
     } else if (p.mode === 'freefall' || p.mode === 'glide' || !p.alive) {
       const target = p.pos.clone();
       target.y += p.mode === 'glide' ? 2.2 : 1.2;
@@ -452,12 +589,12 @@ export class Game {
     } else {
       const ads = this.combat.adsBlend;
       const item = p.item;
-      const adsFov = item && item.kind === 'weapon' ? this.combat.def(item).adsFov : BASE_FOV;
+      const adsFov = item && item.kind === 'weapon' && !this.build.active ? this.combat.def(item).adsFov : BASE_FOV;
       fov = BASE_FOV + (adsFov - BASE_FOV) * ads;
       if (p.sprinting) fov += 6;
       this.scene.fog.near = 180;
       this.scene.fog.far = 1100;
-      if (this.camMode === 'fp') {
+      if (this.camMode === 'fp' && !this.build.active) {
         cam.position.copy(p.eye);
         this.aimOrigin.copy(cam.position);
         p.model.root.visible = false;
@@ -465,9 +602,10 @@ export class Game {
         const pivot = p.eye.clone();
         pivot.y += 0.15;
         const right = tmpR.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
+        const back = this.build.active ? 4.2 : 3.0 - ads * 1.5;
         const desired = pivot.clone()
           .addScaledVector(right, 0.7 - ads * 0.15)
-          .addScaledVector(f, -(3.0 - ads * 1.5));
+          .addScaledVector(f, -back);
         const dir = desired.clone().sub(pivot);
         const dist = dir.length();
         dir.divideScalar(dist);

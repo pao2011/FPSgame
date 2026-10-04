@@ -7,7 +7,7 @@ const SHOTS = {
   sniper: { f: 1400, d: 0.9, g: 1.0, low: 55 },
 };
 
-export class AudioSys {
+class AudioSys {
   constructor() {
     this.ctx = null;
   }
@@ -177,6 +177,53 @@ export class AudioSys {
     if (!this.ctx) return;
     this._tone(330, 0.5, { type: 'sawtooth', gain: 0.08 });
     this._tone(415, 0.5, { type: 'sawtooth', gain: 0.08 });
+  }
+
+  build() {
+    if (!this.ctx) return;
+    this._burst(0.08, { freq: 900, type: 'bandpass', gain: 0.25, q: 2 });
+    this._tone(260, 0.08, { type: 'square', gain: 0.05 });
+  }
+
+  breakPiece() {
+    if (!this.ctx) return;
+    this._burst(0.35, { freq: 700, endFreq: 150, gain: 0.35 });
+  }
+
+  harvest(mat) {
+    if (!this.ctx) return;
+    const f = mat === 'wood' ? 500 : mat === 'stone' ? 900 : 1600;
+    this._burst(0.1, { freq: f, type: 'bandpass', gain: 0.3, q: 3 });
+    this._tone(f * 0.5, 0.06, { type: 'triangle', gain: 0.1 });
+  }
+
+  engine(on, speed = 0) {
+    if (!this.ctx) return;
+    if (!this.engineOsc) {
+      const c = this.ctx;
+      this.engineOsc = c.createOscillator();
+      this.engineOsc.type = 'sawtooth';
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 400;
+      this.engineGain = c.createGain();
+      this.engineGain.gain.value = 0;
+      this.engineOsc.connect(f).connect(this.engineGain).connect(this.master);
+      this.engineOsc.start();
+    }
+    this.engineGain.gain.setTargetAtTime(on ? 0.06 : 0, this.t, 0.1);
+    this.engineOsc.frequency.setTargetAtTime(40 + Math.abs(speed) * 4, this.t, 0.1);
+  }
+
+  elim() {
+    if (!this.ctx) return;
+    this._tone(880, 0.12, { type: 'square', gain: 0.08 });
+    this._tone(1320, 0.18, { type: 'square', gain: 0.08, delay: 0.1 });
+  }
+
+  victory() {
+    if (!this.ctx) return;
+    [523, 659, 784, 1047].forEach((f, i) => this._tone(f, 0.5, { type: 'triangle', gain: 0.15, delay: i * 0.15 }));
   }
 
   heal() {

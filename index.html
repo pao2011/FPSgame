@@ -22,6 +22,9 @@
       <div id="damage-numbers"></div>
       <div id="storm-vignette"></div>
       <div id="damage-vignette"></div>
+      <div id="damage-dir"></div>
+      <div id="kill-feed"></div>
+      <div id="speedo"></div>
       <div id="scope">
         <div class="lens"></div>
         <div class="h"></div>
@@ -59,9 +62,11 @@
       </div>
 
       <div id="bottom-right">
+        <div id="mats"></div>
         <div id="weapon-name"></div>
         <div id="ammo"></div>
         <div id="slots"></div>
+        <div id="build-bar"></div>
         <div id="ammo-list"></div>
       </div>
 
@@ -77,9 +82,13 @@
     <div id="menu" style="display: none">
       <div class="menu-card">
         <div class="logo">ISLA<span>ROYALE</span></div>
-        <div class="subtitle">Battle royale en 3D · Modo práctica (sin bots)</div>
-        <button id="play-btn">JUGAR</button>
+        <div class="subtitle">Battle royale en 3D en tu navegador</div>
+        <div class="menu-buttons">
+          <button id="play-btn">JUGAR<small>Battle royale · <span id="bot-count">24</span> bots</small></button>
+          <button id="practice-btn" class="secondary">PRÁCTICA<small>Sin bots</small></button>
+        </div>
         <div id="seed-label"></div>
+        <a id="quality-link" href="?calidad=baja">¿Va lento? Prueba la calidad baja</a>
         <div class="controls">
           <div><kbd>W A S D</kbd> Moverse</div>
           <div><kbd>Ratón</kbd> Mirar / apuntar</div>
@@ -92,6 +101,10 @@
           <div><kbd>R</kbd> Recargar</div>
           <div><kbd>1-6</kbd> / <kbd>Rueda</kbd> Inventario</div>
           <div><kbd>G</kbd> Soltar objeto</div>
+          <div><kbd>Q</kbd> Modo construcción</div>
+          <div><kbd>1-4</kbd> (construyendo) Muro/Suelo/Rampa/Techo</div>
+          <div><kbd>Clic der.</kbd> (construyendo) Material</div>
+          <div><kbd>E</kbd> junto a un coche: conducir</div>
           <div><kbd>V</kbd> 1ª / 3ª persona</div>
           <div><kbd>M</kbd> Mapa</div>
           <div><kbd>Esc</kbd> Pausa</div>
@@ -106,11 +119,20 @@
       </div>
     </div>
 
+    <div id="victory" style="display: none">
+      <div class="menu-card">
+        <div class="logo small gold">¡VICTORIA MAGISTRAL!</div>
+        <div class="subtitle">Eres el último superviviente de la isla</div>
+        <div id="victory-stats" class="stats-grid"></div>
+        <button id="win-again-btn">JUGAR OTRA VEZ</button>
+      </div>
+    </div>
+
     <div id="death" style="display: none">
       <div class="menu-card">
         <div class="logo small red">ELIMINADO</div>
         <div id="death-cause" class="subtitle"></div>
-        <div id="death-stats"></div>
+        <div id="death-stats" class="stats-grid"></div>
         <button id="again-btn">VOLVER A JUGAR</button>
       </div>
     </div>

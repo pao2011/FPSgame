@@ -157,6 +157,7 @@ export class ContainerManager {
     for (const c of this.list) {
       c.opened = false;
       c.openT = 0;
+      c.pending = null;
       c.active = random.chance(c.kind === 'chest' ? 0.65 : 0.55);
       c.model.visible = c.active;
       this._setCollider(c, c.active);
@@ -165,16 +166,15 @@ export class ContainerManager {
     }
   }
 
-  open(c) {
+  // opener: quien lo abre (jugador o bot). El botín sale tras la animación.
+  open(c, opener = null) {
     if (c.opened) return;
     c.opened = true;
     if (c.glow) c.glow.visible = false;
-    const items = c.kind === 'chest' ? lootForChest(random) : lootForAmmoBox(random);
-    const origin = c.pos.clone();
-    origin.y += 0.6;
-    origin.x += Math.sin(c.rotY) * 0.5;
-    origin.z += Math.cos(c.rotY) * 0.5;
-    setTimeout(() => this.game.pickups.burst(items, origin, c.rotY), 220);
+    c.pending = c.kind === 'chest' ? lootForChest(random) : lootForAmmoBox(random);
+    c.pendingT = 0.22;
+    const near = !opener || opener.isPlayer || c.pos.distanceTo(this.game.player.pos) < 25;
+    if (!near) return;
     if (c.kind === 'chest') this.game.audio.chest();
     else this.game.audio.pickup();
   }
@@ -183,6 +183,17 @@ export class ContainerManager {
     const cam = this.game.camera.position;
     for (const c of this.list) {
       if (!c.active) continue;
+      if (c.pending) {
+        c.pendingT -= dt;
+        if (c.pendingT <= 0) {
+          const origin = c.pos.clone();
+          origin.y += 0.6;
+          origin.x += Math.sin(c.rotY) * 0.5;
+          origin.z += Math.cos(c.rotY) * 0.5;
+          this.game.pickups.burst(c.pending, origin, c.rotY);
+          c.pending = null;
+        }
+      }
       const vis = c.pos.distanceToSquared(cam) < 160 * 160;
       c.model.visible = vis;
       if (c.glow) c.glow.visible = vis && !c.opened;

@@ -132,7 +132,7 @@ export function makeWeaponModel(type, rarity = 0) {
 }
 
 // ----------------------------------------------------------- CONSUMIBLES ---
-export function makeConsumableModel(type) {
+function makeConsumableModel(type) {
   const g = new THREE.Group();
   switch (type) {
     case 'bandage': {
@@ -177,7 +177,7 @@ export function makeConsumableModel(type) {
   return g;
 }
 
-export function makeAmmoModel(ammo) {
+function makeAmmoModel(ammo) {
   const g = new THREE.Group();
   const c = AMMO[ammo]?.color ?? 0xffffff;
   box(g, 0.32, 0.18, 0.2, 0x4b5320);
@@ -189,12 +189,13 @@ export function makeItemModel(item) {
   if (item.kind === 'weapon') return makeWeaponModel(item.type, item.rarity);
   if (item.kind === 'consumable') return makeConsumableModel(item.type);
   if (item.kind === 'ammo') return makeAmmoModel(item.ammo);
+  if (item.kind === 'material') return makeMaterialModel(item.mat);
   return makeWeaponModel('pickaxe');
 }
 
 // ------------------------------------------------------------------ COFRE ---
 // Frente hacia +Z, bisagra atrás.
-export function makeChest() {
+function makeChest() {
   const g = new THREE.Group();
   const wood = 0x8a5a2b;
   const gold = 0xf2c230;
@@ -214,7 +215,7 @@ export function makeChest() {
   return g;
 }
 
-export function makeAmmoBox() {
+function makeAmmoBox() {
   const g = new THREE.Group();
   box(g, 0.8, 0.35, 0.45, 0x4b5320, 0, 0.175, 0);
   box(g, 0.82, 0.05, 0.47, 0x6b7a2a, 0, 0.3, 0);
@@ -431,6 +432,7 @@ export function itemKey(item) {
   if (item.kind === 'weapon') return `w_${item.type}_${item.rarity}`;
   if (item.kind === 'consumable') return `c_${item.type}`;
   if (item.kind === 'ammo') return `a_${item.ammo}`;
+  if (item.kind === 'material') return `m_${item.mat}`;
   return 'pickaxe';
 }
 
@@ -458,5 +460,71 @@ export function makeContainerFast(kind) {
   pivot.add(lid);
   g.add(pivot);
   g.userData.lid = pivot;
+  return g;
+}
+
+// Fusiona las mallas directas de cada parte del personaje (cuerpo, cabeza,
+// extremidades) para dibujarlo con ~6 draw calls en lugar de ~25.
+export function optimizeCharacter(c) {
+  for (const g of [c.body, c.head, c.legL, c.legR, c.armL, c.armR]) {
+    const meshes = g.children.filter((o) => o.isMesh);
+    if (meshes.length < 2) continue;
+    const tmp = new THREE.Group();
+    for (const m of meshes) {
+      g.remove(m);
+      tmp.add(m);
+    }
+    const merged = new THREE.Mesh(mergeGroupGeometry(tmp), vcMaterial);
+    merged.castShadow = true;
+    g.add(merged);
+  }
+  return c;
+}
+
+// ------------------------------------------------------------------ COCHE ---
+// Frente hacia -Z. wrecked = coche abandonado (oxidado, sin ruedas).
+export function makeCarModel(color = 0xd63a2f, wrecked = false) {
+  const g = new THREE.Group();
+  const body = wrecked ? 0x7a5a44 : color;
+  const dark = 0x1b1f26;
+  const glass = wrecked ? 0x2a2e33 : 0x29445e;
+  box(g, 2.0, 0.6, 4.3, body, 0, 0.7, 0, { phong: !wrecked, shininess: 60 });
+  box(g, 1.8, 0.75, 2.2, body, 0, 1.35, 0.25, { phong: !wrecked, shininess: 60 });
+  box(g, 1.82, 0.55, 2.0, glass, 0, 1.38, 0.25, { phong: true, shininess: 120 });
+  box(g, 1.6, 0.5, 0.06, glass, 0, 1.38, -0.88, { phong: true, shininess: 120 });
+  box(g, 2.05, 0.2, 0.25, 0x333333, 0, 0.45, -2.15);
+  box(g, 2.05, 0.2, 0.25, 0x333333, 0, 0.45, 2.15);
+  box(g, 0.35, 0.15, 0.05, wrecked ? 0x555555 : 0xfff6c0, -0.7, 0.75, -2.16, wrecked ? {} : { emissive: 0x777755 });
+  box(g, 0.35, 0.15, 0.05, wrecked ? 0x555555 : 0xfff6c0, 0.7, 0.75, -2.16, wrecked ? {} : { emissive: 0x777755 });
+  box(g, 0.35, 0.15, 0.05, 0xb01010, -0.7, 0.75, 2.16);
+  box(g, 0.35, 0.15, 0.05, 0xb01010, 0.7, 0.75, 2.16);
+  if (!wrecked) {
+    box(g, 2.02, 0.12, 4.32, 0xffffff, 0, 0.92, 0);
+  }
+  const wheels = [];
+  for (const x of [-0.98, 0.98]) {
+    for (const z of [-1.35, 1.4]) {
+      const w = new THREE.Group();
+      w.position.set(x, wrecked ? 0.22 : 0.4, z);
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 14).rotateZ(Math.PI / 2), mat(dark));
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.32, 8).rotateZ(Math.PI / 2), mat(0xbbbbbb));
+      w.add(tire, hub);
+      g.add(w);
+      wheels.push(w);
+    }
+  }
+  g.userData.wheels = wheels;
+  return g;
+}
+
+function makeMaterialModel(m) {
+  const g = new THREE.Group();
+  if (m === 'wood') {
+    for (let i = 0; i < 3; i++) box(g, 0.45, 0.07, 0.14, i % 2 ? 0xb07a40 : 0x9a6a36, 0, i * 0.075, 0).rotation.y = i * 0.5;
+  } else if (m === 'stone') {
+    for (let i = 0; i < 3; i++) box(g, 0.22, 0.12, 0.16, 0x9a9ea6, (i - 1) * 0.12, (i % 2) * 0.12, 0);
+  } else {
+    for (let i = 0; i < 3; i++) box(g, 0.4, 0.04, 0.3, 0x7f93a8, 0, i * 0.05, 0, METAL).rotation.y = i * 0.3;
+  }
   return g;
 }

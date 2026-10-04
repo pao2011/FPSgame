@@ -42,6 +42,8 @@ export class World {
     this.lootSpots = [];
     this.ammoSpots = [];
     this.dummySpots = [];
+    this.carSpots = []; // coches conducibles
+    this.wreckSpots = []; // coches abandonados (metal)
     this.plans = [];
     this.generate();
   }
@@ -54,6 +56,7 @@ export class World {
     this.terrain.zones = this.pois;
     this.scene.add(this.terrain.build());
     this.buildStructures();
+    this.planCars();
     this.nature = createNature(this, this.rng);
     this.addWater();
     this.addClouds();
@@ -268,6 +271,51 @@ export class World {
     this.buildingMesh = geo.build();
     this.buildingMesh.name = 'buildings';
     this.scene.add(this.buildingMesh);
+  }
+
+  // Huecos libres y llanos para coches (dentro de las zonas y junto a casas).
+  planCars() {
+    const rng = this.rng;
+    const tryPlace = (x, z, list) => {
+      const h = this.terrain.heightAt(x, z);
+      if (h < 1.5 || this.terrain.slopeAt(x, z) > 0.25) return false;
+      if (this.occupied(x, z, 3.2)) return false;
+      if (this.dummySpots.some((d) => Math.hypot(d.x - x, d.z - z) < 6)) return false;
+      // Orientar el coche hacia la dirección más despejada.
+      let rot = 0, bestFree = -1;
+      for (let k = 0; k < 4; k++) {
+        const a = k * (Math.PI / 2);
+        const hit = this.collision.raycast(x, h + 1, z, -Math.sin(a), 0, -Math.cos(a), 30);
+        const free = hit ? hit.t : 30;
+        if (free > bestFree + 0.01 || (Math.abs(free - bestFree) < 0.01 && rng.chance(0.5))) {
+          bestFree = free;
+          rot = a;
+        }
+      }
+      list.push({ x, z, y: h, rot: rot + rng.float(-0.12, 0.12) });
+      this.footprints.push({ x0: x - 2.4, z0: z - 2.4, x1: x + 2.4, z1: z + 2.4 });
+      return true;
+    };
+    for (const poi of this.pois) {
+      const wantCars = poi.type === 'farm' ? 1 : 2;
+      const wantWrecks = poi.type === 'city' || poi.type === 'industrial' ? 5 : 3;
+      let cars = 0, wrecks = 0;
+      for (let i = 0; i < 300 && (cars < wantCars || wrecks < wantWrecks); i++) {
+        const a = rng.float(0, Math.PI * 2);
+        const r = Math.sqrt(rng.next()) * poi.radius * 0.85;
+        const x = poi.x + Math.cos(a) * r, z = poi.z + Math.sin(a) * r;
+        if (cars < wantCars) {
+          if (tryPlace(x, z, this.carSpots)) cars++;
+        } else if (tryPlace(x, z, this.wreckSpots)) wrecks++;
+      }
+    }
+    // Algunos coches junto a casas aisladas
+    for (const p of this.plans.filter((pl) => pl.pad)) {
+      if (!rng.chance(0.35)) continue;
+      const a = rng.float(0, Math.PI * 2);
+      const d = Math.max(p.fw, p.fd) / 2 + 4;
+      tryPlace(p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, rng.chance(0.5) ? this.carSpots : this.wreckSpots);
+    }
   }
 
   // ¿Está ocupado por un edificio (con margen)?

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { WEAPONS, CONSUMABLES, AMMO, RARITIES, itemRarity } from '../game/items.js';
+import { WEAPONS, CONSUMABLES, AMMO, RARITIES, MATERIALS, BUILD_COST, itemRarity } from '../game/items.js';
+import { PIECES, MAT_ORDER } from '../game/build.js';
 import { makeItemModel, makeWeaponModel } from '../game/models.js';
 
 const $ = (id) => document.getElementById(id);
@@ -84,6 +85,11 @@ export class HUD {
       zone: $('zone-name'),
       weaponName: $('weapon-name'),
       stats: $('stats'),
+      mats: $('mats'),
+      buildBar: $('build-bar'),
+      feed: $('kill-feed'),
+      dmgDir: $('damage-dir'),
+      speed: $('speedo'),
     };
     this.miniCtx = this.el.mini.getContext('2d');
     this.fullCtx = this.el.fullmapCanvas.getContext('2d');
@@ -96,6 +102,24 @@ export class HUD {
     this.zoneT = 0;
     this.lastZone = null;
     this.mapOpen = false;
+    this.feed = [];
+    this.dirs = [];
+  }
+
+  resetFeed() {
+    this.feed.length = 0;
+    this.el.feed.innerHTML = '';
+    for (const d of this.dirs) d.el.remove();
+    this.dirs.length = 0;
+  }
+
+  killFeed(html, mine) {
+    const el = document.createElement('div');
+    el.className = 'feed-item' + (mine ? ' mine' : '');
+    el.innerHTML = html;
+    this.el.feed.prepend(el);
+    this.feed.push({ el, t: 6 });
+    while (this.el.feed.children.length > 6) this.el.feed.lastChild.remove();
   }
 
   buildSlots() {
@@ -153,9 +177,16 @@ export class HUD {
     this.hitT = 0.18;
   }
 
-  flashDamage(type) {
+  flashDamage(type, attacker = null) {
     this.dmgT = 0.4;
     this.el.dmgVig.className = type === 'storm' ? 'storm' : '';
+    if (attacker && attacker.pos) {
+      // Indicador de la dirección desde la que te disparan
+      const el = document.createElement('div');
+      el.className = 'dir-arc';
+      this.el.dmgDir.appendChild(el);
+      this.dirs.push({ el, t: 1.2, from: attacker.pos.clone() });
+    }
   }
 
   setProgress(v, label = '') {
@@ -243,7 +274,7 @@ export class HUD {
       const fovR = THREE.MathUtils.degToRad(g.camera.fov / 2);
       gap = Math.max(3, (Math.tan(spread) / Math.tan(fovR)) * (innerHeight / 2));
     }
-    const showCross = p.mode === 'ground' && !(def?.scope && g.combat.adsBlend > 0.9);
+    const showCross = p.mode === 'ground' && !p.vehicle && !(def?.scope && g.combat.adsBlend > 0.9);
     this.set('cross', e.crosshair, 'display', showCross ? 'block' : 'none');
     e.crosshair.style.setProperty('--gap', `${gap.toFixed(1)}px`);
     e.crosshair.classList.toggle('shotgun', !!def?.pellets);
@@ -310,7 +341,54 @@ export class HUD {
       }
     }
 
-    this.set('stats', e.stats, 'html', `<span>👤 1</span><span>🎯 ${Math.round(p.stats.damage)}</span><span>📦 ${p.stats.chests}</span>`);
+    this.set('stats', e.stats, 'html', `<span title="Jugadores vivos">👤 ${g.aliveCount}</span><span title="Eliminaciones">💀 ${p.stats.kills}</span><span title="Cofres">📦 ${p.stats.chests}</span>`);
+
+    // Materiales
+    const b = g.build;
+    const mats = MAT_ORDER.map((m) => {
+      const sel = b.active && b.matId === m ? ' sel' : '';
+      const low = p.mats[m] < BUILD_COST ? ' low' : '';
+      return `<span class="mat ${m}${sel}${low}"><i></i>${p.mats[m]}</span>`;
+    }).join('');
+    this.set('mats', e.mats, 'html', mats);
+
+    // Barra de construcción
+    this.set('buildShow', e.buildBar, 'display', b.active ? 'flex' : 'none');
+    if (b.active) {
+      const html = PIECES.map((pc, i) => `<div class="piece ${i === b.piece ? 'sel' : ''}"><span class="key">${pc.key}</span><span class="ico ${pc.id}"></span>${pc.name}</div>`).join('') +
+        `<div class="piece-mat" style="color:${MATERIALS[b.matId].color}">${MATERIALS[b.matId].name}<small>clic der.</small></div>`;
+      this.set('buildBar', e.buildBar, 'html', html);
+    }
+    this.set('slotsShow', e.slots, 'display', b.active ? 'none' : 'flex');
+
+    // Velocímetro
+    this.set('speedShow', e.speed, 'display', p.vehicle ? 'block' : 'none');
+    if (p.vehicle) this.set('speed', e.speed, 'html', `${Math.round(Math.abs(p.vehicle.speed) * 3.6)}<small> km/h</small>`);
+
+    // Feed de eliminaciones
+    for (let i = this.feed.length - 1; i >= 0; i--) {
+      const f = this.feed[i];
+      f.t -= dt;
+      if (f.t < 1) f.el.style.opacity = Math.max(0, f.t);
+      if (f.t <= 0) {
+        f.el.remove();
+        this.feed.splice(i, 1);
+      }
+    }
+    // Indicadores de daño
+    for (let i = this.dirs.length - 1; i >= 0; i--) {
+      const d = this.dirs[i];
+      d.t -= dt;
+      const ang = Math.atan2(d.from.x - p.pos.x, d.from.z - p.pos.z);
+      // ángulo relativo a la cámara (0 = delante)
+      const rel = ang - (p.yaw + Math.PI);
+      d.el.style.transform = `rotate(${-rel}rad)`;
+      d.el.style.opacity = Math.min(1, d.t);
+      if (d.t <= 0) {
+        d.el.remove();
+        this.dirs.splice(i, 1);
+      }
+    }
   }
 }
 

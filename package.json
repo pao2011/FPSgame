@@ -1,17 +1,22 @@
 {
-  "name": "fpsgame",
+  "name": "isla-royale",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "Battle royale 3D estilo Fortnite en el navegador (Three.js)",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --open",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:standalone": "vite build && node scripts/standalone.mjs",
+    "preview": "vite preview --open"
   },
   "dependencies": {
     "three": "^0.186.1"
   },
   "devDependencies": {
-    "vite": "^8.3.2"
+    "vite": "^6.4.3"
   }
 }

@@ -59,6 +59,14 @@ export const CONSUMABLES = {
 
 export const PICKAXE = { kind: 'pickaxe', name: 'Pico' };
 
+// Materiales de construcción (se consiguen con el pico).
+export const MATERIALS = {
+  wood: { name: 'Madera', color: '#d39a5a', hex: 0xb07a40, hp: 150, buildTime: 2.5, max: 999 },
+  stone: { name: 'Piedra', color: '#b8bcc2', hex: 0x9a9ea6, hp: 300, buildTime: 5, max: 999 },
+  metal: { name: 'Metal', color: '#8fb0d0', hex: 0x7f93a8, hp: 500, buildTime: 9, max: 999 },
+};
+export const BUILD_COST = 10;
+
 const WEAPON_WEIGHTS = { ar: 30, shotgun: 25, smg: 20, pistol: 15, sniper: 10 };
 const FLOOR_RARITY = [42, 30, 17, 8, 3];
 const CHEST_RARITY = [12, 34, 32, 16, 6];
@@ -68,6 +76,7 @@ export function itemName(item) {
   if (item.kind === 'weapon') return WEAPONS[item.type].name;
   if (item.kind === 'consumable') return CONSUMABLES[item.type].name;
   if (item.kind === 'ammo') return AMMO[item.ammo].name;
+  if (item.kind === 'material') return MATERIALS[item.mat].name;
   return 'Pico';
 }
 
@@ -77,7 +86,7 @@ export function itemRarity(item) {
   return 0;
 }
 
-export function makeWeapon(type, rarity) {
+function makeWeapon(type, rarity) {
   return { kind: 'weapon', type, rarity, mag: WEAPONS[type].mag };
 }
 

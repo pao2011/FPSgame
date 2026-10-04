@@ -100,6 +100,23 @@ export class Effects {
       s.vel.y += Math.random() * 3;
       s.vel.z += (Math.random() - 0.5) * 4;
       s.life = 0.25 + Math.random() * 0.2;
+      s.mesh.scale.setScalar(1);
+      s.mesh.visible = true;
+    }
+  }
+
+  // Trozos que salen despedidos al romper algo.
+  debris(point, color) {
+    for (let i = 0; i < 14; i++) {
+      const s = this.sparks[this.sparkIdx++ % this.sparks.length];
+      s.mesh.position.copy(point);
+      s.mesh.position.x += (Math.random() - 0.5) * 1.5;
+      s.mesh.position.y += (Math.random() - 0.5) * 1.5;
+      s.mesh.position.z += (Math.random() - 0.5) * 1.5;
+      s.mesh.material.color.setHex(color);
+      s.mesh.scale.setScalar(3);
+      s.vel.set((Math.random() - 0.5) * 6, Math.random() * 6 + 1, (Math.random() - 0.5) * 6);
+      s.life = 0.5 + Math.random() * 0.4;
       s.mesh.visible = true;
     }
   }
@@ -121,7 +138,7 @@ export class Effects {
   damageNumber(pos, amount, kind) {
     const el = document.createElement('div');
     el.className = 'dmg-num ' + kind;
-    el.textContent = Math.round(amount);
+    el.textContent = typeof amount === 'number' ? Math.round(amount) : amount;
     this.numLayer.appendChild(el);
     this.numbers.push({
       el, pos: pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.3, 0)), life: 1.0,

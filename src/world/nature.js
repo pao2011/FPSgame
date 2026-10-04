@@ -76,7 +76,7 @@ export function createNature(world, rng) {
   const trunkGeo = new THREE.CylinderGeometry(0.22, 0.35, 1, 6).translate(0, 0.5, 0);
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2b });
   const all = [...pines, ...rounds];
-  instanced(trunkGeo, trunkMat, all, (t, i) => {
+  const trunkMesh = instanced(trunkGeo, trunkMat, all, (t, i) => {
     const th = t.pine ? 2.2 : 2.8;
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y - 0.2, t.z), q, new THREE.Vector3(t.s, th * t.s, t.s));
@@ -85,18 +85,19 @@ export function createNature(world, rng) {
   const pineGeo = new THREE.ConeGeometry(1.8, 5.5, 7).translate(0, 4.6, 0);
   const pineGeo2 = new THREE.ConeGeometry(1.35, 3.8, 7).translate(0, 7.0, 0);
   const pineMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const pineMeshes = [];
   for (const g of [pineGeo, pineGeo2]) {
-    instanced(g, pineMat, pines, (t, i, mesh) => {
+    pineMeshes.push(instanced(g, pineMat, pines, (t, i, mesh) => {
       q.setFromAxisAngle(up, t.rot);
       m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s, t.s, t.s));
       col.setHSL(0.36 + rng.float(-0.03, 0.03), 0.5, 0.24 + rng.float(-0.04, 0.04));
       mesh.setColorAt(i, col);
-    });
+    }));
   }
 
   const roundGeo = new THREE.IcosahedronGeometry(2.4, 0).translate(0, 4.6, 0);
   const roundMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-  instanced(roundGeo, roundMat, rounds, (t, i, mesh) => {
+  const roundMesh = instanced(roundGeo, roundMat, rounds, (t, i, mesh) => {
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s * 1.1, t.s, t.s * 1.1));
     col.setHSL(0.27 + rng.float(-0.05, 0.05), 0.55, 0.36 + rng.float(-0.06, 0.06));
@@ -105,7 +106,7 @@ export function createNature(world, rng) {
 
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
   const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-  instanced(rockGeo, rockMat, rocks, (t, i, mesh) => {
+  const rockMesh = instanced(rockGeo, rockMat, rocks, (t, i, mesh) => {
     q.setFromEuler(new THREE.Euler(rng.float(0, 1), t.rot, rng.float(0, 1)));
     m.compose(new THREE.Vector3(t.x, t.y + t.s * 0.25, t.z), q, new THREE.Vector3(t.s * 1.2, t.s * 0.8, t.s));
     const g = 0.45 + rng.float(-0.06, 0.08);
@@ -121,14 +122,34 @@ export function createNature(world, rng) {
     mesh.setColorAt(i, col);
   }, false);
 
-  // Colisiones: troncos y rocas
-  for (const t of pines) collision.add(t.x - 0.35 * t.s, t.y - 1, t.z - 0.35 * t.s, t.x + 0.35 * t.s, t.y + 9 * t.s, t.z + 0.35 * t.s, { type: 'tree' });
-  for (const t of rounds) collision.add(t.x - 0.35 * t.s, t.y - 1, t.z - 0.35 * t.s, t.x + 0.35 * t.s, t.y + 3.2 * t.s, t.z + 0.35 * t.s, { type: 'tree' });
-  for (const t of rounds) collision.add(t.x - 1.7 * t.s, t.y + 3.2 * t.s, t.z - 1.7 * t.s, t.x + 1.7 * t.s, t.y + 6.2 * t.s, t.z + 1.7 * t.s, { type: 'leaves' });
-  for (const r of rocks) {
+  // Colisiones y datos para poder talar/picar (ver game/harvest.js)
+  const harvestables = [];
+  all.forEach((t, i) => {
+    t.kind = 'tree';
+    t.mat = 'wood';
+    t.hp = t.maxHp = Math.round(120 * t.s);
+    t.parts = [{ mesh: trunkMesh, index: i }];
+    t.center = new THREE.Vector3(t.x, t.y, t.z);
+    const e = 0.35 * t.s;
+    t.boxes = [[t.x - e, t.y - 1, t.z - e, t.x + e, t.y + (t.pine ? 9 : 3.2) * t.s, t.z + e, 'tree']];
+    if (!t.pine) t.boxes.push([t.x - 1.7 * t.s, t.y + 3.2 * t.s, t.z - 1.7 * t.s, t.x + 1.7 * t.s, t.y + 6.2 * t.s, t.z + 1.7 * t.s, 'leaves']);
+    harvestables.push(t);
+  });
+  pines.forEach((t, i) => pineMeshes.forEach((mesh) => t.parts.push({ mesh, index: i })));
+  rounds.forEach((t, i) => t.parts.push({ mesh: roundMesh, index: i }));
+  rocks.forEach((r, i) => {
+    r.kind = 'rock';
+    r.mat = 'stone';
+    r.hp = r.maxHp = Math.round(90 * r.s + 60);
+    r.parts = [{ mesh: rockMesh, index: i }];
+    r.center = new THREE.Vector3(r.x, r.y, r.z);
     const e = r.s * 0.75;
-    collision.add(r.x - e, r.y - 1, r.z - e, r.x + e, r.y + r.s * 0.8, r.z + e, { type: 'rock' });
+    r.boxes = [[r.x - e, r.y - 1, r.z - e, r.x + e, r.y + r.s * 0.8, r.z + e, 'rock']];
+    harvestables.push(r);
+  });
+  for (const h of harvestables) {
+    h.colliders = h.boxes.map((b) => collision.add(b[0], b[1], b[2], b[3], b[4], b[5], { type: b[6], ref: h }));
   }
 
-  return { pines, rounds, rocks, bushes };
+  return { pines, rounds, rocks, bushes, harvestables };
 }

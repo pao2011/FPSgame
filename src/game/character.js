@@ -1,0 +1,365 @@
+import * as THREE from 'three';
+import { GRAVITY, HALF, WATER_LEVEL } from '../world/constants.js';
+import { makeCharacter, makeGlider, makeItemModel, optimizeCharacter, mergedMesh, itemKey } from './models.js';
+import { rayAABB } from './dummies.js';
+import { clamp } from '../core/rng.js';
+
+export const R = 0.35; // medio ancho de la caja de colisión
+const STEP = 0.55; // altura máxima de escalón
+const SWIM_Y = WATER_LEVEL - 1.25;
+
+const SKINS = [0xe0b48a, 0xc68a5a, 0x8d5a3a, 0xf1c9a5, 0xa86f48];
+const SHIRTS = [0x2f6fd6, 0xd63a2f, 0x2fa84f, 0xe0a020, 0x8a3fd6, 0x1fb5b0, 0xe05a9a, 0x444a55];
+const PANTS = [0x2b2b38, 0x3a4a6a, 0x5a4632, 0x2f4a2f, 0x1d1d1d];
+const HAIR = [0x3a2a1a, 0x111111, 0xc9a050, 0x7a3a1a, 0xdddddd];
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const MUZZLES = new Map();
+
+// Personaje físico compartido por el jugador y los bots: colisiones contra
+// cajas + terreno, modos de caída/planeo/suelo, daño y modelo animado.
+export class Character {
+  constructor(game) {
+    this.game = game;
+    this.pos = new THREE.Vector3();
+    this.vel = new THREE.Vector3();
+    this._q = [];
+    this.model = optimizeCharacter(
+      makeCharacter({ skin: pick(SKINS), shirt: pick(SHIRTS), pants: pick(PANTS), hair: pick(HAIR) }),
+    );
+    game.scene.add(this.model.root);
+    this.glider = makeGlider();
+    this.glider.visible = false;
+    this.model.root.add(this.glider);
+    this.heldKey = null;
+    this.yaw = 0;
+    this.pitch = 0;
+  }
+
+  resetBody() {
+    this.vel.set(0, 0, 0);
+    this.mode = 'lobby';
+    this.onGround = false;
+    this.canStep = false;
+    this.jumped = false;
+    this.crouching = false;
+    this.sprinting = false;
+    this.swimming = false;
+    this.health = 100;
+    this.shield = 0;
+    this.alive = true;
+    this.eyeOffset = 0;
+    this.freefallTime = 0;
+    this.altitude = 0;
+    this.walkPhase = 0;
+    this.glideT = 0;
+    this.diveAmount = 0;
+    this.glider.visible = false;
+  }
+
+  get height() {
+    return this.crouching ? 1.25 : 1.8;
+  }
+
+  get eyeHeight() {
+    return this.crouching ? 1.12 : 1.62;
+  }
+
+  get eye() {
+    return new THREE.Vector3(this.pos.x, this.pos.y + this.eyeHeight + this.eyeOffset, this.pos.z);
+  }
+
+  get hSpeed() {
+    return Math.hypot(this.vel.x, this.vel.z);
+  }
+
+  get inAir() {
+    return this.mode === 'freefall' || this.mode === 'glide';
+  }
+
+  // ------------------------------------------------------------ MOVIMIENTO
+  // wish: dirección horizontal deseada (normalizada o cero). dive: 0..1
+  freefallStep(dt, wish, dive) {
+    this.freefallTime += dt;
+    this.altitude = this.pos.y - this.game.world.groundBelow(this.pos.x, this.pos.z, this.pos.y);
+    const hs = 17 - 7 * dive;
+    const vy = -30 - 28 * dive;
+    const k = Math.min(1, dt * 1.6);
+    this.vel.x += (wish.x * hs - this.vel.x) * k;
+    this.vel.z += (wish.z * hs - this.vel.z) * k;
+    this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 2);
+    this.diveAmount = dive;
+    this.move(dt);
+  }
+
+  deployGlider() {
+    this.mode = 'glide';
+    this.glideT = 0;
+    this.glider.visible = true;
+    this.vel.y = Math.max(this.vel.y, -18);
+  }
+
+  glideStep(dt, wish, dive) {
+    this.glideT += dt;
+    this.altitude = this.pos.y - this.game.world.groundBelow(this.pos.x, this.pos.z, this.pos.y);
+    const hs = 14 + 4 * dive;
+    const vy = -8 - 6 * dive;
+    const k = Math.min(1, dt * 1.2);
+    this.vel.x += (wish.x * hs - this.vel.x) * k;
+    this.vel.z += (wish.z * hs - this.vel.z) * k;
+    this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 2.5);
+    this.diveAmount = dive;
+    this.move(dt);
+  }
+
+  // Devuelve la velocidad de impacto si ha aterrizado este paso.
+  groundStep(dt, wish, speed, jump) {
+    const accel = this.onGround ? 14 : 2.5;
+    const k = Math.min(1, dt * accel);
+    this.vel.x += (wish.x * speed - this.vel.x) * k;
+    this.vel.z += (wish.z * speed - this.vel.z) * k;
+    this.jumped = false;
+    if (jump && this.onGround && !this.swimming) {
+      this.vel.y = 8.2;
+      this.onGround = false;
+      this.jumped = true;
+      if (this.crouching) {
+        this.crouching = false;
+        this.eyeOffset -= 0.5;
+      }
+    }
+    this.vel.y -= GRAVITY * dt;
+    return this.move(dt);
+  }
+
+  fallDamage(landSpeed) {
+    if (landSpeed > 17) this.damage(Math.round((landSpeed - 17) * 5), 'fall');
+  }
+
+  // ------------------------------------------------------------ FÍSICA
+  move(dt) {
+    const wasGround = this.onGround;
+    this.canStep = wasGround;
+    this.onGround = false;
+    let landSpeed = 0;
+    const maxComp = Math.max(Math.abs(this.vel.x), Math.abs(this.vel.y), Math.abs(this.vel.z)) * dt;
+    const n = Math.min(40, Math.max(1, Math.ceil(maxComp / 0.25)));
+    const sdt = dt / n;
+    for (let i = 0; i < n; i++) {
+      this._moveH(0, this.vel.x * sdt);
+      this._moveH(2, this.vel.z * sdt);
+      const vy = this.vel.y;
+      this._moveY(vy * sdt);
+      if (this.onGround) {
+        if (vy < 0) landSpeed = Math.max(landSpeed, -vy);
+        this.canStep = true;
+      }
+    }
+    // Pegarse al suelo al bajar escaleras/pendientes
+    if (!this.onGround && wasGround && this.vel.y <= 0 && !this.jumped && this.mode === 'ground') {
+      const g = this._groundProbe(0.6);
+      if (g !== null) {
+        this.eyeOffset += this.pos.y - g;
+        this.pos.y = g;
+        this.onGround = true;
+        this.vel.y = 0;
+      }
+    }
+    this.swimming = false;
+    if (this.mode === 'ground' && this.pos.y < SWIM_Y) {
+      this.pos.y = SWIM_Y;
+      if (this.vel.y < 0) this.vel.y = 0;
+      this.onGround = true;
+      this.swimming = true;
+    }
+    const lim = HALF + 150;
+    this.pos.x = clamp(this.pos.x, -lim, lim);
+    this.pos.z = clamp(this.pos.z, -lim, lim);
+    return landSpeed;
+  }
+
+  _overlap(b) {
+    const p = this.pos;
+    const e = 1e-5;
+    return (
+      p.x - R < b.maxX - e && p.x + R > b.minX + e &&
+      p.y < b.maxY - e && p.y + this.height > b.minY + e &&
+      p.z - R < b.maxZ - e && p.z + R > b.minZ + e
+    );
+  }
+
+  _moveH(axis, amt) {
+    if (amt === 0) return;
+    const p = this.pos;
+    if (axis === 0) p.x += amt;
+    else p.z += amt;
+    const h = this.height;
+    const col = this.game.world.collision;
+    const boxes = col.query(p.x - R, p.y, p.z - R, p.x + R, p.y + h, p.z + R, this._q);
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (!this._overlap(b)) continue;
+      const stepH = b.maxY - p.y;
+      if (
+        this.canStep && this.mode === 'ground' && stepH > 0 && stepH <= STEP &&
+        !col.overlaps(p.x - R, b.maxY + 0.001, p.z - R, p.x + R, b.maxY + h, p.z + R)
+      ) {
+        p.y = b.maxY;
+        this.eyeOffset -= stepH;
+        continue;
+      }
+      if (axis === 0) {
+        p.x = amt > 0 ? b.minX - R - 1e-4 : b.maxX + R + 1e-4;
+        this.vel.x = 0;
+      } else {
+        p.z = amt > 0 ? b.minZ - R - 1e-4 : b.maxZ + R + 1e-4;
+        this.vel.z = 0;
+      }
+    }
+  }
+
+  _moveY(amt) {
+    const p = this.pos;
+    p.y += amt;
+    const h = this.height;
+    const boxes = this.game.world.collision.query(p.x - R, p.y, p.z - R, p.x + R, p.y + h, p.z + R, this._q);
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (!this._overlap(b)) continue;
+      if (amt <= 0) {
+        p.y = b.maxY;
+        this.vel.y = 0;
+        this.onGround = true;
+      } else {
+        p.y = b.minY - h - 1e-4;
+        this.vel.y = 0;
+      }
+    }
+    const th = this.game.world.terrain.heightAt(p.x, p.z);
+    if (p.y <= th) {
+      p.y = th;
+      if (this.vel.y < 0) this.vel.y = 0;
+      this.onGround = true;
+    }
+  }
+
+  _groundProbe(maxDrop) {
+    const p = this.pos;
+    let best = this.game.world.terrain.heightAt(p.x, p.z);
+    if (best < p.y - maxDrop) best = -Infinity;
+    const boxes = this.game.world.collision.query(p.x - R, p.y - maxDrop, p.z - R, p.x + R, p.y, p.z + R, this._q);
+    for (const b of boxes) if (b.maxY <= p.y + 1e-3 && b.maxY > best) best = b.maxY;
+    return best === -Infinity ? null : best;
+  }
+
+  // ------------------------------------------------------------ IMPACTOS
+  // Raycast contra la cabeza y el cuerpo (cajas alineadas a ejes).
+  raycastHit(o, dir, maxT) {
+    if (!this.alive || this.mode === 'bus' || this.mode === 'lobby' || this.vehicle) return null;
+    const p = this.pos;
+    if (Math.abs(p.x - o.x) > maxT + 2 || Math.abs(p.z - o.z) > maxT + 2) return null;
+    const h = this.height;
+    const headMin = h - 0.38;
+    let best = null;
+    let t = rayAABB(o, dir, [p.x - 0.2, p.y + headMin, p.z - 0.2], [p.x + 0.2, p.y + h + 0.08, p.z + 0.2], maxT);
+    if (t !== null) best = { t, head: true };
+    t = rayAABB(o, dir, [p.x - 0.33, p.y, p.z - 0.33], [p.x + 0.33, p.y + headMin, p.z + 0.33], best ? best.t : maxT);
+    if (t !== null) best = { t, head: false };
+    return best;
+  }
+
+  // Aplica el daño (el escudo absorbe salvo tormenta/caída). Devuelve el
+  // reparto para poder mostrar los números.
+  absorb(amount, type) {
+    let rest = amount;
+    let shieldDmg = 0;
+    if (type !== 'storm' && type !== 'fall' && this.shield > 0) {
+      shieldDmg = Math.min(this.shield, rest);
+      this.shield -= shieldDmg;
+      rest -= shieldDmg;
+    }
+    this.health -= rest;
+    return { shieldDmg, hpDmg: rest };
+  }
+
+  // ------------------------------------------------------------ MODELO
+  setHeld(item) {
+    const key = !item ? 'none' : item.kind === 'weapon' ? `w${item.type}${item.rarity}` : item.kind === 'consumable' ? `c${item.type}` : 'pick';
+    if (key === this.heldKey) return;
+    this.heldKey = key;
+    const hand = this.model.hand;
+    while (hand.children.length) hand.remove(hand.children[0]);
+    if (!item) return;
+    // Malla fusionada (1 draw call) + punto de boca de cañón para trazadoras.
+    const mk = itemKey(item);
+    if (!MUZZLES.has(mk)) MUZZLES.set(mk, makeItemModel(item).userData.muzzle?.position.clone() ?? new THREE.Vector3());
+    const m = new THREE.Group();
+    m.add(mergedMesh(mk, () => makeItemModel(item)));
+    const muzzle = new THREE.Object3D();
+    muzzle.position.copy(MUZZLES.get(mk));
+    m.add(muzzle);
+    m.userData.muzzle = muzzle;
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(0, -0.05, 0);
+    if (item.kind === 'pickaxe') {
+      m.rotation.x = 0;
+      m.position.y = -0.2;
+    }
+    hand.add(m);
+  }
+
+  updateModel(dt, item, swingT = 0) {
+    const m = this.model;
+    const root = m.root;
+    root.position.copy(this.pos);
+    root.rotation.set(0, this.yaw, 0);
+    m.body.rotation.set(0, 0, 0);
+    m.body.position.set(0, 0, 0);
+    if (this.mode === 'freefall') {
+      m.body.rotation.x = -1.1 - this.diveAmount * 0.4;
+      m.body.position.y = 1.2;
+      m.armL.rotation.set(0, 0, -2.2);
+      m.armR.rotation.set(0, 0, 2.2);
+      m.legL.rotation.set(0.3, 0, -0.25);
+      m.legR.rotation.set(0.3, 0, 0.25);
+      return;
+    }
+    if (this.mode === 'glide') {
+      m.body.rotation.x = -0.15 - this.diveAmount * 0.3;
+      m.armL.rotation.set(0, 0, -2.7);
+      m.armR.rotation.set(0, 0, 2.7);
+      m.legL.rotation.set(0.15, 0, 0);
+      m.legR.rotation.set(-0.1, 0, 0);
+      this.glider.rotation.z = Math.sin(this.glideT * 1.5) * 0.05;
+      return;
+    }
+    if (this.vehicle) {
+      m.legL.rotation.set(-1.4, 0, 0);
+      m.legR.rotation.set(-1.4, 0, 0);
+      m.armL.rotation.set(1.2, 0, 0);
+      m.armR.rotation.set(1.2, 0, 0);
+      m.body.position.y = -0.5;
+      return;
+    }
+    const hs = this.hSpeed;
+    this.walkPhase += dt * hs * 1.7;
+    const swing = Math.sin(this.walkPhase) * Math.min(1, hs / 5) * 0.8;
+    m.legL.rotation.set(swing, 0, 0);
+    m.legR.rotation.set(-swing, 0, 0);
+    if (this.crouching) {
+      m.body.position.y = -0.4;
+      m.legL.rotation.x = swing * 0.5 - 0.9;
+      m.legR.rotation.x = -swing * 0.5 - 0.9;
+      m.body.rotation.x = 0.1;
+    }
+    if (item && item.kind === 'weapon') {
+      const aim = Math.PI / 2 + this.pitch;
+      m.armR.rotation.set(aim, 0, 0);
+      m.armL.rotation.set(aim, 0, 0.55);
+      if (m.hand.children[0]) m.hand.children[0].rotation.x = -Math.PI / 2;
+    } else {
+      m.armR.rotation.set(-swing * 0.8 + 0.3, 0, 0);
+      m.armL.rotation.set(swing * 0.8, 0, 0);
+    }
+    if (item && item.kind === 'pickaxe' && swingT > 0) m.armR.rotation.x = 1.8 - (1 - swingT / 0.55) * 2.4;
+  }
+}

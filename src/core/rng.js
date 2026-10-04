@@ -1,6 +1,6 @@
 // Generador pseudoaleatorio con semilla + ruido simplex 2D.
 
-export function mulberry32(seed) {
+function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
     a = (a + 0x6d2b79f5) >>> 0;
