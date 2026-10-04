@@ -21,6 +21,7 @@ import { Vehicles } from './vehicles.js';
 import { BotManager } from './bots.js';
 import { HUD } from '../ui/hud.js';
 import { Menu } from '../ui/menu.js';
+import { TouchControls, isTouchDevice } from '../ui/touch.js';
 import { MapRenderer } from '../ui/minimap.js';
 import { itemName, itemRarity, RARITIES, MATERIALS, CONSUMABLES, PICKAXE, makeWeapon } from './items.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
@@ -38,14 +39,21 @@ export class Game {
   constructor(container) {
     this.settings = loadSettings();
     const params = new URLSearchParams(location.search);
-    if (params.get('calidad') === 'baja') this.settings.quality = 'baja';
-    const low = this.settings.quality === 'baja';
+    const q = params.get('calidad');
+    if (q === 'baja' || q === 'movil') this.settings.quality = q;
+    const mobile = this.settings.quality === 'movil';
+    const low = this.settings.quality === 'baja' || mobile;
     const high = this.settings.quality === 'alta';
-    this.quality = low ? 'baja' : high ? 'alta' : 'normal';
+    this.quality = mobile ? 'movil' : low ? 'baja' : high ? 'alta' : 'normal';
+    const tc = this.settings.touchControls;
+    this.isTouch = tc === 'on' || (tc !== 'off' && isTouchDevice());
 
     // ------------------------------------------------------------ RENDER
     const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: low ? false : !this.usePost, powerPreference: 'high-performance' }));
-    renderer.setPixelRatio(low ? Math.min(devicePixelRatio, 1) * 0.75 : Math.min(devicePixelRatio, high ? 2 : 1.5));
+    // Calidad móvil: resolución ajustable y dinámica (baja si van mal los FPS).
+    this.dynRes = 1;
+    this.perf = { t: 0, n: 0, cool: 0 };
+    renderer.setPixelRatio(this.pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = !low;
     renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -89,6 +97,7 @@ export class Game {
     this.world = new World(this.scene, this.seed);
 
     this.input = new Input(this.canvas);
+    this.touch = null;
     this.audio = audio;
     this.effects = new Effects(this);
     this.pickups = new PickupManager(this);
@@ -133,9 +142,11 @@ export class Game {
     if (this.settings.outfit) this.player.setOutfit(this.settings.outfit);
 
     this.menu = new Menu(this);
+    if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
     this.canvas.addEventListener('click', () => {
+      if (this.touch) return; // en táctil lo gestiona src/ui/touch.js
       if (this.spectating) this.nextSpectate();
       else if (this.state === 'playing' && !this.input.locked && !this.paused) this.input.lock();
     });
@@ -167,7 +178,35 @@ export class Game {
 
   // Posprocesado (calidad normal/alta): MSAA + bloom + tonemapping final.
   get usePost() {
-    return this.settings.quality !== 'baja';
+    return this.settings.quality !== 'baja' && this.settings.quality !== 'movil';
+  }
+
+  pixelRatio() {
+    const dpr = devicePixelRatio || 1;
+    if (this.quality === 'movil') return Math.min(dpr, 2) * ((this.settings.resScale || 70) / 100) * this.dynRes;
+    if (this.quality === 'baja') return Math.min(dpr, 1) * 0.75;
+    return Math.min(dpr, this.quality === 'alta' ? 2 : 1.5);
+  }
+
+  // Resolución dinámica (calidad móvil): mide los FPS y ajusta la resolución.
+  adaptResolution(raw) {
+    if (this.quality !== 'movil' || this.settings.autoRes === false || this.state !== 'playing' || this.paused) return;
+    const pf = this.perf;
+    pf.t += raw;
+    pf.n++;
+    if (pf.t < 2) return;
+    const fps = pf.n / pf.t;
+    pf.t = pf.n = 0;
+    const target = this.settings.fpsCap === 30 ? 28 : 50;
+    let next = this.dynRes;
+    if (fps < target - 6) next = Math.max(0.55, this.dynRes - 0.12);
+    else if (fps > target + 6 && ++pf.cool >= 3) next = Math.min(1, this.dynRes + 0.06);
+    if (next !== this.dynRes) {
+      pf.cool = 0;
+      this.dynRes = next;
+      this.renderer.setPixelRatio(this.pixelRatio());
+      this.renderer.setSize(innerWidth, innerHeight);
+    }
   }
 
   setupPost() {
@@ -203,6 +242,31 @@ export class Game {
     saveSettings(s);
     if (this.audio.master) this.audio.master.gain.value = (s.volume / 100) * 0.6;
     document.getElementById('fps').style.display = s.showFps ? 'block' : 'none';
+    this.touch?.applySettings();
+    if (this.renderer && this.quality === 'movil') {
+      const pr = this.pixelRatio();
+      if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.01) {
+        this.renderer.setPixelRatio(pr);
+        this.renderer.setSize(innerWidth, innerHeight);
+      }
+    }
+  }
+
+  // Mantiene la pantalla encendida durante la partida (móviles).
+  keepAwake(on) {
+    try {
+      if (on && !this.wakeLock && navigator.wakeLock && document.visibilityState === 'visible') {
+        navigator.wakeLock.request('screen').then((l) => {
+          this.wakeLock = l;
+          l.addEventListener?.('release', () => (this.wakeLock = null));
+        }).catch(() => {});
+      } else if (!on && this.wakeLock) {
+        this.wakeLock.release().catch(() => {});
+        this.wakeLock = null;
+      }
+    } catch {
+      /* API no disponible */
+    }
   }
 
   onResize() {
@@ -220,6 +284,7 @@ export class Game {
   onLockChange(locked) {
     if (locked) {
       this.hadLock = true;
+      this.keepAwake(true);
       this.setPaused(false);
     } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen) {
       this.setPaused(true);
@@ -237,6 +302,7 @@ export class Game {
 
   resume() {
     this.audio.init();
+    this.touch?.fullscreen();
     this.input.lock();
     this.setPaused(false);
   }
@@ -263,6 +329,7 @@ export class Game {
     this.bots.reset(nb, teams, this.settings.difficulty);
     this.chars = [this.player, ...this.bots.list];
     this.beginMatch({});
+    this.touch?.fullscreen();
     this.input.lock();
   }
 
@@ -635,7 +702,7 @@ export class Game {
     const mate = this.teamMembers(p.team).find((c) => c.alive && c !== p);
     if (mate) {
       this.spectating = mate;
-      document.exitPointerLock?.();
+      this.input.unlock();
       this.hud.toast(`Has sido eliminado · Espectando a ${mate.name}`);
     }
   }
@@ -752,7 +819,8 @@ export class Game {
   }
 
   endMatchUI() {
-    document.exitPointerLock?.();
+    this.input.unlock();
+    this.keepAwake(false);
     this.hud.setScope(false);
     this.hud.toggleMap(false);
     this.build.setActive(false);
@@ -763,11 +831,12 @@ export class Game {
   }
 
   onJumpFromBus() {
-    this.hud.toast('¡Has saltado! Mira hacia abajo y pulsa W para caer más rápido');
+    this.hud.toast(this.touch ? '¡Has saltado! Mira hacia abajo y empuja el joystick para caer más rápido' : '¡Has saltado! Mira hacia abajo y pulsa W para caer más rápido');
   }
 
   onLanded() {
-    this.hud.toast(this.mode.build ? '¡Has aterrizado! Busca cofres y armas · Q para construir' : '¡Has aterrizado! Busca cofres y armas');
+    const build = this.touch ? 'el botón de ladrillos para construir' : 'Q para construir';
+    this.hud.toast(this.mode.build ? `¡Has aterrizado! Busca cofres y armas · ${build}` : '¡Has aterrizado! Busca cofres y armas');
   }
 
   // ---------------------------------------------------------- RAYCAST
@@ -805,8 +874,16 @@ export class Game {
   loop = (ts) => {
     requestAnimationFrame(this.loop);
     this.timer.update(ts);
-    const raw = this.timer.getDelta();
+    let raw = this.timer.getDelta();
+    // Límite de 30 FPS (ahorro de batería): se salta un fotograma de cada dos
+    if (this.settings.fpsCap === 30) {
+      this.capAcc = (this.capAcc || 0) + raw;
+      if (this.capAcc < 1 / 32) return;
+      raw = this.capAcc;
+      this.capAcc = 0;
+    }
     this.hud.fps(raw);
+    this.adaptResolution(raw);
     this.step(Math.min(0.05, raw));
     this.render();
   };
@@ -822,11 +899,13 @@ export class Game {
       this.updateMenuCamera(t);
       this.world.clouds.rotation.y = t * 0.003;
       this.containers.update(dt, t);
+      this.touch?.update();
       input.endFrame();
       return;
     }
     // En online la partida no se detiene al pausar.
     if (this.paused && !this.net) {
+      this.touch?.update();
       input.endFrame();
       return;
     }
@@ -835,6 +914,7 @@ export class Game {
       this.updateCamera(dt);
       this.updateBanner();
       this.hud.update(dt);
+      this.touch?.update();
       input.endFrame();
       return;
     }
@@ -846,8 +926,10 @@ export class Game {
       if (!this.paused) this.handleGlobalKeys(input);
       const zoom = this.camera.fov / this.baseFov;
       const sens = 0.0022 * zoom * this.settings.sensitivity;
-      p.yaw -= input.mouseDX * sens;
-      p.pitch -= input.mouseDY * sens * (this.settings.invertY ? -1 : 1);
+      const tsens = 0.0048 * zoom * (this.settings.touchSens || 1);
+      const inv = this.settings.invertY ? -1 : 1;
+      p.yaw -= input.mouseDX * sens + input.lookDX * tsens;
+      p.pitch -= (input.mouseDY * sens + input.lookDY * tsens) * inv;
       p.pitch = clamp(p.pitch, -1.5, 1.5);
       this.vehicles.update(dt, input);
       p.update(dt, input);
@@ -882,6 +964,7 @@ export class Game {
     if (this.noises.length && t - this.noises[0].t > 1.5) this.noises = this.noises.filter((n) => t - n.t < 1.5);
     this.world.clouds.rotation.y = t * 0.003;
     if (this.state === 'playing') this.hud.update(dt);
+    this.touch?.update();
     input.endFrame();
   }
 
@@ -1063,13 +1146,15 @@ export class Game {
     const hud = this.hud;
     if (this.state !== 'playing') return hud.banner('');
     if (this.waiting) return hud.banner('PARTIDA ONLINE', 'Esperando a que estén listos todos los jugadores…');
-    if (this.net && !this.input.locked && !this.paused && p.alive && !this.spectating) return hud.banner('', 'Haz <b>clic</b> en la pantalla para jugar');
+    const touch = !!this.touch;
+    if (this.net && !this.input.locked && !this.paused && p.alive && !this.spectating) return hud.banner('', touch ? '<b>Toca</b> la pantalla para jugar' : 'Haz <b>clic</b> en la pantalla para jugar');
     if (!p.alive && this.mode.respawn) return hud.banner('ELIMINADO', `Reapareces en ${Math.max(1, Math.ceil(this.respawnT))}…`);
-    if (this.spectating) return hud.banner('', `Espectando a <b>${this.spectating.name}</b> · Clic para cambiar · Esc: menú`);
+    if (this.spectating) return hud.banner('', `Espectando a <b>${this.spectating.name}</b> · ${touch ? 'Toca para cambiar · ⏸: menú' : 'Clic para cambiar · Esc: menú'}`);
     if (p.knocked) return hud.banner('¡DERRIBADO!', 'Arrástrate hacia un compañero para que te reanime');
     if (p.mode === 'bus') {
       if (this.bus.doorsTime > 0) hud.banner('AUTOBÚS DE BATALLA', `Las puertas se abren en ${Math.ceil(this.bus.doorsTime)}…`);
       else if (!this.bus.doorsOpen) hud.banner('AUTOBÚS DE BATALLA', 'Esperando a sobrevolar la isla…');
+      else if (touch) hud.banner('PULSA <kbd>SALTAR</kbd>', 'Arrastra para mirar · toca el minimapa para ver el mapa');
       else hud.banner('PULSA <kbd>ESPACIO</kbd> PARA SALTAR', 'Mueve el ratón para mirar · M: mapa');
     } else hud.banner('');
   }

@@ -2,3 +2,7 @@ node_modules
 dist
 .DS_Store
 server/data
+IslaRoyale*.apk
+android/keystore.properties
+*.jks
+*.keystore

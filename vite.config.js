@@ -10,5 +10,7 @@ export default defineConfig({
   preview: { host: true, proxy },
   build: {
     chunkSizeWarningLimit: 1500,
+    // Un solo archivo JS (lo necesita jugar.html, que lo incrusta todo)
+    rollupOptions: { output: { inlineDynamicImports: true } },
   },
 });

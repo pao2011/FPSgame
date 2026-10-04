@@ -1,3 +1,21 @@
+/* Fuentes incluidas en el juego (funcionan sin internet, p. ej. en la APK).
+   Inter y Lilita One: licencia SIL Open Font License (ver src/fonts). */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Lilita One';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/lilita-one-latin.woff2') format('woff2');
+}
+
 :root {
   --ui-bg: rgba(10, 18, 40, 0.55);
   --ui-border: rgba(255, 255, 255, 0.18);
@@ -2391,4 +2409,585 @@ button.x:hover {
 
 .mm-right {
   min-width: 0;
+}
+
+/* =========================================================================
+   MÓVIL Y PANTALLAS TÁCTILES (body.touch lo pone src/ui/touch.js)
+   ========================================================================= */
+:root {
+  --sl: env(safe-area-inset-left, 0px);
+  --sr: env(safe-area-inset-right, 0px);
+  --sb: env(safe-area-inset-bottom, 0px);
+  --st: env(safe-area-inset-top, 0px);
+}
+
+html,
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+#touch-ui {
+  --tsz: 1;
+  --top: 0.85;
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  touch-action: none;
+  display: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.touch #touch-ui {
+  display: block;
+}
+
+#touch-ui[data-mode='off'] {
+  display: none !important;
+}
+
+.t-btn {
+  --s: 56px;
+  position: absolute;
+  width: calc(var(--s) * var(--tsz));
+  height: calc(var(--s) * var(--tsz));
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: radial-gradient(circle at 50% 35%, rgba(40, 60, 100, 0.55), rgba(8, 14, 32, 0.55));
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  opacity: var(--top);
+  font: 800 calc(9px * var(--tsz)) var(--font);
+  letter-spacing: 0.3px;
+  touch-action: none;
+  transition: transform 0.06s, background 0.1s;
+  pointer-events: auto;
+}
+
+.t-btn svg {
+  width: 46%;
+  height: 46%;
+  pointer-events: none;
+}
+
+.t-btn span {
+  pointer-events: none;
+  line-height: 1;
+}
+
+.t-btn:hover {
+  transform: none;
+  filter: none;
+}
+
+.t-btn.down {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.t-btn.on {
+  background: linear-gradient(180deg, #ffe45c, #f5b800);
+  color: #2b1d00;
+  border-color: #fff3b0;
+}
+
+.t-fire {
+  --s: 84px;
+  right: calc(22px * var(--tsz) + var(--sr));
+  bottom: calc(52px * var(--tsz) + var(--sb));
+  background: radial-gradient(circle at 50% 35%, rgba(255, 110, 90, 0.6), rgba(150, 20, 20, 0.6));
+  border-color: rgba(255, 200, 190, 0.7);
+}
+
+.t-fire svg {
+  width: 52%;
+  height: 52%;
+}
+
+.t-fire2 {
+  --s: 56px;
+  left: calc(22px * var(--tsz) + var(--sl));
+  top: calc(150px + var(--st));
+  background: radial-gradient(circle at 50% 35%, rgba(255, 110, 90, 0.5), rgba(150, 20, 20, 0.5));
+}
+
+.t-jump {
+  --s: 62px;
+  right: calc(26px * var(--tsz) + var(--sr));
+  bottom: calc(156px * var(--tsz) + var(--sb));
+}
+
+.t-aim {
+  --s: 58px;
+  right: calc(120px * var(--tsz) + var(--sr));
+  bottom: calc(118px * var(--tsz) + var(--sb));
+}
+
+.t-crouch {
+  --s: 50px;
+  right: calc(124px * var(--tsz) + var(--sr));
+  bottom: calc(30px * var(--tsz) + var(--sb));
+}
+
+.t-reload {
+  --s: 46px;
+  right: calc(196px * var(--tsz) + var(--sr));
+  bottom: calc(60px * var(--tsz) + var(--sb));
+}
+
+.t-build {
+  --s: 50px;
+  right: calc(104px * var(--tsz) + var(--sr));
+  bottom: calc(196px * var(--tsz) + var(--sb));
+}
+
+.t-use {
+  --s: 64px;
+  right: calc(200px * var(--tsz) + var(--sr));
+  bottom: calc(132px * var(--tsz) + var(--sb));
+  background: radial-gradient(circle at 50% 35%, rgba(90, 209, 255, 0.6), rgba(20, 80, 150, 0.6));
+  border-color: rgba(190, 235, 255, 0.8);
+  display: none !important;
+}
+
+#touch-ui.has-prompt .t-use {
+  display: flex !important;
+  animation: use-pop 0.2s ease-out;
+}
+
+@keyframes use-pop {
+  from { transform: scale(0.6); }
+}
+
+.t-pause,
+.t-cam,
+.t-chat {
+  --s: 40px;
+  top: calc(8px + var(--st));
+  border-radius: 10px;
+}
+
+.t-pause { left: calc(8px + var(--sl)); }
+.t-cam { left: calc(54px + var(--sl)); }
+.t-chat { left: calc(100px + var(--sl)); display: none; }
+#touch-ui.online .t-chat { display: flex; }
+
+/* Joystick: en reposo se ve un círculo tenue abajo a la izquierda */
+.t-joy {
+  --r: calc(58px * var(--tsz));
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--r) * 2);
+  height: calc(var(--r) * 2);
+  margin: calc(var(--r) * -1) 0 0 calc(var(--r) * -1);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.14));
+  pointer-events: none;
+  opacity: var(--top);
+}
+
+.t-joy:not(.on) {
+  left: calc(36px * var(--tsz) + var(--sl) + var(--r));
+  top: auto;
+  bottom: calc(30px * var(--tsz) + var(--sb) - var(--r));
+  transform: none !important;
+  opacity: calc(var(--top) * 0.45);
+}
+
+.t-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  height: 46%;
+  margin: -23% 0 0 -23%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.t-joy:not(.on) .t-knob {
+  transform: none !important;
+}
+
+.t-joy.sprint {
+  border-color: var(--accent);
+}
+
+.t-joy.sprint .t-knob {
+  background: var(--accent);
+}
+
+/* Qué botones se ven en cada situación */
+#touch-ui[data-mode='dead'] .t-btn:not(.t-pause),
+#touch-ui[data-mode='dead'] .t-joy,
+#touch-ui[data-mode='knocked'] .t-btn:not(.t-pause):not(.t-cam),
+#touch-ui[data-mode='bus'] .t-btn:not(.t-pause):not(.t-jump),
+#touch-ui[data-mode='bus'] .t-joy,
+#touch-ui[data-mode='air'] .t-btn:not(.t-pause):not(.t-jump):not(.t-cam),
+#touch-ui[data-mode='car'] .t-btn:not(.t-pause):not(.t-jump):not(.t-use):not(.t-cam),
+#touch-ui[data-mode='building'] .t-reload,
+#touch-ui.no-build .t-build {
+  display: none;
+}
+
+#touch-ui[data-mode='bus'] .t-jump {
+  --s: 92px;
+  animation: use-pop 0.3s ease-out;
+  background: linear-gradient(180deg, #ffe45c, #f5b800);
+  color: #2b1d00;
+}
+
+#touch-ui[data-mode='building'] .t-fire {
+  background: radial-gradient(circle at 50% 35%, rgba(90, 180, 255, 0.65), rgba(20, 70, 160, 0.65));
+}
+
+/* ---------------------------------------------------- HUD en táctil */
+body.touch #slots,
+body.touch #build-bar,
+body.touch #minimap,
+body.touch #fullmap,
+body.touch #prompt {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+body.touch #bottom-right {
+  display: contents;
+}
+
+body.touch #slots,
+body.touch #build-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(6px + var(--sb));
+  transform: translateX(-50%);
+  gap: 4px;
+}
+
+body.touch .slot {
+  width: 46px;
+  height: 42px;
+  border-radius: 7px;
+}
+
+body.touch .slot.selected {
+  transform: translateY(-4px);
+}
+
+body.touch .slot .key {
+  display: none;
+}
+
+body.touch .slot .count {
+  font-size: 12px;
+}
+
+body.touch #build-bar .piece {
+  width: 54px;
+  padding: 24px 2px 4px;
+  font-size: 10px;
+}
+
+body.touch #build-bar .piece-mat {
+  font-size: 15px;
+  padding: 0 8px;
+}
+
+body.touch #build-bar .key {
+  display: none;
+}
+
+body.touch #weapon-name,
+body.touch #ammo-list,
+body.touch #fullmap .title small,
+body.touch #heading {
+  display: none;
+}
+
+body.touch #ammo {
+  position: absolute;
+  left: calc(50% + 70px);
+  bottom: calc(54px + var(--sb));
+}
+
+body.touch #ammo .mag { font-size: 24px; }
+body.touch #ammo .res { font-size: 14px; }
+
+body.touch #bottom-left {
+  left: calc(50% - 160px);
+  bottom: calc(56px + var(--sb));
+  width: 220px;
+  gap: 3px;
+}
+
+body.touch .bar-row .bar { height: 10px; }
+body.touch .bar-row .icon { width: 14px; font-size: 12px; }
+body.touch #hp-val,
+body.touch #sh-val { width: 30px; font-size: 14px; }
+
+body.touch #mats {
+  position: absolute;
+  left: calc(8px + var(--sl));
+  top: calc(54px + var(--st));
+  flex-direction: column;
+  gap: 3px;
+}
+
+body.touch #mats .mat {
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+body.touch #top-right {
+  top: calc(6px + var(--st));
+  right: calc(8px + var(--sr));
+  gap: 4px;
+}
+
+body.touch #minimap {
+  width: 112px;
+  height: 112px;
+  border-radius: 8px;
+}
+
+body.touch #stats {
+  font-size: 11px;
+  gap: 6px;
+  padding: 2px 6px;
+}
+
+body.touch #storm-info {
+  font-size: 10px;
+  max-width: 170px;
+  padding: 3px 6px;
+}
+
+body.touch #compass {
+  top: calc(4px + var(--st));
+  width: 220px;
+  height: 26px;
+}
+
+body.touch #compass .tick { font-size: 9px; }
+body.touch #compass .tick.major { font-size: 14px; }
+
+body.touch #banner {
+  top: 13%;
+  width: 70vw;
+}
+
+body.touch #banner .big { font-size: 24px; }
+body.touch #banner .sub { font-size: 12px; }
+
+body.touch #prompt {
+  top: auto;
+  bottom: calc(110px + var(--sb));
+  font-size: 13px;
+  padding: 6px 12px;
+  max-width: 46vw;
+  white-space: normal;
+  text-align: center;
+}
+
+body.touch #progress {
+  top: auto;
+  bottom: calc(150px + var(--sb));
+}
+
+body.touch #toast {
+  top: 24%;
+  font-size: 12px;
+  max-width: 70vw;
+  white-space: normal;
+  text-align: center;
+}
+
+body.touch #zone-name { font-size: 22px; top: 20%; }
+body.touch #altitude { right: calc(110px + var(--sr)); top: 42%; padding: 6px 10px; }
+body.touch .alt-val { font-size: 22px; }
+body.touch #speedo { bottom: auto; top: 22%; font-size: 30px; }
+body.touch #team-panel,
+body.touch #kill-feed { display: none; }
+body.touch #score-bar { top: calc(36px + var(--st)); transform: translateX(-50%) scale(0.8); }
+body.touch #fps { left: 50%; top: auto; bottom: 2px; transform: translateX(-50%); }
+body.touch #match-chat { bottom: auto; top: 54px; left: 150px; width: 320px; }
+body.touch #match-chat.typing { top: 8px; left: 50%; transform: translateX(-50%); }
+body.touch #notify { top: 54px; }
+body.touch #fullmap-canvas { width: min(92vh, 80vw); }
+
+/* Aviso de girar el móvil */
+#rotate-hint {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: radial-gradient(circle at 50% 40%, #2d5fb8, #0b1630 70%);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+  padding: 24px;
+  font: 800 18px var(--font);
+}
+
+#rotate-hint .phone {
+  width: 54px;
+  height: 92px;
+  border: 4px solid #fff;
+  border-radius: 10px;
+  animation: rotate-phone 1.6s ease-in-out infinite;
+}
+
+@keyframes rotate-phone {
+  0%, 20% { transform: rotate(0); }
+  60%, 100% { transform: rotate(-90deg); }
+}
+
+@media (orientation: portrait) {
+  body.touch #rotate-hint { display: flex; }
+}
+
+/* ------------------------------------- Menús en pantallas bajas (móvil) */
+@media (max-height: 540px) {
+  #main-menu {
+    flex-direction: row;
+    overflow: hidden;
+    padding: calc(8px + var(--st)) calc(10px + var(--sr)) calc(8px + var(--sb)) calc(10px + var(--sl));
+    gap: 12px;
+  }
+  .mm-left {
+    min-width: 0;
+    width: 200px;
+    flex: none;
+    gap: 6px;
+    overflow-y: auto;
+  }
+  #main-menu .logo {
+    font-size: 27px;
+    white-space: nowrap;
+  }
+  .tagline {
+    display: none;
+  }
+  .mm-nav {
+    gap: 5px;
+  }
+  .mm-nav .nav-btn {
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+  .island-row {
+    margin-top: 6px;
+    font-size: 11px;
+  }
+  .mm-right {
+    justify-content: stretch;
+    min-width: 0;
+  }
+  .mm-panel,
+  .mm-panel.wide {
+    width: 100%;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 14px 16px;
+    border-radius: 12px;
+  }
+  .mm-panel h2 {
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  .ol-grid {
+    grid-template-columns: 1fr;
+  }
+  .ol-side {
+    border-left: 0;
+    padding-left: 0;
+    max-height: none;
+  }
+  .screen {
+    overflow-y: auto;
+    justify-content: flex-start;
+    padding: 10px 0;
+  }
+  .menu-card {
+    padding: 14px 18px;
+    margin: auto;
+  }
+  .menu-card .logo.small {
+    font-size: 30px;
+  }
+  .stats-grid {
+    gap: 6px;
+  }
+  .big-play {
+    padding: 12px 18px;
+    font-size: 22px;
+  }
+  .mode-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+  .preview-canvas {
+    max-height: 46vh;
+    width: auto;
+  }
+  .ctrl-table td {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+}
+
+/* Servidor del modo online: búsqueda en la Wi-Fi */
+.scan-row,
+.scan-found {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+  font-size: 13px;
+}
+
+.spinner.small {
+  width: 18px;
+  height: 18px;
+  border-width: 3px;
+}
+
+.mobile-addr {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: rgba(90, 209, 255, 0.1);
+  border: 1px solid rgba(90, 209, 255, 0.35);
+  user-select: text;
+}
+
+.mobile-addr code {
+  display: inline-block;
+  margin: 2px 0;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  user-select: all;
+}
+
+.mobile-addr small {
+  display: block;
+  opacity: 0.7;
 }
