@@ -136,6 +136,8 @@ export class OnlineUI {
     n.on('auth_ok', (m) => {
       this.busy = false;
       this.error = '';
+      // Pase de batalla, tokens y objetos: se sincronizan con la cuenta
+      this.game.progress.syncWithAccount(m.profile);
       // Aspecto: el del servidor manda; si no tiene, se sube el local
       if (m.outfit) {
         this.game.settings.outfit = m.outfit;
@@ -220,6 +222,7 @@ export class OnlineUI {
       if (this.net.seed && this.net.seed !== this.game.seed) {
         // Hay que estar en la isla online: recargar y unirse al volver
         const q = new URLSearchParams(location.search);
+        q.delete('creativo');
         q.set('seed', this.net.seed);
         q.set('online', '1');
         q.set('join', m.id);
@@ -548,6 +551,7 @@ export class OnlineUI {
     on('#ol-cancel', () => n.send('queue', { on: false }));
     on('#ol-load-island', () => {
       const q = new URLSearchParams(location.search);
+      q.delete('creativo');
       q.set('seed', n.seed);
       q.set('online', '1');
       location.search = q.toString();

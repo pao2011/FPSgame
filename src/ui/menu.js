@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { MODES, DIFFICULTIES } from '../game/modes.js';
 import { OnlineUI } from './online.js';
+import { ProgressionUI } from './progression.js';
 import { makeCharacter } from '../game/models.js';
-import { SKINS, SHIRTS, PANTS, HAIR, randomOutfit } from '../game/character.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -10,7 +10,8 @@ const CONTROLS = [
   ['W A S D', 'Moverse · W/S en una escalera de mano: trepar/bajar'], ['Ratón', 'Mirar'], ['Clic izquierdo', 'Disparar · usar · golpear · colocar pieza'],
   ['Clic derecho', 'Apuntar · (construyendo) cambiar material'], ['Espacio', 'Saltar · salir del bus · planeador · freno de mano'],
   ['Shift', 'Correr'], ['C', 'Agacharse'], ['E', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
-  ['R', 'Recargar'], ['1–6 / rueda', 'Inventario · (construyendo) 1–4 pieza'], ['Q', 'Modo construcción'],
+  ['R', 'Recargar'], ['1–6 / rueda', 'Inventario · (construyendo) 1–4 pieza'], ['Q', 'Modo construcción'], ['F', 'Editar una construcción tuya (F otra vez: confirmar · clic der.: reiniciar)'],
+  ['B', '(creativo) Catálogo de edificios · R girar · doble Espacio: volar'],
   ['G', 'Soltar objeto'], ['V', 'Cámara 1ª / 3ª persona'], ['M', 'Mapa'], ['Esc', 'Pausa'],
   ['Intro', '(online) Chat de la partida · empieza con /e para hablar solo con tu equipo'],
 ];
@@ -23,12 +24,10 @@ const TOUCH_CONTROLS = [
   ['▲ Saltar', 'Saltar · salir del autobús · abrir el planeador · freno de mano'],
   ['▼', 'Agacharse (activar/desactivar)'], ['↻', 'Recargar'], ['Ladrillos', 'Modo construcción / volver al combate'],
   ['USAR', 'Abrir cofre · recoger · coche · (mantener) reanimar'],
+  ['✎', 'Editar la construcción a la que miras (otra vez: confirmar) · Mira: reiniciar'],
+  ['🏠', '(creativo) Catálogo de edificios · ↻ girar · ✕ cancelar · doble SALTAR: volar'],
   ['Inventario', 'Toca un hueco para elegir · mantenlo pulsado para soltar el objeto'],
   ['Minimapa', 'Tócalo para abrir el mapa'], ['⏸', 'Pausa'], ['👁', 'Cámara 1ª / 3ª persona'], ['💬', '(online) Chat de la partida'],
-];
-
-const OUTFIT_PARTS = [
-  ['shirt', 'Camiseta', SHIRTS], ['pants', 'Pantalón', PANTS], ['hair', 'Pelo', HAIR], ['skin', 'Piel', SKINS],
 ];
 
 // Vista previa 3D del personaje (pantalla Personaje).
@@ -101,6 +100,8 @@ const HOWTO = [
   ['Equípate', 'Abre cofres dorados (E) y recoge armas, curas y munición. El color indica la rareza.'],
   ['Consigue materiales', 'Golpea árboles, rocas y coches abandonados con el pico para conseguir madera, piedra y metal.'],
   ['Construye para cubrirte', 'Q entra en modo construcción: muros, suelos, rampas y techos. Clic derecho cambia el material.'],
+  ['Edita tus construcciones', 'Mira una pieza tuya y pulsa F: marca casillas para hacer puertas, ventanas o arcos, o gira una rampa. F otra vez confirma.'],
+  ['Sube el pase de batalla', 'Cada partida da XP (eliminaciones, daño, cofres, puesto…) y los logros dan más. Cada nivel desbloquea camuflajes, accesorios, skins o tokens para la Tienda.'],
   ['Vigila la tormenta', 'El círculo blanco del mapa (M) es la próxima zona segura. Fuera de ella pierdes vida.'],
   ['Juega en equipo', 'En Dúos y Escuadras, si te derriban arrástrate hacia un compañero. Mantén E para reanimar a los tuyos.'],
   ['Sé el último en pie', 'Elimina al resto de jugadores (o equipos) para conseguir la Victoria Magistral.'],
@@ -114,6 +115,7 @@ export class Menu {
     this.preview = new CharacterPreview();
     this.build();
     this.online = new OnlineUI(game, this);
+    this.prog = new ProgressionUI(game, this);
   }
 
   get s() {
@@ -126,9 +128,12 @@ export class Menu {
       <div class="mm-left">
         <div class="logo">ISLA<span>ROYALE</span></div>
         <div class="tagline">Battle royale en 3D en tu navegador</div>
+        <button class="pass-pill" id="pass-pill" data-panel="pass"></button>
         <nav class="mm-nav">
           <button data-panel="online" class="nav-btn online">🌐 ONLINE <span class="badge" id="online-badge"></span></button>
           <button data-panel="play" class="nav-btn">▶ JUGAR CON BOTS</button>
+          <button data-panel="pass" class="nav-btn pass">⭐ PASE DE BATALLA</button>
+          <button data-panel="shop" class="nav-btn">🛒 TIENDA</button>
           <button data-panel="locker" class="nav-btn">PERSONAJE</button>
           <button data-panel="modes" class="nav-btn">MODOS DE JUEGO</button>
           <button data-panel="options" class="nav-btn">OPCIONES</button>
@@ -142,9 +147,10 @@ export class Menu {
         <div class="net-pill" id="net-pill"></div>
       </div>
       <div class="mm-right"><div id="mm-panel" class="mm-panel"></div></div>`;
-    this.root.querySelectorAll('.nav-btn').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.panel)));
+    this.root.querySelectorAll('.nav-btn, .pass-pill').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.panel)));
     $('new-island').addEventListener('click', () => {
       const q = new URLSearchParams(location.search);
+      q.delete('creativo');
       q.set('seed', Math.floor(Math.random() * 1e9));
       location.search = q.toString();
     });
@@ -180,6 +186,7 @@ export class Menu {
         <div id="end-title" class="logo small"></div>
         <div id="end-cause" class="subtitle"></div>
         <div id="end-stats" class="stats-grid"></div>
+        <div id="end-xp"></div>
         <div class="pause-buttons row">
           <button id="again-btn">JUGAR OTRA VEZ</button>
           <button id="menu-btn" class="secondary">MENÚ PRINCIPAL</button>
@@ -216,7 +223,9 @@ export class Menu {
     void el.offsetWidth;
     el.classList.add('anim');
     if (panel === 'online') return this.online.render(el);
-    if (panel === 'locker') return this.renderLocker(el);
+    if (panel === 'locker') return this.prog.renderLocker(el);
+    if (panel === 'pass') return this.prog.renderPass(el);
+    if (panel === 'shop') return this.prog.renderShop(el);
     if (panel === 'play') el.innerHTML = this.playHTML();
     else if (panel === 'modes') el.innerHTML = this.modesHTML();
     else if (panel === 'options') el.innerHTML = this.optionsHTML();
@@ -381,52 +390,12 @@ export class Menu {
     }));
   }
 
-  // ---------------------------------------------------------- PERSONAJE
-  renderLocker(el) {
-    const o = { ...(this.s.outfit || this.game.player.outfit || randomOutfit()) };
-    const hex = (n) => '#' + n.toString(16).padStart(6, '0');
-    el.innerHTML = `
-      <h2>Personaje</h2>
-      <p class="lead">Elige tu aspecto. En las partidas online los demás jugadores te verán así.</p>
-      <div class="locker">
-        <div class="preview-box" id="preview-box"></div>
-        <div class="swatches">${OUTFIT_PARTS.map(([k, label, list]) => `
-          <div class="sw-row"><label>${label}</label><div class="sw">${list.map((c) => `<button data-k="${k}" data-c="${c}" class="${o[k] === c ? 'on' : ''}" style="--c:${hex(c)}"></button>`).join('')}</div></div>`).join('')}
-          <button class="small-btn" id="outfit-random">🎲 Aleatorio</button>
-        </div>
-      </div>`;
-    el.querySelector('#preview-box').appendChild(this.preview.canvas);
-    this.preview.set(o);
-    this.preview.start();
-    const save = () => {
-      this.s.outfit = { ...o };
-      this.game.applySettings();
-      this.game.player.setOutfit(o);
-      this.game.combat.modelKey = null;
-      const n = this.game.netClient;
-      if (n.authed) {
-        n.user.outfit = { ...o };
-        n.send('outfit', { outfit: o });
-      }
-      this.preview.set(o);
-    };
-    el.querySelectorAll('.sw button').forEach((b) => b.addEventListener('click', () => {
-      o[b.dataset.k] = Number(b.dataset.c);
-      el.querySelectorAll(`.sw button[data-k="${b.dataset.k}"]`).forEach((x) => x.classList.toggle('on', x === b));
-      save();
-    }));
-    el.querySelector('#outfit-random').addEventListener('click', () => {
-      Object.assign(o, randomOutfit());
-      save();
-      this.renderLocker(el);
-    });
-  }
-
   showMain(panel = null) {
     this.hideAll();
     this.root.style.display = 'flex';
     this.show(panel || (this.panel === 'online' ? 'online' : 'play'));
     this.updateBadge();
+    this.prog.updatePill();
   }
 
   hideAll() {
@@ -440,7 +409,8 @@ export class Menu {
     if (!on) $('pause-options').innerHTML = '';
   }
 
-  showEnd(win, cause, stats, online = false) {
+  showEnd(win, cause, stats, online = false, xp = null) {
+    $('end-xp').innerHTML = this.prog.endHTML(xp);
     this.endOnline = online;
     $('again-btn').textContent = online ? 'VOLVER AL GRUPO' : 'JUGAR OTRA VEZ';
     $('menu-btn').style.display = online ? 'none' : '';

@@ -10,6 +10,8 @@ export function createNature(world, rng) {
   const bushes = [];
 
   const accept = (x, z, margin) => {
+    // Creativo: el centro de la isla queda libre para construir
+    if (world.creative && Math.hypot(x, z) < 300) return null;
     const h = terrain.heightAt(x, z);
     if (h < 2.5 || h > 58) return null;
     if (terrain.slopeAt(x, z) > 0.8) return null;
@@ -41,6 +43,7 @@ export function createNature(world, rng) {
     const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
     const h = terrain.heightAt(x, z);
     if (h < 0.5) continue;
+    if (world.creative && Math.hypot(x, z) < 300) continue;
     if (world.occupied(x, z, 2) || world.poiAt(x, z) || world.roads.edgeDistance(x, z, 24) < 3) continue;
     rocks.push({ x, y: h, z, s: rng.float(0.8, 3.2), rot: rng.float(0, Math.PI * 2) });
   }

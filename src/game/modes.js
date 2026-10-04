@@ -34,6 +34,10 @@ export const MODES = {
     id: 'zerobuild', name: 'Construcción cero', icon: '🚫', teamSize: 1, build: false, online: true, maxPlayers: 24,
     desc: 'Solitario sin construir: sólo movimiento, coberturas del mapa y puntería.',
   },
+  creative: {
+    id: 'creative', name: 'Creativo', icon: '🎨', teamSize: 1, build: true, noBots: true, infinite: true, creative: true, noBus: true,
+    desc: 'Isla plana para ti: todas las armas, materiales infinitos, vuelo y todos los edificios de la isla para colocarlos donde quieras.',
+  },
   practice: {
     id: 'practice', name: 'Práctica libre', icon: '🎯', teamSize: 1, build: true, noBots: true, infinite: true,
     desc: 'La isla para ti solo, con materiales infinitos y dianas para entrenar.',

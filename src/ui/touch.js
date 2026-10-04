@@ -15,6 +15,9 @@ const ICONS = {
   cam: svg('<path d="M12 6C6.5 6 3 12 3 12s3.5 6 9 6 9-6 9-6-3.5-6-9-6zm0 9.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" fill="currentColor"/>'),
   chat: svg('<path d="M4 5h16v11H9l-5 4z" fill="currentColor"/>'),
   mat: svg('<path d="M4 7l8-4 8 4-8 4zm0 5l8 4 8-4M4 17l8 4 8-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'),
+  edit: svg('<path d="M4 17.5V20h2.5L17.8 8.7l-2.5-2.5zM19.7 6.8a1 1 0 0 0 0-1.4l-1.1-1.1a1 1 0 0 0-1.4 0l-1 1 2.5 2.5z" fill="currentColor"/>'),
+  catalog: svg('<path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z" fill="currentColor"/>'),
+  close: svg('<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'),
   use: svg('<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V3a1.5 1.5 0 0 1 3 0v7h.5V5a1.5 1.5 0 0 1 3 0v9c0 4-2.5 7-6.5 7-3 0-4.6-1.6-6-3.7L4 13.5a1.4 1.4 0 0 1 2.2-1.7z" fill="currentColor"/>'),
 };
 
@@ -28,6 +31,8 @@ const BUTTONS = [
   { id: 'reload', key: 'KeyR' },
   { id: 'build', key: 'KeyQ' },
   { id: 'use', key: 'KeyE', label: 'USAR' },
+  { id: 'edit', key: 'KeyF', label: 'EDITAR' },
+  { id: 'catalog', key: 'KeyB' },
   { id: 'pause', icon: 'pause' },
   { id: 'cam', key: 'KeyV' },
   { id: 'chat' },
@@ -307,8 +312,8 @@ export class TouchControls {
       g.menu.online.openChat();
       return;
     }
-    if (act === 'aim' && g.build.active) {
-      input.tap('mouse2'); // construyendo: cambiar de material
+    if (act === 'aim' && (g.build.busy || g.creative?.busy)) {
+      input.tap('mouse2'); // construyendo: material · editando: reiniciar · creativo: cancelar
       return;
     }
     if (def.toggle) {
@@ -321,7 +326,7 @@ export class TouchControls {
 
   releaseButton(act, def) {
     if (def?.toggle || !def?.key || act === 'pause' || act === 'chat') return;
-    if (act === 'aim' && this.game.build.active) return;
+    if (act === 'aim' && (this.game.build.busy || this.game.creative?.busy)) return;
     this.input.release(def.key);
   }
 
@@ -380,11 +385,28 @@ export class TouchControls {
       this.state.jumpLabel = jumpLabel;
       this.btn.jump.querySelector('span').textContent = jumpLabel;
     }
-    const buildIcon = st === 'building' ? 'sword' : 'build';
+    const editing = !!g.build.editing;
+    const cBusy = !!g.creative?.busy && !g.creative.panelOpen;
+    const buildIcon = (st === 'building' ? 'sword' : 'build') + (editing ? 'e' : cBusy ? 'c' : '');
     if (buildIcon !== this.state.buildIcon) {
       this.state.buildIcon = buildIcon;
-      this.btn.build.innerHTML = ICONS[buildIcon];
-      this.btn.aim.innerHTML = st === 'building' ? ICONS.mat : ICONS.aim;
+      this.btn.build.innerHTML = ICONS[st === 'building' ? 'sword' : 'build'];
+      this.btn.aim.innerHTML = editing || cBusy ? ICONS.close : st === 'building' ? ICONS.mat : ICONS.aim;
+      this.btn.edit.querySelector('span').textContent = editing ? 'LISTO' : 'EDITAR';
+    }
+    const canEdit = playing && (editing || !!g.build.editTarget);
+    if (canEdit !== this.state.canEdit) {
+      this.state.canEdit = canEdit;
+      this.root.classList.toggle('can-edit', canEdit);
+    }
+    const creative = !!g.mode.creative;
+    if (creative !== this.state.creative) {
+      this.state.creative = creative;
+      this.root.classList.toggle('creative', creative);
+    }
+    if (cBusy !== this.state.cBusy) {
+      this.state.cBusy = cBusy;
+      this.root.classList.toggle('placing', cBusy);
     }
     const prompt = playing && g.hud.last.promptShow === 'block';
     if (prompt !== this.state.prompt) {

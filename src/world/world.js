@@ -47,13 +47,15 @@ function rotFacing(dx, dz) {
 }
 
 export class World {
-  constructor(scene, seed) {
+  // opts.creative: isla plana y vacía para el modo creativo.
+  constructor(scene, seed, opts = {}) {
     this.scene = scene;
     this.seed = seed;
+    this.creative = !!opts.creative;
     this.rng = new RNG(seed);
     this.noise = createNoise2D(this.rng.next);
     this.collision = new CollisionWorld(16);
-    this.terrain = new Terrain(this.noise);
+    this.terrain = new Terrain(this.noise, { flat: this.creative });
     this.roads = new RoadNetwork();
     this.occ = new RectIndex(32);
     this.pois = [];
@@ -70,11 +72,13 @@ export class World {
   }
 
   generate() {
-    this.placePOIs();
-    for (const poi of this.pois) this.layoutPOI(poi);
-    this.planRoads();
-    this.planRoadside();
-    this.planLandmarks();
+    if (!this.creative) {
+      this.placePOIs();
+      for (const poi of this.pois) this.layoutPOI(poi);
+      this.planRoads();
+      this.planRoadside();
+      this.planLandmarks();
+    }
     this.terrain.flats = [...this.pois, ...this.pads];
     this.terrain.zones = this.pois;
     this.scene.add(this.terrain.build());

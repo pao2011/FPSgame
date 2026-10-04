@@ -2,6 +2,7 @@
 // emparejamiento. Las partidas en sí las gestiona Match (match.js).
 import { MODES, DIFFICULTIES, partyLimit } from '../src/game/modes.js';
 import { Match } from './match.js';
+import { cleanCosmetics } from '../src/game/cosmetics.js';
 
 const WAIT_MS = Number(process.env.QUEUE_WAIT_MS) || 12000; // espera en cola antes de empezar con bots
 const PARTY_MAX = 4;
@@ -107,6 +108,7 @@ export class Lobby {
       case 'queue': this.setQueue(c, !!m.on); break;
       case 'chat': this.chat(c, m); break;
       case 'outfit': this.setOutfit(c, m.outfit); break;
+      case 'profile': this.setProfile(c, m.profile); break;
       case 'leave_match': if (c.match) c.match.leave(c, 'quit'); break;
       case 'ping': this.send(c, { t: 'pong', ts: m.ts }); break;
       default: break;
@@ -132,7 +134,7 @@ export class Lobby {
     c.user = res.user;
     this.online.set(key, c);
     const u = res.user;
-    this.send(c, { t: 'auth_ok', name: u.name, token: res.token, stats: u.stats, outfit: u.outfit, seed: this.islandSeed });
+    this.send(c, { t: 'auth_ok', name: u.name, token: res.token, stats: u.stats, outfit: u.outfit, profile: u.profile || null, seed: this.islandSeed });
     this.ensureParty(c);
     this.pushParty(c.party);
     this.pushSocial(key);
@@ -394,9 +396,21 @@ export class Lobby {
     if (!outfit || typeof outfit !== 'object') return;
     const clean = {};
     for (const k of ['skin', 'shirt', 'pants', 'hair']) if (Number.isInteger(outfit[k])) clean[k] = outfit[k] & 0xffffff;
+    Object.assign(clean, cleanCosmetics(outfit));
     c.user.outfit = clean;
     this.db.save();
     if (c.party) this.pushParty(c.party);
+  }
+
+  // Progreso del pase de batalla, tokens y objetos (lo calcula el juego).
+  setProfile(c, profile) {
+    if (!profile || typeof profile !== 'object') return;
+    const json = JSON.stringify(profile);
+    if (json.length > 16000) return;
+    const cur = c.user.profile;
+    if (cur && (Number(cur.rev) || 0) > (Number(profile.rev) || 0)) return; // versión más antigua
+    c.user.profile = JSON.parse(json);
+    this.db.save();
   }
 
   // ------------------------------------------------------------ COLA
