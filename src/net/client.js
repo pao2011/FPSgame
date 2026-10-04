@@ -33,13 +33,18 @@ export function serverUrl(custom) {
   let s = String(custom || '').trim();
   if (s) {
     if (!/^wss?:\/\//.test(s)) s = s.replace(/^http/, 'ws');
-    if (!/^wss?:\/\//.test(s)) s = 'ws://' + s;
+    if (!/^wss?:\/\//.test(s)) {
+      // IP, localhost o dirección con puerto = red local (ws://); un dominio
+      // como mi-isla.onrender.com está detrás de https (wss://).
+      const local = /^(localhost|\d{1,3}(\.\d{1,3}){3}|[^/]*:\d+)(\/|$)/.test(s);
+      s = (local ? 'ws://' : 'wss://') + s;
+    }
     if (!/\/ws\/?$/.test(s)) s = s.replace(/\/$/, '') + '/ws';
     return s;
   }
-  // En la app de Android el juego va dentro del móvil: no hay servidor por
-  // defecto, hay que indicar el del amigo (o buscarlo en la Wi-Fi).
-  if (needsServerAddress()) return '';
+  // En la app de Android el juego va dentro del móvil: se usa el servidor
+  // público, salvo que el jugador indique otro (o lo busque en la Wi-Fi).
+  if (needsServerAddress()) return DEFAULT_SERVER;
   // Con `npm run dev` el juego va por Vite (5173) y el servidor por el 8080:
   // se conecta directo al servidor (sin depender del proxy de Vite).
   if (import.meta.env?.DEV && (location.protocol === 'http:' || location.protocol === 'https:')) {
@@ -50,6 +55,9 @@ export function serverUrl(custom) {
   }
   return 'ws://localhost:8080/ws';
 }
+
+// Servidor público al que se conecta la app de Android si no se elige otro.
+export const DEFAULT_SERVER = 'wss://isla-royale.onrender.com/ws';
 
 export function needsServerAddress() {
   return !!window.Capacitor?.isNativePlatform?.();

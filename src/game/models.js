@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RARITIES, AMMO } from './items.js';
+import { CAMOS } from './cosmetics.js';
 
 // Modelos low-poly construidos con primitivas.
 
@@ -44,7 +45,7 @@ const METAL = { phong: true, shininess: 60, specular: 0x444444 };
 
 // ---------------------------------------------------------------- ARMAS ---
 // El cañón apunta hacia -Z. El origen está aproximadamente en la empuñadura.
-export function makeWeaponModel(type, rarity = 0) {
+export function makeWeaponModel(type, rarity = 0, camo = null) {
   const g = new THREE.Group();
   const accent = RARITIES[rarity]?.hex ?? 0xaaaaaa;
   const dark = 0x2a2c30;
@@ -125,10 +126,25 @@ export function makeWeaponModel(type, rarity = 0) {
       break;
     }
   }
+  if (camo && CAMOS[camo] && type !== 'pickaxe') applyCamo(g, CAMOS[camo], [mid, dark, wood]);
   g.add(muzzle);
   g.userData.muzzle = muzzle;
   g.userData.sightY = sightY;
   return g;
+}
+
+// Camuflaje: las piezas del cuerpo del arma (no el color de rareza ni la mira)
+// toman colores de la paleta del camuflaje, pieza a pieza.
+function applyCamo(g, camo, recolor) {
+  const cols = camo.colors;
+  let i = 0;
+  g.traverse((o) => {
+    if (!o.isMesh || !recolor.includes(o.material.color.getHex())) return;
+    const c = cols[(i * 7 + 3) % cols.length];
+    i++;
+    const opts = camo.shiny ? { phong: true, shininess: 90, specular: 0x888888 } : camo.glow ? { emissive: c, emissiveIntensity: 0.35 } : {};
+    o.material = mat(c, opts);
+  });
 }
 
 // ----------------------------------------------------------- CONSUMIBLES ---
@@ -185,8 +201,8 @@ function makeAmmoModel(ammo) {
   return g;
 }
 
-export function makeItemModel(item) {
-  if (item.kind === 'weapon') return makeWeaponModel(item.type, item.rarity);
+export function makeItemModel(item, camo = null) {
+  if (item.kind === 'weapon') return makeWeaponModel(item.type, item.rarity, camo);
   if (item.kind === 'consumable') return makeConsumableModel(item.type);
   if (item.kind === 'ammo') return makeAmmoModel(item.ammo);
   if (item.kind === 'material') return makeMaterialModel(item.mat);
@@ -229,11 +245,28 @@ function makeAmmoBox() {
 }
 
 // ------------------------------------------------------------- PERSONAJE ---
+// Colores base de cada skin (los detalles se añaden en addSuitParts).
+const SUIT_LOOK = {
+  banana: { skin: 0xffe135, shirt: 0xffe135, pants: 0xf2cf1d, hair: 0xffe135, pack: false },
+  astronauta: { skin: 0xf1c9a5, shirt: 0xf2f4f7, pants: 0xdfe3ea, hair: 0x3a2a1a, pack: false },
+  robot: { skin: 0x9aa5b1, shirt: 0x6b7684, pants: 0x4b5563, hair: 0x9aa5b1, pack: false },
+  pirata: { skin: 0xe0b48a, shirt: 0xf2f2f2, pants: 0x2b2b38, hair: 0x1b1b1b, pack: true },
+  ninja: { skin: 0x1b1b22, shirt: 0x1b1b22, pants: 0x1b1b22, hair: 0x1b1b22, pack: false },
+  dino: { skin: 0x4fbf4a, shirt: 0x4fbf4a, pants: 0x3a9a3a, hair: 0x4fbf4a, pack: false },
+};
+
+// Colores efectivos de un aspecto (la skin manda sobre los colores elegidos).
+export function outfitColors(c = {}) {
+  const look = SUIT_LOOK[c.suit];
+  return { skin: look?.skin ?? c.skin ?? 0xe0b48a, shirt: look?.shirt ?? c.shirt ?? 0x2f6fd6 };
+}
+
 export function makeCharacter(c = {}) {
-  const skin = c.skin ?? 0xe0b48a;
-  const shirt = c.shirt ?? 0x2f6fd6;
-  const pants = c.pants ?? 0x2b2b38;
-  const hair = c.hair ?? 0x3a2a1a;
+  const look = SUIT_LOOK[c.suit] || null;
+  const skin = look?.skin ?? c.skin ?? 0xe0b48a;
+  const shirt = look?.shirt ?? c.shirt ?? 0x2f6fd6;
+  const pants = look?.pants ?? c.pants ?? 0x2b2b38;
+  const hair = look?.hair ?? c.hair ?? 0x3a2a1a;
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -262,11 +295,142 @@ export function makeCharacter(c = {}) {
   box(head, 0.05, 0.05, 0.02, 0x111111, 0.07, 0.2, -0.155);
   const armL = mkLimb(-0.32, 1.5, 0.14, 0.62, shirt, skin);
   const armR = mkLimb(0.32, 1.5, 0.14, 0.62, shirt, skin);
-  box(body, 0.36, 0.4, 0.16, 0x6b4a2b, 0, 1.25, 0.2).castShadow = true; // mochila
+  if (!look || look.pack) box(body, 0.36, 0.4, 0.16, 0x6b4a2b, 0, 1.25, 0.2).castShadow = true; // mochila
   const hand = new THREE.Group();
   hand.position.set(0, -0.6, 0);
   armR.add(hand);
-  return { root, body, legL, legR, armL, armR, head, torso, hand };
+  const parts = { root, body, legL, legR, armL, armR, head, torso, hand };
+  if (look) addSuitParts(parts, c.suit);
+  if (c.acc) addAccessory(parts, c.acc);
+  return parts;
+}
+
+const GOLD = { emissive: 0x6a4a00 };
+
+function addSuitParts({ body, head, armL, armR }, suit) {
+  switch (suit) {
+    case 'banana':
+      box(head, 0.27, 0.3, 0.27, 0xffe135, 0, 0.46, 0.02);
+      box(head, 0.2, 0.2, 0.2, 0xf7d82a, 0, 0.68, 0.07);
+      box(head, 0.08, 0.12, 0.08, 0x5a3a1a, 0, 0.83, 0.12);
+      box(head, 0.12, 0.025, 0.02, 0x111111, 0, 0.1, -0.155);
+      for (const [x, y] of [[-0.12, 1.36], [0.14, 1.12], [-0.05, 1.02], [0.08, 1.45]]) box(body, 0.06, 0.06, 0.02, 0x7a5a20, x, y, -0.135);
+      break;
+    case 'astronauta':
+      box(head, 0.44, 0.06, 0.44, 0xf2f4f7, 0, 0.38, 0);
+      box(head, 0.06, 0.42, 0.44, 0xf2f4f7, -0.22, 0.17, 0);
+      box(head, 0.06, 0.42, 0.44, 0xf2f4f7, 0.22, 0.17, 0);
+      box(head, 0.44, 0.42, 0.06, 0xf2f4f7, 0, 0.17, 0.22);
+      box(head, 0.38, 0.07, 0.04, 0xffb43c, 0, 0.32, -0.21, { emissive: 0x553300 });
+      box(body, 0.44, 0.56, 0.22, 0xe6e9ee, 0, 1.25, 0.24).castShadow = true;
+      box(body, 0.1, 0.1, 0.02, 0x2f6fd6, -0.12, 1.38, -0.135);
+      box(body, 0.1, 0.1, 0.02, 0xd63a2f, 0.12, 1.38, -0.135);
+      box(body, 0.2, 0.06, 0.02, 0x8a93a0, 0, 1.18, -0.135);
+      break;
+    case 'robot':
+      box(head, 0.26, 0.07, 0.04, 0xff3030, 0, 0.2, -0.16, { emissive: 0xff2020 });
+      box(head, 0.03, 0.2, 0.03, 0x333a44, 0, 0.44, 0);
+      box(head, 0.08, 0.08, 0.08, 0xff3030, 0, 0.56, 0, { emissive: 0xaa1010 });
+      box(body, 0.3, 0.22, 0.03, 0x2b323c, 0, 1.3, -0.14);
+      box(body, 0.05, 0.05, 0.02, 0x40ff80, -0.08, 1.33, -0.16, { emissive: 0x20a040 });
+      box(body, 0.05, 0.05, 0.02, 0xffd23f, 0, 1.33, -0.16, { emissive: 0x806010 });
+      box(body, 0.05, 0.05, 0.02, 0x3fa9ff, 0.08, 1.33, -0.16, { emissive: 0x1050a0 });
+      box(armL, 0.2, 0.14, 0.2, 0x4b5563, 0, -0.05, 0);
+      box(armR, 0.2, 0.14, 0.2, 0x4b5563, 0, -0.05, 0);
+      break;
+    case 'pirata':
+      box(head, 0.48, 0.05, 0.42, 0x1b1b1b, 0, 0.36, 0);
+      box(head, 0.34, 0.16, 0.32, 0x1b1b1b, 0, 0.45, 0);
+      box(head, 0.07, 0.07, 0.02, 0xf2f2f2, 0, 0.46, -0.165);
+      box(head, 0.09, 0.08, 0.03, 0x111111, -0.07, 0.2, -0.165);
+      box(head, 0.32, 0.02, 0.02, 0x111111, 0, 0.27, -0.155);
+      for (const y of [1.04, 1.16, 1.28, 1.4]) box(body, 0.49, 0.05, 0.27, 0xd63a2f, 0, y, 0);
+      box(body, 0.5, 0.08, 0.28, 0x6b4a2b, 0, 0.98, 0);
+      box(body, 0.08, 0.08, 0.02, 0xffd23f, 0, 0.98, -0.145, GOLD);
+      break;
+    case 'ninja':
+      box(head, 0.24, 0.06, 0.02, 0xe0b48a, 0, 0.2, -0.15);
+      box(head, 0.33, 0.06, 0.33, 0xd63a2f, 0, 0.3, 0);
+      box(head, 0.05, 0.05, 0.2, 0xd63a2f, 0.06, 0.29, 0.25);
+      box(head, 0.05, 0.05, 0.18, 0xd63a2f, -0.04, 0.27, 0.24);
+      {
+        const k = box(body, 0.04, 0.8, 0.04, 0xc0c6cc, 0.12, 1.35, 0.17, METAL);
+        k.rotation.z = 0.55;
+        const hdl = box(body, 0.05, 0.22, 0.05, 0xd63a2f, -0.12, 1.66, 0.17);
+        hdl.rotation.z = 0.55;
+      }
+      box(body, 0.5, 0.06, 0.28, 0xd63a2f, 0, 0.98, 0);
+      break;
+    case 'dino':
+      box(head, 0.28, 0.16, 0.24, 0x4fbf4a, 0, 0.11, -0.25);
+      box(head, 0.24, 0.03, 0.02, 0xf2f2f2, 0, 0.05, -0.37);
+      box(head, 0.08, 0.06, 0.04, 0x111111, -0.08, 0.27, -0.13);
+      box(head, 0.08, 0.06, 0.04, 0x111111, 0.08, 0.27, -0.13);
+      for (const [y, s] of [[0.56, 0.1], [0.42, 0.13]]) box(head, 0.05, s, 0.1, 0x2f8a2f, 0, y - 0.1, 0.1);
+      for (const y of [1.52, 1.36, 1.2, 1.04]) box(body, 0.06, 0.12, 0.1, 0x2f8a2f, 0, y, 0.17);
+      box(body, 0.2, 0.18, 0.5, 0x4fbf4a, 0, 0.95, 0.38).castShadow = true;
+      box(body, 0.12, 0.12, 0.34, 0x4fbf4a, 0, 0.88, 0.78);
+      box(body, 0.32, 0.4, 0.03, 0xc8e86a, 0, 1.2, -0.13);
+      break;
+  }
+}
+
+function addAccessory({ body, head }, acc) {
+  switch (acc) {
+    case 'corona':
+      box(head, 0.32, 0.07, 0.32, 0xffd23f, 0, 0.44, 0, GOLD);
+      for (const [x, z] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12], [0, -0.13]]) box(head, 0.06, 0.1, 0.06, 0xffd23f, x, 0.52, z, GOLD);
+      box(head, 0.05, 0.05, 0.02, 0xff2d55, 0, 0.45, -0.165, { emissive: 0x801020 });
+      break;
+    case 'gorra':
+      box(head, 0.33, 0.09, 0.33, 0xd63a2f, 0, 0.38, 0);
+      box(head, 0.3, 0.03, 0.16, 0xd63a2f, 0, 0.35, -0.22);
+      box(head, 0.06, 0.04, 0.06, 0xf2f2f2, 0, 0.44, 0);
+      break;
+    case 'gafas':
+      box(head, 0.32, 0.03, 0.03, 0x111111, 0, 0.23, -0.17);
+      box(head, 0.11, 0.07, 0.03, 0x1a2a3a, -0.07, 0.2, -0.175);
+      box(head, 0.11, 0.07, 0.03, 0x1a2a3a, 0.07, 0.2, -0.175);
+      break;
+    case 'auriculares':
+      box(head, 0.37, 0.04, 0.07, 0x222222, 0, 0.4, 0);
+      box(head, 0.06, 0.15, 0.13, 0x2bfff1, -0.18, 0.2, 0, { emissive: 0x0a5a55 });
+      box(head, 0.06, 0.15, 0.13, 0x2bfff1, 0.18, 0.2, 0, { emissive: 0x0a5a55 });
+      break;
+    case 'vikingo':
+      box(head, 0.35, 0.13, 0.35, 0x8a93a0, 0, 0.38, 0, METAL);
+      box(head, 0.06, 0.05, 0.36, 0x6b4a2b, 0, 0.42, 0);
+      for (const x of [-1, 1]) {
+        box(head, 0.07, 0.07, 0.07, 0xf2ead2, 0.21 * x, 0.42, 0);
+        box(head, 0.06, 0.14, 0.06, 0xf2ead2, 0.25 * x, 0.52, 0);
+      }
+      break;
+    case 'vaquero':
+      box(head, 0.6, 0.03, 0.56, 0x7a4a24, 0, 0.36, 0);
+      box(head, 0.32, 0.18, 0.3, 0x7a4a24, 0, 0.46, 0);
+      box(head, 0.33, 0.04, 0.31, 0x2b1d10, 0, 0.39, 0);
+      break;
+    case 'capa': {
+      const cape = box(body, 0.52, 1.0, 0.04, 0xb01c2e, 0, 0.98, 0.3);
+      cape.rotation.x = 0.12;
+      box(body, 0.5, 0.06, 0.06, 0xffd23f, 0, 1.5, 0.18, GOLD);
+      break;
+    }
+    case 'aureola':
+      for (const [w, d, x, z] of [[0.3, 0.04, 0, -0.14], [0.3, 0.04, 0, 0.14], [0.04, 0.3, -0.14, 0], [0.04, 0.3, 0.14, 0]]) {
+        box(head, w, 0.03, d, 0xfff3a0, x, 0.62, z, { emissive: 0xb09a30 });
+      }
+      break;
+    case 'alas':
+      for (const x of [-1, 1]) {
+        const w = box(body, 0.5, 0.7, 0.04, 0xf7f7ff, 0.32 * x, 1.32, 0.3);
+        w.rotation.z = -0.35 * x;
+        w.rotation.y = 0.35 * x;
+        const w2 = box(body, 0.34, 0.4, 0.05, 0xe2e6f5, 0.5 * x, 1.12, 0.32);
+        w2.rotation.z = -0.5 * x;
+      }
+      break;
+  }
 }
 
 // --------------------------------------------------------------- PLANEADOR ---

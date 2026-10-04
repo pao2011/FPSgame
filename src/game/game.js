@@ -22,6 +22,8 @@ import { BotManager } from './bots.js';
 import { HUD } from '../ui/hud.js';
 import { Menu } from '../ui/menu.js';
 import { TouchControls, isTouchDevice } from '../ui/touch.js';
+import { Progress } from './progress.js';
+import { Creative } from './creative.js';
 import { MapRenderer } from '../ui/minimap.js';
 import { itemName, itemRarity, RARITIES, MATERIALS, CONSUMABLES, PICKAXE, makeWeapon } from './items.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
@@ -94,7 +96,7 @@ export class Game {
     // que recargar al entrar en una partida online).
     const onlineSeed = savedToken() ? savedOnlineSeed() : 0;
     this.seed = Number(params.get('seed')) || onlineSeed || Math.floor(Math.random() * 1e9);
-    this.world = new World(this.scene, this.seed);
+    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
 
     this.input = new Input(this.canvas);
     this.touch = null;
@@ -113,6 +115,8 @@ export class Game {
     this.build = new BuildSystem(this);
     this.vehicles = new Vehicles(this, this.world.carSpots);
     this.bots = new BotManager(this);
+    this.progress = new Progress(this);
+    this.creative = new Creative(this);
     this.containers.reset();
     this.nav = new NavGrid(this.world);
     this.mapRenderer = new MapRenderer(this.world);
@@ -286,7 +290,7 @@ export class Game {
       this.hadLock = true;
       this.keepAwake(true);
       this.setPaused(false);
-    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen) {
+    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen && !this.uiOpen) {
       this.setPaused(true);
     }
   }
@@ -312,6 +316,16 @@ export class Game {
   startMatch(modeId = this.settings.mode) {
     const mode = MODES[modeId] || MODES.solo;
     this.settings.mode = mode.id;
+    // El creativo usa su propia isla (plana): hay que recargar para cambiar de isla
+    if (!!mode.creative !== this.world.creative) {
+      this.applySettings();
+      const q = new URLSearchParams(location.search);
+      if (mode.creative) q.set('creativo', '1');
+      else q.delete('creativo');
+      q.set('auto', mode.id);
+      location.search = q.toString();
+      return;
+    }
     if (this.net) this.leaveOnline();
     this.prepareMatch(mode, { rng: random, stormRng: random, team: 0 });
 
@@ -329,15 +343,25 @@ export class Game {
     this.bots.reset(nb, teams, this.settings.difficulty);
     this.chars = [this.player, ...this.bots.list];
     this.beginMatch({});
+    if (mode.creative) {
+      const p = this.player;
+      p.resetBody();
+      p.mode = 'ground';
+      p.pos.set(0, this.world.terrain.heightAt(0, 12) + 0.5, 12);
+      p.yaw = 0;
+      p.model.root.visible = this.camMode !== 'fp';
+      this.creative.start();
+    }
     this.touch?.fullscreen();
     this.input.lock();
   }
 
   // Partida online (info = mensaje m.start del servidor).
   startOnline(info) {
-    if (info.seed !== this.seed) {
+    if (info.seed !== this.seed || this.world.creative) {
       // Isla distinta: recargar con la isla del servidor.
       const q = new URLSearchParams(location.search);
+      q.delete('creativo');
       q.set('seed', info.seed);
       q.set('online', '1');
       location.search = q.toString();
@@ -427,6 +451,8 @@ export class Game {
     this.respawnT = 0;
     this.matchTime = 0;
     this.stormTick = 0;
+    this.matchAwarded = false;
+    this.matchPlayers = 0;
     this.noises.length = 0;
     this.pathQueue.length = 0;
     this.hud.show(true);
@@ -502,6 +528,9 @@ export class Game {
 
   quitToMenu() {
     const wasOnline = !!this.net || this.mode.online;
+    if (this.mode.creative) this.creative.stop();
+    // Abandonar a mitad de partida también da XP (sin bonus de puesto)
+    const abandon = this.state === 'playing' && !this.matchAwarded && this.matchTime > 30 ? this.awardMatch(false, null) : null;
     this.leaveOnline();
     this.state = 'menu';
     this.paused = false;
@@ -518,6 +547,26 @@ export class Game {
     this.chars = [this.player];
     this.player.model.root.visible = false;
     this.menu.showMain(wasOnline && this.netClient.authed ? 'online' : null);
+    if (abandon) this.menu.online.toast(`+${abandon.total} XP del pase · Nivel ${abandon.level}`);
+  }
+
+  // XP del pase de batalla al terminar una partida (no en práctica ni creativo).
+  awardMatch(win, place) {
+    if (this.matchAwarded || this.mode.noBots) return null;
+    this.matchAwarded = true;
+    const p = this.player;
+    const res = this.progress.matchEnd({
+      kills: p.stats.kills, damage: p.stats.damage, chests: p.stats.chests, built: p.stats.built, edits: p.stats.edits,
+      heads: p.stats.heads, time: this.matchTime, place, win, online: !!this.net, respawn: !!this.mode.respawn,
+    });
+    return res;
+  }
+
+  // Avisos de logros y recompensas conseguidos fuera de la pantalla final.
+  announceRewards(r) {
+    if (!r) return;
+    for (const a of r.achievements || []) this.hud.toast(`🏆 Logro: ${a.name} (+${a.xp} XP)`);
+    if (r.rewards?.length) this.menu.online.toast(`🎁 Nuevas recompensas del pase: ${r.rewards.length}`);
   }
 
   characters() {
@@ -800,7 +849,8 @@ export class Game {
       if (!this.mode.noBots && !this.mode.respawn) cause += ` · Puesto #${place}`;
       if (customCause) cause = customCause;
     }
-    this.menu.showEnd(win, cause, this.statsHTML(), !!this.mode.online);
+    const xp = this.awardMatch(win, this.mode.respawn ? null : place);
+    this.menu.showEnd(win, cause, this.statsHTML(), !!this.mode.online, xp);
   }
 
   statsHTML() {
@@ -935,6 +985,7 @@ export class Game {
       p.update(dt, input);
       this.updateCamera(dt);
       this.build.update(dt, input);
+      this.creative.update(dt, input);
       this.combat.update(dt, input);
       this.updateInteraction(input, dt);
       this.updateStorm(dt);

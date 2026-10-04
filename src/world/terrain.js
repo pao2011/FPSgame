@@ -43,8 +43,9 @@ float gNoise(vec2 p) {
 
 // Terreno de isla basado en ruido con zonas aplanadas para pueblos/edificios.
 export class Terrain {
-  constructor(noise) {
+  constructor(noise, opts = {}) {
     this.noise = noise;
+    this.flat = !!opts.flat; // isla plana del modo creativo
     this.flats = []; // {x, z, radius, height}
     this.zones = []; // POIs para colorear el suelo
     this.res = 400;
@@ -55,6 +56,12 @@ export class Terrain {
 
   rawHeight(x, z) {
     const n = this.noise;
+    if (this.flat) {
+      // Llanura de ~800 m de diámetro con playa alrededor
+      const d = Math.sqrt(x * x + z * z);
+      const coast = smoothstep(380, 470, d + n(x * 0.01, z * 0.01) * 12);
+      return 6 * (1 - coast) - 14 * coast;
+    }
     const nx = x * 0.0032, nz = z * 0.0032;
     let h = 0, amp = 1, f = 1, sum = 0;
     for (let o = 0; o < 5; o++) {

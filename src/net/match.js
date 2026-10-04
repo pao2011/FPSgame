@@ -52,6 +52,7 @@ export class OnlineMatch {
       },
       'm.drop': (m) => this.onDrop(m),
       'm.build': (m) => this.game.build.netPlace(m),
+      'm.bedit': (m) => this.game.build.netEdit(m),
       'm.bdmg': (m) => {
         const piece = this.game.build.pieces.get(m.key);
         if (piece) this.game.build.damage(piece, m.d, true);
@@ -340,6 +341,10 @@ export class OnlineMatch {
 
   sendBuild(piece) {
     this.net.send('m.build', { key: piece.key, type: piece.type, cx: piece.cx, cz: piece.cz, base: piece.base, dir: piece.dir, mat: piece.mat });
+  }
+
+  sendBuildEdit(piece) {
+    this.net.send('m.bedit', { key: piece.key, mask: piece.mask, dir: piece.dir });
   }
 
   sendBuildDamage(piece, d) {

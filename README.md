@@ -4,7 +4,13 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
-**Novedades:** 📱 **versión para móviles** con controles táctiles, calidad
+**Novedades:** 🎖️ **pase de batalla** (40 niveles con XP por partida y
+logros, versión gratis y premium), **Tienda** con tokens, **6 skins** (Banana
+Agente, Astronauta, Robo-Royale, Capitana Pirata, Sombra Ninja y Dino Rex),
+**accesorios** y **camuflajes de armas**, **edición de construcciones**
+(puertas, ventanas, arcos y girar rampas) y **modo Creativo** (isla plana,
+todas las armas, vuelo y todos los edificios de la isla para colocarlos).
+Antes: 📱 **versión para móviles** con controles táctiles, calidad
 gráfica *Móvil* con resolución dinámica, juego cruzado **PC + móvil** y
 **APK de Android** (se compila sola en GitHub; ver
 [sección 9](#9-versión-para-móviles-android--apk)). Antes: 🌐 **modo online** con cuentas, **amigos**, **grupos**,
@@ -14,9 +20,9 @@ opcionales), pantalla **Personaje** para elegir tu aspecto y un apartado
 gráfico renovado: bloom, antialiasing, cielo con nubes, agua con olas,
 reflejos y espuma en la orilla, terreno con más detalle y menús nuevos.
 
-**Incluye:** menú principal con opciones, **8 modos de juego** (Solitario,
-Dúos, Tríos, Escuadras, 1v1 Práctica, Duelo por equipos, Construcción cero y
-Práctica libre), **bots con
+**Incluye:** menú principal con opciones, **9 modos de juego** (Solitario,
+Dúos, Tríos, Escuadras, 1v1 Práctica, Duelo por equipos, Construcción cero,
+Práctica libre y Creativo), **bots con
 IA** (navegan por el mapa, saquean, construyen, se curan, se reaniman y
 trabajan en equipo), una isla de 1,6 km con **carreteras y pueblos ordenados
 por calles** y muchos tipos de estructuras (casas, tiendas, gasolineras,
@@ -188,6 +194,7 @@ arrancan el juego.
    | **Duelo por equipos** | 2 equipos grandes, reaparición; gana el primero en llegar a 50 eliminaciones |
    | **Construcción cero** | Solitario sin construir |
    | **Práctica libre** | Sin bots, materiales infinitos y dianas |
+   | **Creativo** | Isla plana para ti: todas las armas, materiales infinitos, vuelo y catálogo con todos los edificios de la isla (ver más abajo) |
 
 2. **Autobús de batalla.** Empiezas en un autobús colgado de un globo que
    cruza la isla. Mueve el ratón para mirar y pulsa **M** para ver el mapa y la
@@ -242,6 +249,39 @@ arrancan el juego.
     MAGISTRAL!** Arriba a la derecha: 👤 jugadores vivos, 🚩 equipos vivos,
     💀 tus eliminaciones.
 
+15. **Editar.** Mira una pieza **tuya** (muro, suelo o rampa) y pulsa **F**.
+    En los muros (rejilla 3×3) y suelos (2×2) marca con **clic** (o
+    arrastrando) las casillas que quieres quitar: así haces puertas, ventanas,
+    arcos o agujeros. En las rampas, cada clic las gira 90°. **F** confirma,
+    **clic derecho** devuelve la pieza a su forma completa. En el móvil: botón
+    **✎ EDITAR** (otra vez **LISTO**), disparar para marcar y ✕ para reiniciar.
+16. **Pase de batalla.** Cada partida da **XP**: +100 por jugar, +75 por
+    eliminación, daño (hasta +400), cofres, construir y editar, tiempo de juego
+    y puesto (victoria +500, top 5 +200, top 10 +100); online, +25 %. Los
+    **logros** (primera eliminación, 5 victorias, 50 disparos a la cabeza,
+    abrir 25 cofres…) dan entre 300 y 2.500 XP. Cada 1.000 XP subes un nivel
+    (40 niveles). El **pase gratuito** da camuflajes, accesorios, 2 skins y
+    **450 tokens**; el **premium** (**800 tokens**, en la Tienda o en la
+    pantalla del pase) añade la Banana Agente, el Astronauta, el Robo-Royale,
+    más camuflajes (neón, arcoíris, lava, diamante, oro), accesorios y 25
+    tokens en el resto de niveles. Al comprarlo recibes al momento todo lo de
+    los niveles que ya tengas. Al completar el pase, cada nivel extra da 25
+    tokens. Empiezas con 200 tokens de regalo. La Práctica libre y el Creativo
+    no dan XP.
+17. **Tienda y personaje.** En **TIENDA** compras skins (Dino Rex es
+    exclusiva), accesorios o el pase premium con tokens (pulsa dos veces para
+    confirmar). En **PERSONAJE** equipas skin, accesorio y camuflaje de armas
+    (o tus colores). Con sesión online, el progreso y el aspecto se guardan en
+    tu cuenta y los demás te ven así.
+18. **Creativo.** Isla plana sin tormenta ni bots, eres invulnerable, tienes
+    las 5 armas legendarias con munición infinita y materiales infinitos.
+    **B** abre el **catálogo** con todos los edificios de la isla (casas,
+    rascacielos, tienda, gasolinera, iglesia, nave, fábrica, estadio, búnker,
+    torres, faro, antena, grúa, silo, contenedores, fuente…): elige uno,
+    apunta y **clic** para colocarlo (**R** gira). **Borrar edificios** quita
+    lo que apuntes. **Doble Espacio** para volar (Espacio sube, C baja). Tu
+    isla creativa (edificios y construcciones) se **guarda sola**.
+
 **Cómo piensan los bots:** ven en un cono de ~130° y oyen los disparos
 cercanos; comparten lo que ven con su equipo; recorren la isla por caminos
 calculados (entran por las puertas, rodean muros y vallas); eligen el arma
@@ -275,6 +315,8 @@ alrededor de la mira señala de dónde vienen los disparos.
 | **R** | Recargar |
 | **1–6 / rueda** | Cambiar de objeto · (construyendo) 1–4 cambia de pieza |
 | **Q** | Entrar/salir del modo construcción |
+| **F** | Editar la construcción tuya a la que miras · **F** otra vez: confirmar · **clic derecho**: reiniciar |
+| **B** | (Creativo) Catálogo de edificios · **R** girar · **clic derecho** cancelar · **doble Espacio** volar |
 | **G** | Soltar el objeto actual |
 | **V** | Cámara en 1ª / 3ª persona |
 | **M** | Mapa de la isla |
@@ -356,14 +398,17 @@ src/
     bots.js           IA de los bots (percepción, decisiones, combate…)
     modes.js          modos de juego y ajustes guardados
     combat.js         armas, apuntado, retroceso, recarga, curas y pico
-    build.js          sistema de construcción
+    build.js          sistema de construcción y edición
+    creative.js       modo creativo: catálogo de edificios, vuelo, guardado
+    progress.js       pase de batalla: XP, niveles, tokens, logros y compras
+    cosmetics.js      skins, accesorios, camuflajes, recompensas del pase y tienda
     harvest.js        árboles, rocas y coches que dan materiales
     vehicles.js       coches conducibles
     loot.js           objetos en el suelo, cofres y cajas de munición
     items.js          definición de armas, curas, materiales y botín
     bus.js storm.js effects.js dummies.js models.js
   ui/                 menú principal, online (amigos/grupo/chat), HUD, minimapa, mapa
-                      y controles táctiles (touch.js)
+                      controles táctiles (touch.js) y pase/tienda/taquilla (progression.js)
   platform.js         botón Atrás de Android y web instalable (PWA)
   fonts/              fuentes incluidas (funcionan sin internet)
 public/               manifest, iconos y service worker de la web instalable

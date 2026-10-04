@@ -36,8 +36,18 @@ Salta del autobús de batalla, aterriza donde quieras de una isla enorme, busca 
 • Coches que puedes conducir (¡y atropellar bots!).
 • La tormenta se cierra por fases: vigila el mapa.
 
+🎖️ PASE DE BATALLA Y TIENDA
+• 40 niveles: gana XP en cada partida (eliminaciones, daño, cofres, puesto…) y con logros.
+• Pase gratuito con camuflajes, accesorios, 2 skins y 450 tokens.
+• Pase premium por 800 tokens: Banana Agente, Astronauta, Robo-Royale y mucho más.
+• Tienda: skins como Dino Rex, accesorios (corona, capa, casco vikingo…) y el pase.
+• Sin dinero real: los tokens se ganan jugando.
+
+🎨 MODO CREATIVO
+Una isla plana para ti con todas las armas, vuelo y todos los edificios de la isla para colocarlos donde quieras. Se guarda sola.
+
 🧱 CONSTRUYE PARA SOBREVIVIR
-Consigue madera, piedra y metal con el pico y levanta muros, suelos, rampas y techos en un segundo. Sube rampas encadenadas y gana la posición alta.
+Consigue madera, piedra y metal con el pico y levanta muros, suelos, rampas y techos en un segundo. Edítalos para abrir puertas y ventanas o girar rampas. Sube rampas encadenadas y gana la posición alta.
 
 🤖 BOTS CON INTELIGENCIA ARTIFICIAL
 Juega sin conexión contra hasta 49 bots que saquean, construyen, se curan, se cubren, rotan hacia la zona segura y se reaniman en equipo. Cuatro dificultades: Fácil, Normal, Difícil y Experto.
@@ -48,8 +58,8 @@ Juega sin conexión contra hasta 49 bots que saquean, construyen, se curan, se c
 • Juego cruzado: tus amigos pueden jugar desde el ordenador y tú desde el móvil en la misma partida.
 • Conecta en segundos: pulsa «Buscar en mi Wi-Fi» y la app encuentra el servidor de tu amigo.
 
-🏆 8 MODOS DE JUEGO
-Solitario · Dúos · Tríos · Escuadras · 1v1 Práctica · Duelo por equipos · Construcción cero · Práctica libre.
+🏆 9 MODOS DE JUEGO
+Solitario · Dúos · Tríos · Escuadras · 1v1 Práctica · Duelo por equipos · Construcción cero · Práctica libre · Creativo.
 
 📱 HECHO PARA EL MÓVIL
 • Joystick, botones grandes y personalizables (tamaño, opacidad y sensibilidad).

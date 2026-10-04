@@ -74,6 +74,7 @@ export class HUD {
       heading: $('heading'),
       storm: $('storm-info'),
       prompt: $('prompt'),
+      editHint: $('edit-hint'),
       banner: $('banner'),
       altitude: $('altitude'),
       progress: $('progress'), progressFill: $('progress-fill'), progressLabel: $('progress-label'),
@@ -450,6 +451,15 @@ export class HUD {
       this.set('buildBar', e.buildBar, 'html', html);
     }
     this.set('slotsShow', e.slots, 'display', b.active ? 'none' : 'flex');
+
+    // Edición y modo creativo
+    let hint = '';
+    if (b.editing) hint = g.touch ? 'EDITANDO · ✎ LISTO para confirmar' : 'EDITANDO · <kbd>F</kbd> confirmar · <kbd>Clic der.</kbd> reiniciar';
+    else if (b.editTarget && !g.touch) hint = '<kbd>F</kbd> Editar';
+    else if (g.creative?.selected) hint = g.touch ? `Colocando: ${g.creative.selected.name}` : `Colocando: ${g.creative.selected.name} · <kbd>R</kbd> girar · <kbd>Clic der.</kbd> cancelar`;
+    else if (g.creative?.erase) hint = g.touch ? 'BORRAR: apunta y dispara' : 'BORRAR: apunta y haz clic · <kbd>Clic der.</kbd> terminar';
+    this.set('editHint', e.editHint, 'html', hint);
+    this.set('editHintShow', e.editHint, 'display', hint ? 'block' : 'none');
 
     // Velocímetro
     this.set('speedShow', e.speed, 'display', p.vehicle ? 'block' : 'none');
