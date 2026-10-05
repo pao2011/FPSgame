@@ -150,6 +150,23 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 - **Sin tirones:** shaders precompilados en la carga y luces fijas (añadir
   luces obligaba a recompilar todo).
 
+## ✅ Novedades para móviles
+
+- **Apuntar con el giroscopio** (`src/ui/mobile.js`): desactivado, al apuntar
+  o siempre; tiene en cuenta la orientación de la pantalla y pide permiso en
+  iOS.
+- **Disparo automático** con la mira sobre un enemigo visible (pulsos en las
+  armas semiautomáticas; nunca con explosivos ni arcos) y **asistencia de
+  apuntado táctil** (la del mando, con su propia intensidad).
+- **Botón CURAR** (curación rápida) que sólo aparece si sirve; arreglada la
+  curación rápida, que se cancelaba durante el cambio de objeto.
+- **Doble toque para marcar**, **mapa táctil** (marcar, quitar, pellizcar
+  para zoom, arrastrar) con botón de cerrar.
+- **Disposiciones predefinidas** *Garra* y *Botones grandes*, **correr
+  automáticamente** y **vibración** según los sucesos (con límite para no
+  vibrar en cada bala).
+- **Batería y hora** en pantalla y **ahorro automático** con la batería baja.
+
 ## 🔜 Pendiente para próximas versiones
 
 - **Rendimiento:** *instancing* de las piezas de construcción, navegación de

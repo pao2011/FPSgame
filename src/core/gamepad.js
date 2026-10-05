@@ -147,8 +147,9 @@ export class GamepadInput {
   }
 
   // Asistencia de apuntado: devuelve el factor de frenado de la cámara y
-  // atrae ligeramente la mira hacia el enemigo más cercano a ella.
-  aimAssist(dt, moving, adsPressed) {
+  // atrae ligeramente la mira hacia el enemigo más cercano a ella. También la
+  // usan los controles táctiles (src/ui/mobile.js) con su propia intensidad.
+  aimAssist(dt, moving, adsPressed, strength = this.game.settings.padAssistStrength ?? 1) {
     const g = this.game;
     const p = g.player;
     if (!p.alive || p.mode !== 'ground' || g.build.active || p.item?.kind !== 'weapon') return 1;
@@ -173,7 +174,6 @@ export class GamepadInput {
     const dir = tmpDir.set(best.tx, best.ty, best.tz).divideScalar(best.dist);
     const hit = g.raycast(o, dir, best.dist + 1, 0, p);
     if (hit && hit.entity !== best.c && hit.t < best.dist - 0.8) return 1;
-    const strength = g.settings.padAssistStrength ?? 1;
     const ads = this.input.held('ads');
     const targetYaw = Math.atan2(-dir.x, -dir.z);
     const targetPitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));

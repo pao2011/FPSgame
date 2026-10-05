@@ -157,6 +157,16 @@ export const DEFAULT_SETTINGS = {
   autoRes: true, // resolución dinámica en calidad «móvil»
   fpsCap: 0, // 0 = sin límite · 30 = ahorro de batería
   viewDist: 1, // distancia de visión: 0.7 corta · 1 normal · 1.3 lejana
+  gyro: 'off', // apuntar con el giroscopio: off | ads (al apuntar) | always
+  gyroSens: 1,
+  autoFire: false, // disparo automático con la mira sobre un enemigo
+  touchAimAssist: true, // asistencia de apuntado táctil
+  touchAssistStrength: 0.7,
+  autoSprint: false, // correr al empujar el joystick hacia delante
+  doubleTapPing: true, // doble toque para poner un marcador
+  hapticEvents: true, // vibrar al acertar, eliminar, recibir daño…
+  lowBatterySaver: true, // 30 FPS con la batería baja
+  showDeviceStatus: true, // batería y hora en el HUD
 };
 
 // Primera vez en un móvil o tableta: ajustes pensados para rendimiento.

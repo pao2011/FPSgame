@@ -120,6 +120,7 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Novedades para móviles', 'Apuntar con el giroscopio, disparo automático, asistencia de apuntado táctil, botón de curación rápida, doble toque para marcar, mapa táctil (toca para marcar, pellizca para hacer zoom), disposiciones «Garra» y «Botones grandes», correr automáticamente, más vibraciones, batería y hora en pantalla y ahorro automático con la batería baja.'],
   ['Optimización para móviles', 'El mundo se dibuja por parcelas (sólo lo visible y cercano), sombreados más ligeros, lluvia en la tarjeta gráfica, rutas de los bots sin tirones, menos FPS en menús y pausa, shaders precompilados y nueva opción «Distancia de visión».'],
   ['Gráficos renovados', 'Materiales PBR con iluminación de entorno, oclusión ambiental (calidad alta), personajes con rodillas y codos, fachadas con textura, asfalto con grietas, césped que se mece, armas detalladas, trazadoras que viajan, casquillos, polvo de impacto y construcciones con relieve.'],
   ['Clima y ciclo de día', 'Cada partida tiene su clima (despejado, nublado, lluvia o niebla) y la hora avanza hasta el anochecer.'],
@@ -465,6 +466,22 @@ export class Menu {
         ${range('resScale', 'Resolución (calidad Móvil)', 40, 100, 5, pct)}
         ${check('autoRes', 'Resolución dinámica (baja la resolución si van lentos los FPS)')}
         <div class="opt-row"><label>Ahorro de batería</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS']])}</div>
+        <h4 class="opt-sub">Apuntar y disparar</h4>
+        <div class="opt-row"><label>Apuntar con el giroscopio</label>${seg('gyro', [['off', 'Desactivado'], ['ads', 'Al apuntar'], ['always', 'Siempre']])}
+          <small class="hint">Mueve el móvil para afinar la puntería. «Al apuntar» sólo funciona con la mira puesta.</small></div>
+        ${range('gyroSens', 'Sensibilidad del giroscopio', 0.3, 3, 0.05, num)}
+        ${check('touchAimAssist', 'Asistencia de apuntado táctil', 'Frena la mira sobre los enemigos y la acerca un poco al apuntar.')}
+        ${range('touchAssistStrength', 'Intensidad de la asistencia', 0.2, 1.5, 0.05, pct100)}
+        ${check('autoFire', 'Disparo automático', 'Dispara solo cuando la mira está sobre un enemigo visible (no con explosivos ni arcos).')}
+        <h4 class="opt-sub">Comodidad</h4>
+        ${check('autoSprint', 'Correr automáticamente', 'Basta con empujar el joystick hacia delante.')}
+        ${check('doubleTapPing', 'Doble toque para marcar', 'Dos toques rápidos en la zona de mirar ponen un marcador donde apuntas.')}
+        ${check('hapticEvents', 'Vibración al acertar, eliminar y recibir daño')}
+        <div class="opt-row"><label>Disposición predefinida</label><div class="seg" data-presets>${[['defecto', 'Por defecto'], ['garra', 'Garra'], ['grandes', 'Botones grandes']].map(([v, l]) => `<button data-preset="${v}">${l}</button>`).join('')}</div>
+          <small class="hint">Sustituye a tu disposición personalizada. «Garra»: saltar y agacharse arriba a la izquierda y un segundo botón de disparo arriba a la derecha.</small></div>
+        <h4 class="opt-sub">Rendimiento y batería</h4>
+        ${check('lowBatterySaver', 'Ahorro automático con la batería baja', 'Con un 20 % o menos y sin cargar, el juego se limita a 30 FPS.')}
+        ${check('showDeviceStatus', 'Batería y hora en la pantalla de juego')}
         <div class="opt-row"><label>Distancia de visión</label>${seg('viewDist', [[0.7, 'Corta'], [1, 'Normal'], [1.3, 'Lejana']])}
           <small class="hint">Hasta dónde se dibujan árboles, rocas y edificios. Corta = más FPS y menos batería. En calidad Móvil se acorta sola si el juego va lento.</small></div>`;
     } else {
@@ -606,6 +623,23 @@ export class Menu {
       s.fpsCap = Number(b.dataset.v);
       this.game.applySettings();
       el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    el.querySelectorAll('[data-seg="gyro"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.gyro = b.dataset.v;
+      this.game.applySettings();
+      // iOS pide permiso para el giroscopio: tiene que ser durante un toque
+      if (s.gyro !== 'off') this.game.touch?.extras?.enableGyro(true);
+      el.querySelectorAll('[data-seg="gyro"] button').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    el.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.game.touch) this.game.touch.applyPreset(b.dataset.preset);
+      else {
+        s.touchLayout = {};
+        this.game.applySettings();
+      }
+      el.querySelectorAll('[data-preset]').forEach((x) => x.classList.toggle('on', x === b));
     }));
     el.querySelectorAll('[data-seg="viewDist"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();

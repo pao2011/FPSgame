@@ -1287,7 +1287,8 @@ export class Game {
   // FPS máximos ahora mismo (0 = sin límite). En calidad móvil, cuando no
   // se está jugando de verdad (menú, pausa, mapa abierto) se dibuja menos.
   frameCap() {
-    let cap = this.settings.fpsCap === 30 ? 30 : 0;
+    // 30 FPS con «Ahorro de batería» o con la batería baja (táctil)
+    let cap = this.settings.fpsCap === 30 || this.touch?.extras?.saving ? 30 : 0;
     if (this.quality === 'movil') {
       if (this.paused && !this.net) cap = 15;
       else if (this.state === 'menu' || this.hud?.mapOpen) cap = cap ? Math.min(cap, 30) : 30;
@@ -1299,6 +1300,7 @@ export class Game {
     const input = this.input;
     this.frameDt = dt;
     this.gamepad.update(dt);
+    this.touch?.preStep(dt);
     if (this.state === 'replay') {
       this.time += dt;
       this.world.water.material.uniforms.time.value = this.time;

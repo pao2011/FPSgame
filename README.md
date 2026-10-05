@@ -19,6 +19,14 @@ reaparición**, 🎬 **repeticiones, espectador y mapa de calor**, 🏆 **Arena*
 **inglés y portugués**, puertas reales en las casas y **códigos para
 compartir islas** del creativo. Detalles en [`ROADMAP.md`](ROADMAP.md).
 
+**Novedades para móviles:** 🎯 **apuntar con el giroscopio**, 🔫 **disparo
+automático** y **asistencia de apuntado táctil**, ➕ **botón de curación
+rápida**, 👆 **doble toque para marcar**, 🗺️ **mapa táctil** (toca para marcar
+destino, pellizca para hacer zoom), 🖐️ disposiciones **Garra** y **Botones
+grandes**, **correr automáticamente**, 📳 vibración al acertar o eliminar, 🔋
+**batería y hora** en pantalla y **ahorro automático con la batería baja**
+(todo en *Opciones → Móvil y táctil*).
+
 **Optimización para móviles:** el mundo se dibuja por parcelas (sólo lo que
 se ve y está cerca: ~8 veces menos triángulos en calidad *Móvil*), sombreados
 ligeros para el cielo, el agua, el suelo y los edificios, lluvia calculada en
@@ -659,6 +667,23 @@ FPS opcional y **distancia de visión** ajustable (*Opciones → Móvil y
 táctil*). En calidad *Móvil* el juego dibuja menos (vegetación más sencilla,
 sin luces puntuales, sombreados ligeros, niebla más cercana) y baja sólo la
 resolución y la distancia de visión si los FPS caen.
+
+Funciones táctiles (*Opciones → Móvil y táctil*):
+
+- **Giroscopio:** mueve el móvil para apuntar (desactivado, sólo al apuntar o
+  siempre) con su propia sensibilidad. En iPhone/iPad pide permiso la primera
+  vez.
+- **Disparo automático** (dispara solo con la mira sobre un enemigo visible) y
+  **asistencia de apuntado táctil** con intensidad ajustable.
+- **Botón CURAR:** aparece cuando estás herido y usa la mejor cura que lleves.
+- **Doble toque** en la zona de mirar: pone un marcador.
+- **Mapa:** toca para marcar destino, mantén para quitarlo, pellizca para
+  hacer zoom y arrastra para moverte; ✕ para cerrar.
+- **Disposiciones predefinidas** (*Por defecto*, *Garra*, *Botones grandes*)
+  además de la personalizada, **correr automáticamente** y vibración al
+  acertar, derribar, eliminar y recibir daño.
+- **Batería y hora** junto a los botones de arriba y **ahorro automático**
+  (30 FPS) con un 20 % de batería o menos.
 
 - **Instalar la APK:** en GitHub → **Releases** → *Isla Royale (APK de
   prueba)* → descarga `IslaRoyale-debug.apk` en el móvil y ábrela. GitHub la

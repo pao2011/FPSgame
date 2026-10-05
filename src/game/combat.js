@@ -102,8 +102,8 @@ export class Combat {
     }
   }
 
-  // Curación rápida: elige la mejor cura para tu estado y la empieza a usar.
-  quickHeal() {
+  // Curas útiles ahora mismo, de mejor a peor ({ i: hueco, score }).
+  healOptions() {
     const p = this.player;
     const opts = [];
     p.inventory.forEach((it, i) => {
@@ -115,13 +115,18 @@ export class Combat {
       else if (d.shield) score = p.shield < d.cap ? 3 + d.shield / 100 : -1;
       if (score > 0) opts.push({ i, score });
     });
+    return opts.sort((a, b) => b.score - a.score);
+  }
+
+  // Curación rápida: elige la mejor cura para tu estado y la empieza a usar.
+  quickHeal() {
+    const opts = this.healOptions();
     if (!opts.length) {
       this.game.hud.toast('No tienes curas útiles ahora mismo');
       return;
     }
-    opts.sort((a, b) => b.score - a.score);
     this.select(opts[0].i);
-    this.quickHealPending = true;
+    this.quickHealPending = opts[0].i;
   }
 
   ensureModel(item) {
@@ -547,8 +552,10 @@ export class Combat {
     const g = this.game;
     const p = this.player;
     const def = CONSUMABLES[item.type];
-    const start = (input.hit('fire') || this.quickHealPending) && this.swapT <= 0;
-    this.quickHealPending = false;
+    // Curación rápida: espera a que termine el cambio de objeto
+    const quick = this.quickHealPending === this.player.selected;
+    const start = (input.hit('fire') || quick) && this.swapT <= 0;
+    if (!quick || this.swapT <= 0) this.quickHealPending = false;
     // Plataforma de salto: un clic la coloca en el suelo
     if (def.deploy) {
       if (start && this.deployPad()) this.consumeOne(item);

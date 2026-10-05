@@ -111,6 +111,7 @@ export class HUD {
       return [((e.clientX - r.left) / r.width) * 1600 - 800, ((e.clientY - r.top) / r.height) * 1600 - 800];
     };
     fc.addEventListener('click', (e) => {
+      if (game.touch) return; // en táctil lo gestiona src/ui/touch.js (bindMap)
       const [x, z] = toWorld(e);
       game.waypoint = { x, z };
       game.audio.ping();
@@ -304,6 +305,7 @@ export class HUD {
     const h = this.el.hit;
     h.className = 'show' + (head ? ' head' : '') + (kill === 'knock' ? ' knock' : kill ? ' kill' : '');
     this.hitT = 0.18;
+    this.game.touch?.haptic(kill === 'knock' ? 'knock' : kill ? 'kill' : head ? 'head' : 'hit');
   }
 
   flashDamage(type, attacker = null) {
