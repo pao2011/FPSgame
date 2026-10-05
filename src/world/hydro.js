@@ -44,11 +44,33 @@ export class Hydro {
     return l.R * (1 + 0.16 * Math.sin(2 * a + l.p1) + 0.08 * Math.sin(3 * a + l.p2));
   }
 
-  // Distancia (m) al borde del lago: negativa dentro.
+  // Radio de la isla del lago (si la tiene) en la dirección de (x, z).
+  islandR(l, x, z) {
+    const a = Math.atan2(z - l.z, x - l.x);
+    return l.island * (1 + 0.1 * Math.sin(3 * a + l.p2) + 0.05 * Math.sin(5 * a + l.p1));
+  }
+
+  // Distancia (m) al borde del lago: negativa dentro del agua. Si el lago
+  // tiene isla, su interior cuenta como tierra (distancia a su orilla).
   lakeEdge(l, x, z) {
     const d = Math.hypot(x - l.x, z - l.z);
     if (d > l.R * 1.3 + BANK) return Infinity;
-    return d - this.lakeShoreR(l, x, z);
+    const e = d - this.lakeShoreR(l, x, z);
+    return l.island ? Math.max(e, this.islandR(l, x, z) - d) : e;
+  }
+
+  // Distancia aproximada al agua dulce más cercana, sin límite de alcance
+  // (para colocar zonas y edificios lejos de lagos y ríos).
+  distanceTo(x, z) {
+    let best = Infinity;
+    for (const l of this.lakes) {
+      const d = Math.hypot(x - l.x, z - l.z);
+      best = Math.min(best, d - l.R * 1.3); // la isla cuenta como parte del lago
+    }
+    for (const r of this.rivers) {
+      for (let i = 0; i < r.pts.length; i += 2) best = Math.min(best, Math.hypot(x - r.pts[i][0], z - r.pts[i][1]) - r.hw[i]);
+    }
+    return best;
   }
 
   // ------------------------------------------------------------ RÍOS

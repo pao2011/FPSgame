@@ -152,6 +152,11 @@ class Bot extends Character {
     this.strafeT = 0;
     this.thinkT = random.float(0, THINK);
     this.jumpFrac = random.float(0.1, 0.85);
+    // Marcas de jefe/secuaz (los bots se reutilizan entre partidas)
+    this.boss = false;
+    this.bossKind = null;
+    this.home = null;
+    this.dmgTaken = 0;
     this.rumor = null; // último tiroteo oído a lo lejos
     this.bold = random.next(); // los más atrevidos (bold < 0.7) acuden a los disparos
     this.deployAlt = random.float(70, 120);
@@ -347,7 +352,7 @@ class Bot extends Character {
       return k >= 0 && p.y - g.nav.ground[k] < 1.2 && !g.storm.isOutside(p.x, p.z);
     };
     for (const c of g.containers.list) {
-      if (c.active && c.kind === 'chest' && Math.hypot(c.pos.x - this.pos.x, c.pos.z - this.pos.z) < 300 && low(c.pos)) cands.push(c.pos);
+      if (c.active && !c.locked && c.kind === 'chest' && Math.hypot(c.pos.x - this.pos.x, c.pos.z - this.pos.z) < 300 && low(c.pos)) cands.push(c.pos);
     }
     for (const pk of g.pickups.items) if (pk.item.kind === 'weapon' && Math.hypot(pk.pos.x - this.pos.x, pk.pos.z - this.pos.z) < 300 && low(pk.pos)) cands.push(pk.pos);
     if (cands.length) {
@@ -566,7 +571,7 @@ class Bot extends Character {
       }
     }
     for (const c of g.containers.list) {
-      if (!c.active || c.opened || c.kind !== 'chest' || this.blacklist.has(c)) continue;
+      if (!c.active || c.opened || c.locked || c.kind !== 'chest' || this.blacklist.has(c)) continue;
       const d = c.pos.distanceTo(this.pos);
       if (d >= bd) continue;
       // sólo cofres a ras de suelo (la IA no sube escaleras)

@@ -10,6 +10,7 @@ import { MatchLoader } from '../ui/tips.js';
 import { Trails } from './trails.js';
 import { Weather } from '../world/weather.js';
 import { UndergroundFx } from '../world/underground.js';
+import { Vault } from './vault.js';
 import { NPCs } from './npcs.js';
 import { RebootVans } from './reboot.js';
 import { Replay, Viewer } from './replay.js';
@@ -65,7 +66,7 @@ export class Game {
     this.settings = loadSettings();
     const params = new URLSearchParams(location.search);
     const q = params.get('calidad');
-    if (q === 'baja' || q === 'movil') this.settings.quality = q;
+    if (['baja', 'movil', 'normal', 'alta'].includes(q)) this.settings.quality = q;
     const mobile = this.settings.quality === 'movil';
     const low = this.settings.quality === 'baja' || mobile;
     const high = this.settings.quality === 'alta';
@@ -133,7 +134,8 @@ export class Game {
     // Mapa único: siempre la misma isla (también en online). El modo
     // creativo usa su propia isla plana (sandbox, no es un mapa de partida).
     this.seed = MAP_SEED;
-    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
+    // Calidad alta: terreno HD (malla de 2 m con relieve fino)
+    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1', hd: this.quality === 'alta' });
     this.grass = new Grass(this.scene, this.world, this.quality);
     // Luces dinámicas de cuevas y trincheras (cerca de la cámara)
     this.underFx = new UndergroundFx(this.scene, this.world.sites, this.quality);
@@ -206,6 +208,7 @@ export class Game {
     this.a11y = new Accessibility(this);
     this.loader = new MatchLoader(this);
     this.npcs = new NPCs(this);
+    this.vault = new Vault(this);
     this.reboot = new RebootVans(this);
     this.mapDoors = new MapDoors(this);
     this.replay = new Replay(this);
@@ -565,6 +568,7 @@ export class Game {
     this.player.team = o.team;
     this.weather.start(o.stormRng, mode);
     this.npcs.reset(mode, !!o.online);
+    this.vault.reset();
     this.reboot.reset();
     this.mapDoors.reset();
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
@@ -1344,6 +1348,7 @@ export class Game {
     if (this.state === 'playing') this.editCourse.update(dt);
     if (this.state === 'playing') {
       this.npcs.update(dt);
+      this.vault.update(dt, this.time);
       this.reboot.update(dt);
     }
     if (this.state === 'playing') this.weather.update(dt);
@@ -1626,6 +1631,7 @@ export class Game {
     }
 
     if (this.reboot.interact(input, dt, E)) return;
+    if ((!target || target.score < 1.2) && this.vault.interact(input, E)) return;
     const npc = !target || target.score < 1.2 ? this.npcs.findNear(p.pos) : null;
     if (npc) {
       const what = npc.role === 'merchant' ? 'Comerciar con' : npc.quest?.state === 'new' ? 'Misión de' : 'Hablar con';

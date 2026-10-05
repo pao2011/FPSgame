@@ -315,6 +315,16 @@ export class Vehicles {
       }
       if (out.length >= 6) break;
     }
+    // Dos lanchas en el lago central (para llegar a la isla de la bóveda)
+    const I = this.game.world.island;
+    if (I) {
+      const L = I.lake, H = this.game.world.hydro;
+      for (const a of [0.8, 0.8 + Math.PI]) {
+        const dx = Math.cos(a), dz = Math.sin(a);
+        const r = (H.lakeShoreR(L, L.x + dx, L.z + dz) + H.islandR(L, L.x + dx, L.z + dz)) / 2;
+        out.push({ x: L.x + dx * r, z: L.z + dz * r, y: L.level - 0.4, rot: Math.atan2(-dz, dx) });
+      }
+    }
     return out;
   }
 

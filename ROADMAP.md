@@ -152,6 +152,29 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
   prefieren aterrizar en zonas con nombre, y las dos primeras fases de la
   tormenta son más cortas.
 
+### Isla de la Bóveda (actualización)
+- **Lago central con isla** (`planCentralLake` en `world.js`; los lagos de
+  `hydro.js` admiten isla): en la isla, una **bóveda blindada**
+  (`genVault`) y una **pasarela de madera** hasta la orilla; dos lanchas en el
+  lago. La IA cruza los lagos a nado (sólo el mar profundo la bloquea).
+- **Guardián de la Bóveda** con cinco **secuaces** (sólo contra bots, como el
+  Rey del Castillo): defienden la isla y no se alejan de ella. Al morir, el
+  Guardián suelta una **tarjeta**; quien la lleva la pierde si cae. Con la
+  tarjeta, **E** en la puerta la abre (`game/vault.js`): cofres que siempre
+  aparecen y dos armas legendarias. Bóveda y tarjeta salen en el mapa.
+- **Gran río** que sale del lago central hacia dos costas opuestas por la
+  dirección con menos montañas (con puentes donde lo cruzan carreteras).
+- **Cuatro puertos** repartidos por la costa (antes uno) y **nombres de las
+  zonas en el minimapa**; al entrar en la isla o en una cueva/trinchera
+  aparece su nombre.
+- **Terreno HD en calidad Alta:** malla de 2 m (antes 4 m) con relieve fino
+  en el terreno natural (no en zonas, carreteras ni orillas), microrrelieve
+  en el sombreado con ruido en tres planos (sin estirarse en las laderas) y
+  más variedad de color. El mapa (zonas, cofres, carreteras) es idéntico en
+  todas las calidades. `?calidad=alta|normal|baja|movil` en la URL.
+- Arreglado: los bots reutilizados entre partidas ya no heredan las marcas
+  de jefe (aguante extra, «no cuenta como superviviente»).
+
 ---
 
 ## 🔜 Pendiente para próximas versiones

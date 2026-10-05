@@ -212,8 +212,10 @@ export class RoadNetwork {
         }
       }
     }
+    this.lastWeight = 0;
     if (bw <= 0) return h;
     if (hydro) bw *= 1 - hydro.riverMask(x, z);
+    this.lastWeight = bw;
     return h + (target - h) * bw;
   }
 

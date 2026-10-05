@@ -7,7 +7,7 @@ import { BuildingCtx, genHouse, genWarehouse, genSilo, genHay, genContainer, PAL
 import {
   genShop, genGasStation, genChurch, genWaterTower, genRadioTower, genLighthouse, genBunker, genWatchtower,
   genTent, genFactory, genStadium, genPier, genCrane, genRuins, genFountain, genLamp, genBench, genFence, genSandbags,
-  genWindmill, genCastle, genMarket,
+  genWindmill, genCastle, genMarket, genVault,
 } from './structures.js';
 import { RoadNetwork, RectIndex } from './roads.js';
 import { createNature } from './nature.js';
@@ -18,7 +18,7 @@ import { Site, CELL, buildSite, buildHalos } from './underground.js';
 import { HALF, ISLAND_RADIUS } from './constants.js';
 
 const POI_NAMES = {
-  port: ['Puerto Pez', 'Bahía Brillante'],
+  port: ['Puerto Pez', 'Bahía Brillante', 'Muelle Marinero', 'Cala Corsaria', 'Dársena Dorada'],
   city: ['Ciudad Comercio', 'Rincón Retail'],
   apartments: ['Pisos Picados', 'Torres Inclinadas'],
   industrial: ['Zona Industrial', 'Fábrica Fatal'],
@@ -31,6 +31,10 @@ const POI_NAMES = {
 // El orden importa: el puerto (costero) y la ciudad se colocan primero.
 const POI_SPECS = [
   { type: 'port', radius: 64 },
+  // Más puertos repartidos por la costa
+  { type: 'port', radius: 56 },
+  { type: 'port', radius: 56 },
+  { type: 'port', radius: 52 },
   { type: 'city', radius: 118 },
   { type: 'apartments', radius: 78 },
   { type: 'industrial', radius: 86 },
@@ -62,7 +66,7 @@ export class World {
     this.rng = new RNG(seed);
     this.noise = createNoise2D(this.rng.next);
     this.collision = new CollisionWorld(16);
-    this.terrain = new Terrain(this.noise, { flat: this.creative });
+    this.terrain = new Terrain(this.noise, { flat: this.creative, hd: !!opts.hd });
     this.roads = new RoadNetwork();
     this.occ = new RectIndex(32);
     this.pois = [];
@@ -84,9 +88,13 @@ export class World {
 
   generate() {
     if (!this.creative) {
+      // El lago central (con su isla) y el gran río van primero: las zonas
+      // se colocan después, lejos del agua.
+      this.planCentralLake();
       this.placePOIs();
       for (const poi of this.pois) this.layoutPOI(poi);
       this.planWater();
+      this.planIsland();
       this.planUnderground();
       this.planRoads();
       this.planRoadside();
@@ -140,7 +148,7 @@ export class World {
     }
     // evita construir encima de calles/carreteras y junto al agua
     if (!plan.onRoad && this.roadOverlap(plan)) return false;
-    if (!plan.poi && this.hydro.edgeDistance(plan.x, plan.z) < Math.max(plan.fw, plan.fd) * 0.75 + 8) return false;
+    if (!plan.poi && !plan.island && this.hydro.distanceTo(plan.x, plan.z) < Math.max(plan.fw, plan.fd) * 0.75 + 8) return false;
     this.occ.add(plan.x - plan.fw / 2 - 0.6, plan.z - plan.fd / 2 - 0.6, plan.x + plan.fw / 2 + 0.6, plan.z + plan.fd / 2 + 0.6, plan);
     this.plans.push(plan);
     return true;
@@ -177,14 +185,18 @@ export class World {
     const names = {};
     for (const k in POI_NAMES) names[k] = rng.shuffle(POI_NAMES[k].slice());
     for (const spec of POI_SPECS) {
-      for (let attempt = 0; attempt < 700; attempt++) {
+      for (let attempt = 0; attempt < (spec.type === 'port' ? 2000 : 700); attempt++) {
         const ang = rng.float(0, Math.PI * 2);
         const coastal = spec.type === 'port';
         // Zonas algo más juntas hacia el centro: menos caminata entre peleas
-        const dist = coastal ? rng.float(0.62, 0.8) * ISLAND_RADIUS : Math.sqrt(rng.next()) * ISLAND_RADIUS * 0.72;
+        const dist = coastal ? rng.float(0.62, attempt < 600 ? 0.8 : 0.9) * ISLAND_RADIUS : Math.sqrt(rng.next()) * ISLAND_RADIUS * 0.72;
         const x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
         const gap = attempt < 350 ? 60 : 40;
         if (this.pois.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius + spec.radius + gap)) continue;
+        // Lejos del lago central y del gran río
+        if (this.hydro.distanceTo(x, z) < spec.radius * 1.25 + 18) continue;
+        // Los puertos, repartidos alrededor de la isla
+        if (coastal && this.pois.some((p) => p.type === 'port' && Math.abs(Math.atan2(Math.sin(Math.atan2(p.z, p.x) - ang), Math.cos(Math.atan2(p.z, p.x) - ang))) < (attempt < 400 ? 0.9 : 0.6))) continue;
         let seaDir = null;
         if (coastal) {
           const c = this.terrain.rawHeight(x, z);
@@ -203,7 +215,7 @@ export class World {
         if (!f.ok && !coastal) continue;
         if (!coastal && f.avg > 40) continue;
         this.pois.push({
-          name: names[spec.type].shift() || spec.type, type: spec.type, x, z, radius: spec.radius,
+          name: names[spec.type].shift() || spec.type, type: spec.type, x, z, radius: spec.radius, coastal,
           height: Math.max(3.5, coastal ? Math.max(3.5, this.terrain.rawHeight(x, z)) : f.avg),
           axis: rng.chance(0.5) ? 'x' : 'z', seaDir, gates: [],
         });
@@ -542,49 +554,104 @@ export class World {
     const names = rng.shuffle(['Lago Sereno', 'Laguna Azul', 'Lago Espejo']);
     for (let i = 0; i < 4000 && H.lakes.length < 3; i++) {
       const [x, z] = this.randomLand(rng, ISLAND_RADIUS * 0.72);
-      const R = rng.float(30, 50);
-      if (this.pois.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius * 1.6 + R * 1.45 + 12)) continue;
-      if (H.lakes.some((l) => Math.hypot(l.x - x, l.z - z) < (l.R + R) * 1.6 + 80)) continue;
+      const R = rng.float(26, 44);
+      if (this.pois.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius * 1.4 + R * 1.45 + 10)) continue;
+      if (H.lakes.some((l) => Math.hypot(l.x - x, l.z - z) < (l.R + R) * 1.4 + 60)) continue;
+      if (H.distanceTo(x, z) < R * 1.5 + 30) continue;
       const lake = { x, z, R, p1: rng.float(0, Math.PI * 2), p2: rng.float(0, Math.PI * 2), depth: rng.float(3.5, 5.5) };
       // La orilla debe ser bastante uniforme para que el agua no "se salga"
-      let min = Infinity, max = -Infinity;
-      for (let k = 0; k < 40; k++) {
-        const a = (k / 40) * Math.PI * 2;
-        const r = H.lakeShoreR(lake, x + Math.cos(a), z + Math.sin(a));
-        for (const q of [1.0, 1.15, 1.3, 1.45]) {
-          const h = t.rawHeight(x + Math.cos(a) * r * q, z + Math.sin(a) * r * q);
-          min = Math.min(min, h);
-          max = Math.max(max, h);
-        }
-      }
+      const { min, max } = this.lakeRing(lake);
       if (max - min > 10 || min < 4 || min > 40) continue;
       lake.level = min - 0.6;
       lake.name = names.pop();
       H.addLake(lake);
       this.landmarks.push({ name: lake.name, x, z });
     }
+    // Además del gran río, otro más pequeño que sale de un lago
     let rivers = 0;
-    for (const lake of rng.shuffle(H.lakes.slice())) {
-      if (rivers >= 2) break;
+    for (const lake of rng.shuffle(H.lakes.filter((l) => !l.island))) {
+      if (rivers >= 1) break;
       if (this.planRiver({ lake, x: lake.x, z: lake.z })) rivers++;
     }
-    // Si faltan ríos: nacen en un manantial en lo alto
-    for (let i = 0; i < 3000 && rivers < 2; i++) {
+    // Si falta: nace en un manantial en lo alto
+    for (let i = 0; i < 3000 && rivers < 1; i++) {
       const [x, z] = this.randomLand(rng, ISLAND_RADIUS * 0.6);
       const h = t.rawHeight(x, z);
       if (h < 22 || h > 42) continue;
       if (this.pois.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius * 1.4 + 30)) continue;
-      if (H.edgeDistance(x, z) < 120) continue;
+      if (H.distanceTo(x, z) < 120) continue;
       if (this.planRiver({ x, z })) rivers++;
     }
   }
 
-  planRiver(src) {
+  // Alturas mínima y máxima del terreno alrededor de la orilla de un lago.
+  lakeRing(lake) {
+    let min = Infinity, max = -Infinity;
+    for (let k = 0; k < 48; k++) {
+      const a = (k / 48) * Math.PI * 2;
+      const r = this.hydro.lakeShoreR(lake, lake.x + Math.cos(a), lake.z + Math.sin(a));
+      for (const q of [1.0, 1.15, 1.3, 1.45]) {
+        const h = this.terrain.rawHeight(lake.x + Math.cos(a) * r * q, lake.z + Math.sin(a) * r * q);
+        min = Math.min(min, h);
+        max = Math.max(max, h);
+      }
+    }
+    return { min, max };
+  }
+
+  // Gran lago en el centro del mapa con una isla en medio (la del jefe y la
+  // bóveda) y un río que lo atraviesa de costa a costa.
+  planCentralLake() {
+    const rng = this.rng;
+    const t = this.terrain;
+    const H = this.hydro;
+    let best = null;
+    for (let i = 0; i < 80; i++) {
+      const lake = {
+        x: rng.float(-70, 70), z: rng.float(-70, 70), R: 100, island: 40, depth: 5.5,
+        p1: rng.float(0, Math.PI * 2), p2: rng.float(0, Math.PI * 2), central: true,
+      };
+      const ring = this.lakeRing(lake);
+      const score = ring.max - ring.min + Math.max(0, 6 - ring.min) * 4;
+      if (!best || score < best.score) best = { lake, ...ring, score };
+    }
+    const lake = best.lake;
+    lake.level = Math.max(3.5, best.min - 0.6);
+    lake.name = 'Lago Central';
+    H.addLake(lake);
+    // La isla: meseta un poco por encima del agua
+    this.island = { x: lake.x, z: lake.z, R: lake.island, height: lake.level + 2.4, lake };
+    this.pads.push({ x: lake.x, z: lake.z, radius: lake.island * 0.95, height: this.island.height });
+    this.landmarks.push({ name: 'Isla de la Bóveda', x: lake.x, z: lake.z, major: true });
+    // El gran río: dos brazos que salen del lago hacia costas opuestas por
+    // la dirección con menos montañas en medio.
+    let dir = null;
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI;
+      let cost = 0, ok = true;
+      for (const s of [1, -1]) {
+        let d = lake.R * 1.2;
+        for (; d < 950; d += 10) {
+          const h = t.rawHeight(lake.x + Math.cos(a) * d * s, lake.z + Math.sin(a) * d * s);
+          if (h < -1.5) break;
+          cost += Math.max(0, h - lake.level - 4);
+        }
+        if (d >= 950) ok = false;
+      }
+      if (ok && (!dir || cost < dir.cost)) dir = { a, cost };
+    }
+    if (!dir) return;
+    for (const a of [dir.a, dir.a + Math.PI]) this.planRiver({ lake, x: lake.x, z: lake.z }, a);
+    if (H.rivers.length) this.landmarks.push({ name: 'Río Grande', x: H.rivers[0].pts[H.rivers[0].pts.length >> 1][0], z: H.rivers[0].pts[H.rivers[0].pts.length >> 1][1] });
+  }
+
+  // a: dirección de salida (si no, hacia una costa a media distancia).
+  planRiver(src, forcedDir = null) {
     const t = this.terrain;
     const H = this.hydro;
     // Salida hacia la costa más cercana
-    let bestDir = null;
-    for (let k = 0; k < 24; k++) {
+    let bestDir = forcedDir === null ? null : { a: forcedDir, cost: 0 };
+    for (let k = 0; k < 24 && forcedDir === null; k++) {
       const a = (k / 24) * Math.PI * 2;
       let d = 30, pen = 0;
       for (; d < 900; d += 10) {
@@ -663,6 +730,87 @@ export class World {
     return river;
   }
 
+  // ------------------------------------------------------ ISLA CENTRAL
+  // Bóveda en el centro (puerta mirando a la pasarela), pasarela de madera
+  // hasta la orilla y puestos del Guardián y sus secuaces.
+  planIsland() {
+    const I = this.island;
+    if (!I) return;
+    const L = I.lake;
+    const H = this.hydro;
+    let best = null;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const outer = H.lakeShoreR(L, L.x + dx, L.z + dz);
+      const inner = H.islandR(L, L.x + dx, L.z + dz);
+      // que no caiga en la boca del río
+      const ex = L.x + dx * (outer + 10), ez = L.z + dz * (outer + 10);
+      const river = H.riverAt(ex, ez, 25);
+      const span = outer - inner + (river ? 1000 : 0);
+      if (!best || span < best.span) best = { dx, dz, outer, inner, span };
+    }
+    const { dx, dz } = best;
+    I.bridge = { dx, dz, y: L.level + 1.1, w: 3.2, inner: best.inner, outer: best.outer };
+    // Franja de la pasarela ocupada (sin árboles ni edificios encima)
+    {
+      const a = best.inner * 0.5, b = best.outer + 40, w = 4;
+      const xs = [L.x + dx * a - dz * w, L.x + dx * b + dz * w], zs = [L.z + dz * a - dx * w, L.z + dz * b + dx * w];
+      this.occ.add(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), { footbridge: true });
+    }
+    const rot = rotFacing(dx, dz);
+    const vx = L.x - dx * 3, vz = L.z - dz * 3;
+    const vault = this.plan('vault', vx, vz, rot, 12, 10, { island: true, chests: 3, chestChance: 1 });
+    this.plans.push(vault);
+    this.occ.add(vx - vault.fw / 2 - 1, vz - vault.fd / 2 - 1, vx + vault.fw / 2 + 1, vz + vault.fd / 2 + 1, vault);
+    I.vaultPlan = vault;
+    // Guardián delante de la puerta; secuaces repartidos por la isla
+    I.boss = { x: L.x + dx * 9, z: L.z + dz * 9 };
+    I.minions = [0.6, 1.9, 3.3, 4.5, 5.6].map((a) => ({ x: L.x + Math.cos(a) * 19, z: L.z + Math.sin(a) * 19 }));
+    // Tiendas de campaña de los secuaces
+    for (const a of [1.2, 4.0]) {
+      const tx = L.x + Math.cos(a) * 26, tz = L.z + Math.sin(a) * 26;
+      this.tryPlan(this.plan('tent', tx, tz, rotFacing(L.x - tx, L.z - tz), 3.4, 4.8, { island: true }), 0.5);
+    }
+  }
+
+  // Pasarela de tablones desde la isla hasta la orilla (a nivel del suelo
+  // en los extremos). Colisiones de tipo 'bridge' (la IA la cruza).
+  buildFootbridge(geo) {
+    const I = this.island;
+    if (!I?.bridge) return;
+    const { dx, dz, y, w } = I.bridge;
+    const L = I.lake;
+    const t = this.terrain;
+    // Del borde de la isla al agua y del agua a la otra orilla
+    let a = I.bridge.inner * 0.5, b;
+    while (a < I.bridge.outer && t.heightAt(L.x + dx * a, L.z + dz * a) > y - 0.15) a += 0.5;
+    for (b = a + 1; b < I.bridge.outer + 40; b += 0.5) if (t.heightAt(L.x + dx * b, L.z + dz * b) > y - 0.15) break;
+    a -= 1.5;
+    b += 1.5;
+    const P = (s, o) => [L.x + dx * s - dz * o, L.z + dz * s + dx * o];
+    const aabb = (s0, s1, o0, o1) => {
+      const [x0, z0] = P(s0, o0), [x1, z1] = P(s1, o1);
+      return [Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1)];
+    };
+    const box = (s0, s1, o0, o1, ya, yb, hex, collide = true) => {
+      const [x0, z0, x1, z1] = aabb(s0, s1, o0, o1);
+      geo.box(x0, ya, z0, x1, yb, z1, hex, 0.08);
+      if (collide) this.collision.add(x0, ya, z0, x1, yb, z1, { type: 'bridge' });
+    };
+    // Tablero en tramos de 1 m (tablones con algo de variación)
+    for (let s = a; s < b; s += 1) box(s, Math.min(b, s + 1.02), -w / 2, w / 2, y - 0.2, y, 0x8a6440);
+    for (const o of [-w / 2, w / 2]) {
+      box(a, b, o - 0.08, o + 0.08, y + 0.85, y + 1.0, 0x6b4a2b);
+      for (let s = a; s <= b; s += 2.5) {
+        const yb = Math.min(y - 0.2, t.heightAt(...P(s, o))) - 0.3;
+        box(s - 0.12, s + 0.12, o - 0.12, o + 0.12, yb, y + 1.0, 0x5a3d22, false);
+      }
+      // colisión de la barandilla (para no caerse al agua)
+      box(a + 1, b - 1, o - 0.1, o + 0.1, y, y + 1.0, 0x6b4a2b, true);
+    }
+    I.bridge.a = a;
+    I.bridge.b = b;
+  }
+
   // ------------------------------------------------------- BAJO TIERRA
   // Cuevas (salas y túneles cubiertos, con antorchas y cristales) y
   // trincheras (zigzag a cielo abierto con refugios cubiertos y faroles).
@@ -676,15 +824,15 @@ export class World {
     ];
     for (const spec of specs) {
       const cave = spec.kind === 'cave';
-      for (let attempt = 0; attempt < 3000; attempt++) {
+      for (let attempt = 0; attempt < 5000; attempt++) {
         const nx = cave ? rng.int(14, 16) : rng.int(13, 15);
         const nz = cave ? rng.int(12, 14) : nx;
         const [x, z] = this.randomLand(rng, ISLAND_RADIUS * 0.7);
         const half = (Math.hypot(nx, nz) * CELL) / 2;
         const padR = (half + 3) / 0.85;
-        if (this.sites.some((q) => Math.hypot(q.x - x, q.z - z) < 220)) continue;
+        if (this.sites.some((q) => Math.hypot(q.x - x, q.z - z) < 180)) continue;
         if (!this.awayFromAll(x, z, padR * 0.9)) continue;
-        const f = this.isFlatEnough(x, z, padR, attempt < 1500 ? 7 : 11);
+        const f = this.isFlatEnough(x, z, padR, attempt < 1500 ? 7 : attempt < 3000 ? 11 : 15);
         if (!f.ok || f.avg < 4 || f.avg > 44) continue;
         const ox = -HALF + CELL * Math.round((x - (nx * CELL) / 2 + HALF) / CELL);
         const oz = -HALF + CELL * Math.round((z - (nz * CELL) / 2 + HALF) / CELL);
@@ -917,7 +1065,7 @@ export class World {
   awayFromAll(x, z, r) {
     if (this.pois.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius * 1.2 + r)) return false;
     if (this.roads.edgeDistance(x, z, 48) < r + 10) return false;
-    if (this.hydro.edgeDistance(x, z) < r * 1.7 + 10) return false;
+    if (this.hydro.distanceTo(x, z) < r * 1.2 + 15) return false;
     return this.free(x - r, z - r, x + r, z + r);
   }
 
@@ -1035,6 +1183,7 @@ export class World {
           case 'windmill': genWindmill(ctx, rng); break;
           case 'castle': genCastle(ctx, rng); break;
           case 'market': genMarket(ctx, rng); break;
+          case 'vault': p.door = genVault(ctx); break;
           case 'fountain': genFountain(ctx); break;
           case 'lamp': genLamp(ctx); break;
           case 'bench': genBench(ctx); break;
@@ -1061,14 +1210,18 @@ export class World {
       const chance = Math.min(0.8, Math.max(0.18, (expected / Math.max(1, cands.length)) * 1.25));
       for (const c of cands) {
         c.chance = chance;
+        // Los cofres de la bóveda siempre están (detrás de la puerta blindada)
+        if (p.kind === 'vault') c.forced = c.vault = true;
         this.chestSpots.push(c);
       }
+      if (p.kind === 'vault') this.vault = { x: p.x, z: p.z, rot: p.rot, door: p.door, fw: p.fw, fd: p.fd };
       this.lootSpots.push(...ctx.lootSpots);
       this.ammoSpots.push(...ctx.ammoSpots);
       this.ladders.push(...ctx.ladders);
       this.doors.push(...ctx.doors);
     }
     this.buildBridges(geo);
+    this.buildFootbridge(geo);
     for (const d of this.dummySpots) d.y = this.terrain.heightAt(d.x, d.z);
     for (const c of [...this.carSpots, ...this.wreckSpots]) c.y = this.terrain.heightAt(c.x, c.z);
     this.buildingMesh = geo.build();

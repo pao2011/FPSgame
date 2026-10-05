@@ -203,11 +203,21 @@ export class Site {
     }
   }
 
-  // Altura del terreno en un vértice de la rejilla dentro del sitio.
+  // Profundidad (0..1) interpolada en cualquier punto: en los vértices de la
+  // rejilla de 4 m es exacta; entre ellos (terreno HD de 2 m) es bilineal,
+  // así los pasillos siguen planos y las rampas rectas.
+  depthFrac(x, z) {
+    const fx = Math.max(0, Math.min(this.nx, (x - this.ox) / CELL));
+    const fz = Math.max(0, Math.min(this.nz, (z - this.oz) / CELL));
+    const i = Math.min(this.nx - 1, Math.floor(fx)), j = Math.min(this.nz - 1, Math.floor(fz));
+    const u = fx - i, v = fz - j, V = this.nx + 1, f = this.vf;
+    const a = f[j * V + i], b = f[j * V + i + 1], c = f[(j + 1) * V + i], d = f[(j + 1) * V + i + 1];
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+  }
+
+  // Altura del terreno dentro del sitio.
   vertexHeight(x, z) {
-    const i = Math.max(0, Math.min(this.nx, Math.round((x - this.ox) / CELL)));
-    const j = Math.max(0, Math.min(this.nz, Math.round((z - this.oz) / CELL)));
-    return this.H - this.vf[j * (this.nx + 1) + i] * this.D;
+    return this.H - this.depthFrac(x, z) * this.D;
   }
 
   // ------------------------------------------------------------ LUZ
@@ -245,12 +255,11 @@ export class Site {
 
   // Color (sRGB) del suelo excavado, o false si el vértice está en superficie.
   floorColor(x, z, h, out) {
-    const i = Math.round((x - this.ox) / CELL), j = Math.round((z - this.oz) / CELL);
-    const f = this.vf[Math.max(0, Math.min(this.nz, j)) * (this.nx + 1) + Math.max(0, Math.min(this.nx, i))];
-    if (f <= 0.001) return false;
+    if (this.depthFrac(x, z) <= 0.001) return false;
+    // Celdas que tocan el punto (4 alrededor de un vértice, 1 o 2 si no)
     let t = SOLID;
-    for (const [ci, cj] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) {
-      const c = this.get(ci, cj);
+    for (const [ox, oz] of [[-0.05, -0.05], [0.05, -0.05], [-0.05, 0.05], [0.05, 0.05]]) {
+      const c = this.typeAt(x + ox, z + oz);
       if (c === OPEN || (c === RAMP && t !== OPEN) || (c === ROOM && t === SOLID)) t = c;
     }
     if (this.kind === 'cave') out.setRGB(0.34, 0.31, 0.28);

@@ -54,7 +54,7 @@ export class NavGrid {
         // profundidad del agua (mar, lagos o ríos)
         const wl = h > (w.maxWaterLevel ?? 0) || !w.waterLevelAt ? 0 : w.waterLevelAt(-HALF + (i + 0.5) * CELL, -HALF + (j + 0.5) * CELL);
         const depth = wl - h;
-        if (depth > 3.5) this.block[k] = 255; // agua profunda
+        if (depth > 3.5 && wl <= 0) this.block[k] = 255; // mar profundo (los lagos se cruzan a nado)
         else if (depth > 0.9) this.cost[k] = 6; // nadar es lento
         else {
           const sl = Math.abs(G[k + 2] - G[k - 2]) + Math.abs(G[k + 2 * S] - G[k - 2 * S]);
