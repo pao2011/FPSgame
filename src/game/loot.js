@@ -151,7 +151,7 @@ export class ContainerManager {
     }
     const c = {
       kind, model, glow, pos: model.position, rotY: s.rotY, opened: false, active: true, openT: 0, collider: null,
-      index: this.list.length, chance: s.chance, forced: !!s.forced,
+      index: this.list.length, chance: s.chance, forced: !!s.forced, vault: !!s.vault, locked: false,
     };
     this._setCollider(c, true);
     this.list.push(c);
@@ -261,7 +261,7 @@ export class ContainerManager {
   findInteract(eye, forward, maxDist = 3) {
     let best = null, bestScore = -Infinity;
     for (const c of this.list) {
-      if (!c.active || c.opened) continue;
+      if (!c.active || c.opened || c.locked) continue;
       tmp.copy(c.pos).y += 0.35;
       tmp.sub(eye);
       const d = tmp.length();
@@ -281,7 +281,7 @@ export class ContainerManager {
   nearestChest(pos, maxDist) {
     let best = null, bd = maxDist;
     for (const c of this.list) {
-      if (!c.active || c.opened || c.kind !== 'chest') continue;
+      if (!c.active || c.opened || c.locked || c.kind !== 'chest') continue;
       const d = c.pos.distanceTo(pos);
       if (d < bd) {
         bd = d;

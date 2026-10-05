@@ -7,8 +7,12 @@ const tmpColor = new THREE.Color();
 
 // Variación de color con ruido en el shader del terreno: rompe la
 // uniformidad de los colores por vértice (matas de hierba, tierra, vetas).
-export function addGroundDetail(mat) {
+// hd (calidad alta): además, microrrelieve en la iluminación (normales con
+// ruido fino) y más detalle de color de cerca.
+export function addGroundDetail(mat, hd = false) {
+  mat.customProgramCacheKey = () => (hd ? 'groundHD' : 'ground');
   mat.onBeforeCompile = (sh) => {
+    if (hd) sh.fragmentShader = '#define GROUND_HD\n' + sh.fragmentShader;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vGWorld;\nvarying vec3 vGNormal;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGWorld = (modelMatrix * vec4(position, 1.0)).xyz;\nvGNormal = normal;');
@@ -21,20 +25,53 @@ float gNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), u.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y);
-}`)
+}
+// Ruido en los tres planos: no se estira en las laderas empinadas
+float gN3(vec3 p) { return (gNoise(p.xz) + gNoise(p.zy + 17.0) + gNoise(p.xy + 31.0)) * 0.3333; }
+float gDetail(vec3 p) { return gN3(p * 0.9) * 0.55 + gN3(p * 2.3) * 0.3 + gN3(p * 5.7) * 0.15; }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+#ifdef GROUND_HD
+{
+  // Microrrelieve: inclina la normal según el gradiente de un ruido fino
+  float camDn = length(cameraPosition - vGWorld);
+  float fadeN = 1.0 - smoothstep(25.0, 160.0, camDn);
+  if (fadeN > 0.0) {
+    vec3 q = vGWorld;
+    float e = 0.12;
+    float h0 = gDetail(q);
+    vec3 grad = vec3(gDetail(q + vec3(e, 0.0, 0.0)) - h0, gDetail(q + vec3(0.0, e, 0.0)) - h0, gDetail(q + vec3(0.0, 0.0, e)) - h0) / e;
+    vec3 gn = normalize(vGNormal);
+    vec3 bw = -(grad - gn * dot(grad, gn)); // sólo la parte tangente a la ladera
+    float rocky = 1.0 - smoothstep(0.75, 0.95, clamp(gn.y, 0.0, 1.0));
+    normal = normalize(normal + (viewMatrix * vec4(bw, 0.0)).xyz * fadeN * (0.28 + rocky * 0.5));
+  }
+}
+#endif`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 gp = vGWorld.xz;
   float camD = length(cameraPosition - vGWorld);
   float fade = 1.0 - smoothstep(120.0, 600.0, camD);
   float big = gNoise(gp * 0.035) * 0.6 + gNoise(gp * 0.09) * 0.4;
+#ifdef GROUND_HD
+  float fine = gN3(vGWorld * 0.7) * 0.5 + gN3(vGWorld * 2.3) * 0.5;
+#else
   float fine = gNoise(gp * 0.7) * 0.5 + gNoise(gp * 2.3) * 0.5;
+#endif
   float green = diffuseColor.g - max(diffuseColor.r, diffuseColor.b);
   float grassy = smoothstep(0.0, 0.08, green);
   vec3 c = diffuseColor.rgb;
   c *= 0.86 + big * 0.28;
   c = mix(c, c * vec3(1.12, 1.05, 0.72), grassy * smoothstep(0.55, 0.8, big) * 0.6);
   c *= mix(1.0, 0.9 + fine * 0.2, fade);
+#ifdef GROUND_HD
+  // De cerca: briznas, piedrecillas y manchas de tierra
+  float near = 1.0 - smoothstep(15.0, 90.0, camD);
+  float speck = gN3(vGWorld * 9.0) * 0.6 + gN3(vGWorld * 23.0) * 0.4;
+  c *= mix(1.0, 0.82 + speck * 0.34, near);
+  float dirt = smoothstep(0.62, 0.78, gNoise(gp * 0.22 + 13.0)) * grassy;
+  c = mix(c, c * vec3(1.18, 0.95, 0.7), dirt * 0.35);
+#endif
   float gFlat = clamp(vGNormal.y, 0.0, 1.0);
   c = mix(c * vec3(0.92, 0.9, 0.88), c, smoothstep(0.75, 0.95, gFlat));
   diffuseColor.rgb = c;
@@ -47,9 +84,14 @@ export class Terrain {
   constructor(noise, opts = {}) {
     this.noise = noise;
     this.flat = !!opts.flat; // isla plana del modo creativo
+    // Calidad alta: malla del doble de resolución (2 m) con relieve fino
+    this.hd = !!opts.hd && !this.flat;
     this.flats = []; // {x, z, radius, height}
     this.zones = []; // POIs para colorear el suelo
-    this.res = 400;
+    this.hydro = null; // ríos y lagos (excavan el terreno)
+    this.roadNet = null; // carreteras (corredor con perfil suavizado)
+    this.sites = []; // cuevas y trincheras (excavadas en la rejilla)
+    this.res = this.hd ? 800 : 400;
     this.cell = MAP_SIZE / this.res;
     this.heights = null;
     this.maxHeight = 0;
@@ -103,6 +145,7 @@ export class Terrain {
 
   shapedHeight(x, z) {
     let h = this.rawHeight(x, z);
+    this._flatW = 0; // cuánto ha aplanado alguna zona este punto (0..1)
     const list = this.flatGrid.get(Math.floor(x / this.flatB) * 10000 + Math.floor(z / this.flatB));
     if (!list) return h;
     for (const i of list) {
@@ -112,8 +155,40 @@ export class Terrain {
       if (Math.abs(dx) > r * 1.7 || Math.abs(dz) > r * 1.7) continue;
       const d = Math.sqrt(dx * dx + dz * dz);
       const w = 1 - smoothstep(r * 0.85, r * 1.6, d);
-      if (w > 0) h += (p.height - h) * w;
+      if (w > 0) {
+        h += (p.height - h) * w;
+        if (w > this._flatW) this._flatW = w;
+      }
     }
+    return h;
+  }
+
+  // Relieve fino (sólo calidad alta) para el terreno natural: ondulaciones,
+  // montículos y más rugosidad en las montañas.
+  detailHeight(x, z, base) {
+    const n = this.noise;
+    const d = n(x * 0.045 + 31, z * 0.045 - 17) * 0.55 + n(x * 0.11 - 9, z * 0.11 + 44) * 0.3 + n(x * 0.27 + 71, z * 0.27 + 5) * 0.14;
+    const rocky = 1 + smoothstep(22, 48, base) * 1.6;
+    return d * rocky;
+  }
+
+  // Altura final de un vértice: relieve + zonas aplanadas, después ríos y
+  // lagos, luego el corredor de las carreteras (que no rellena los cauces:
+  // ahí van puentes) y por último las cuevas/trincheras.
+  finalHeight(x, z) {
+    let h = this.shapedHeight(x, z);
+    let natural = 1 - this._flatW;
+    if (this.hydro) {
+      h = this.hydro.shape(x, z, h);
+      if (this.hd) natural *= smoothstep(4, 16, this.hydro.edgeDistance(x, z));
+    }
+    if (this.roadNet) {
+      h = this.roadNet.corridor(x, z, h, this.hydro);
+      natural *= 1 - this.roadNet.lastWeight;
+    }
+    for (const s of this.sites) if (s.contains(x, z, 0.01)) return s.vertexHeight(x, z);
+    // Sólo en calidad alta y lejos de zonas, carreteras y agua
+    if (this.hd && natural > 0.001 && h > 1) h += this.detailHeight(x, z, h) * natural * smoothstep(1, 4, h);
     return h;
   }
 
@@ -125,7 +200,7 @@ export class Terrain {
     let maxH = -Infinity;
     for (let j = 0; j < V; j++) {
       for (let i = 0; i < V; i++) {
-        const h = this.shapedHeight(-HALF + i * this.cell, -HALF + j * this.cell);
+        const h = this.finalHeight(-HALF + i * this.cell, -HALF + j * this.cell);
         heights[j * V + i] = h;
         if (h > maxH) maxH = h;
       }
@@ -170,7 +245,7 @@ export class Terrain {
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
     const mat = usesPBR() ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }) : new THREE.MeshLambertMaterial({ vertexColors: true });
-    addGroundDetail(mat);
+    addGroundDetail(mat, this.hd);
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.receiveShadow = true;
     this.mesh.name = 'terrain';
@@ -194,7 +269,8 @@ export class Terrain {
     return Math.sqrt(dx * dx + dz * dz);
   }
 
-  colorAt(x, z, h, slope, out) {
+  colorAt(x, z, h, slope, out, noSites = false) {
+    if (!noSites) for (const s of this.sites) if (s.contains(x, z, 0.01) && s.floorColor(x, z, h, out)) return out;
     const n = this.noise(x * 0.02, z * 0.02) * 0.5 + 0.5;
     const n2 = this.noise(x * 0.07 + 50, z * 0.07) * 0.5 + 0.5;
     if (h < 0.6) {
@@ -209,6 +285,14 @@ export class Terrain {
     } else {
       out.setRGB(0.3 + n * 0.08 + n2 * 0.04, 0.55 + n * 0.12, 0.2 + n2 * 0.05);
       if (slope > 0.45) out.lerp(tmpRock.setRGB(0.45, 0.42, 0.36), (slope - 0.45) / 0.3);
+      if (this.hd) {
+        // Más variedad: manchas de hierba seca, tierra y flores silvestres
+        const n3 = this.noise(x * 0.09 - 21, z * 0.09 + 8) * 0.5 + 0.5;
+        const n4 = this.noise(x * 0.31 + 5, z * 0.31 - 3) * 0.5 + 0.5;
+        if (n3 > 0.68) out.lerp(tmpRock.setRGB(0.6, 0.6, 0.3), (n3 - 0.68) * 2.2);
+        if (n4 > 0.8 && slope < 0.3) out.lerp(tmpRock.setRGB(0.5, 0.42, 0.3), (n4 - 0.8) * 2.5);
+        out.multiplyScalar(0.93 + n4 * 0.12);
+      }
     }
     for (const zn of this.zones) {
       const dx = x - zn.x, dz = z - zn.z;
@@ -224,6 +308,15 @@ export class Terrain {
         else out.lerp(tmpRock.setRGB(0.72, 0.68, 0.3), edge * 0.7);
       } else {
         out.lerp(tmpRock.setRGB(0.55, 0.5, 0.4), edge * 0.35 * n2);
+      }
+    }
+    // Orillas de ríos y lagos: arena húmeda y lecho más oscuro
+    if (this.hydro && h > 0.6) {
+      const s = this.hydro.surfaceAt(x, z);
+      if (s > -Infinity) {
+        const wet = smoothstep(-1.4, 0.1, s - h);
+        out.lerp(tmpRock.setRGB(0.66, 0.6, 0.44), wet * 0.85);
+        out.lerp(tmpRock.setRGB(0.4, 0.38, 0.3), smoothstep(0.3, 2.5, s - h) * 0.7);
       }
     }
     return out;

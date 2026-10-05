@@ -500,8 +500,11 @@ export class HUD {
 
     // Nombre de la zona al entrar
     if (p.mode === 'ground' || air) {
-      const poi = g.world.poiAt(p.pos.x, p.pos.z);
-      const name = poi ? poi.name : null;
+      const w = g.world;
+      const poi = w.poiAt(p.pos.x, p.pos.z);
+      const isl = w.island && Math.hypot(p.pos.x - w.island.x, p.pos.z - w.island.z) < w.island.R;
+      const site = w.sites?.find((s) => s.contains(p.pos.x, p.pos.z));
+      const name = poi ? poi.name : isl ? 'Isla de la Bóveda' : site ? site.name : null;
       if (name !== this.lastZone) {
         this.lastZone = name;
         if (name) {

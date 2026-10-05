@@ -119,6 +119,7 @@ export class Grass {
       t.colorAt(x, z, h, slope, col);
       if (col.g < col.r + 0.12 || col.g < col.b + 0.2) continue;
       if (w.roads && w.roads.edgeDistance(x, z, 8) < 0.6) continue;
+      if (w.waterDepth && w.waterDepth(x, z) > -0.3) continue;
       if (w.occupied && w.occupied(x, z, 0.3)) continue;
       const sc = 0.55 + hash(x, z, 3) * 0.55;
       q.setFromAxisAngle(up, hash(x, z, 5) * Math.PI * 2);

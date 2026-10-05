@@ -9,6 +9,8 @@ import { GamepadInput } from '../core/gamepad.js';
 import { MatchLoader } from '../ui/tips.js';
 import { Trails } from './trails.js';
 import { Weather } from '../world/weather.js';
+import { UndergroundFx } from '../world/underground.js';
+import { Vault } from './vault.js';
 import { NPCs } from './npcs.js';
 import { RebootVans } from './reboot.js';
 import { Replay, Viewer } from './replay.js';
@@ -64,7 +66,7 @@ export class Game {
     this.settings = loadSettings();
     const params = new URLSearchParams(location.search);
     const q = params.get('calidad');
-    if (q === 'baja' || q === 'movil') this.settings.quality = q;
+    if (['baja', 'movil', 'normal', 'alta'].includes(q)) this.settings.quality = q;
     const mobile = this.settings.quality === 'movil';
     const low = this.settings.quality === 'baja' || mobile;
     const high = this.settings.quality === 'alta';
@@ -132,8 +134,11 @@ export class Game {
     // Mapa único: siempre la misma isla (también en online). El modo
     // creativo usa su propia isla plana (sandbox, no es un mapa de partida).
     this.seed = MAP_SEED;
-    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
+    // Calidad alta: terreno HD (malla de 2 m con relieve fino)
+    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1', hd: this.quality === 'alta' });
     this.grass = new Grass(this.scene, this.world, this.quality);
+    // Luces dinámicas de cuevas y trincheras (cerca de la cámara)
+    this.underFx = new UndergroundFx(this.scene, this.world.sites, this.quality);
     this.grass.onAutoOff = () => this.hud?.toast('Rendimiento: se ha quitado el césped para ganar FPS');
     this.weather = new Weather(this);
 
@@ -203,6 +208,7 @@ export class Game {
     this.a11y = new Accessibility(this);
     this.loader = new MatchLoader(this);
     this.npcs = new NPCs(this);
+    this.vault = new Vault(this);
     this.reboot = new RebootVans(this);
     this.mapDoors = new MapDoors(this);
     this.replay = new Replay(this);
@@ -562,6 +568,7 @@ export class Game {
     this.player.team = o.team;
     this.weather.start(o.stormRng, mode);
     this.npcs.reset(mode, !!o.online);
+    this.vault.reset();
     this.reboot.reset();
     this.mapDoors.reset();
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
@@ -755,7 +762,7 @@ export class Game {
       const a = this.arenaAngle + team * Math.PI + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.18 + (this.mode.arena ? 0 : random.float(-0.25, 0.25));
       const rr = this.mode.arena ? r : r + random.float(-40, 40);
       const x = st.center.x + Math.cos(a) * rr, z = st.center.y + Math.sin(a) * rr;
-      if (this.world.terrain.heightAt(x, z) > 1.5) return [x, z];
+      if (this.world.isLand(x, z)) return [x, z];
     }
     return [st.center.x, st.center.y];
   }
@@ -1080,7 +1087,7 @@ export class Game {
         x = st.center.x + Math.cos(a) * r;
         z = st.center.y + Math.sin(a) * r;
       }
-      if (this.world.terrain.heightAt(x, z) > 1.5 && !st.isOutside(x, z)) return [x, z];
+      if (this.world.isLand(x, z) && !st.isOutside(x, z)) return [x, z];
     }
     return [st.center.x, st.center.y];
   }
@@ -1238,6 +1245,7 @@ export class Game {
     const t = this.time;
 
     this.world.water.material.uniforms.time.value = t;
+    this.underFx.update(dt, this.camera.position);
     this.sky.material.uniforms.time.value = t;
     if (this.state === 'menu') {
       this.updateMenuCamera(t);
@@ -1340,6 +1348,7 @@ export class Game {
     if (this.state === 'playing') this.editCourse.update(dt);
     if (this.state === 'playing') {
       this.npcs.update(dt);
+      this.vault.update(dt, this.time);
       this.reboot.update(dt);
     }
     if (this.state === 'playing') this.weather.update(dt);
@@ -1622,6 +1631,7 @@ export class Game {
     }
 
     if (this.reboot.interact(input, dt, E)) return;
+    if ((!target || target.score < 1.2) && this.vault.interact(input, E)) return;
     const npc = !target || target.score < 1.2 ? this.npcs.findNear(p.pos) : null;
     if (npc) {
       const what = npc.role === 'merchant' ? 'Comerciar con' : npc.quest?.state === 'new' ? 'Misión de' : 'Hablar con';

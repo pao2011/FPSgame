@@ -117,7 +117,12 @@ export class Weather {
     const f = K.fog * (1 - night * 0.3);
     g.scene.fog.near *= f;
     g.scene.fog.far *= f;
-    if (this.rain.visible) this.updateRain(dt);
+    if (this.rain.visible) {
+      // Sin lluvia dentro de cuevas y refugios
+      const c = g.camera.position;
+      this.rain.material.opacity = g.world.coveredAt?.(c.x, c.y, c.z) ? 0 : 0.45;
+      this.updateRain(dt);
+    }
   }
 
   updateRain(dt) {
