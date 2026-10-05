@@ -52,6 +52,7 @@ export function createNature(world, rng) {
     const h = terrain.heightAt(x, z);
     if (h < 2.5 || h > 58) return null;
     if (terrain.slopeAt(x, z) > 0.8) return null;
+    if (world.waterDepth && world.waterDepth(x, z) > -0.4) return null; // ni en lagos ni en ríos
     if (world.occupied(x, z, margin)) return null;
     if (world.roads.edgeDistance(x, z, 24) < margin + 1) return null;
     const poi = world.poiAt(x, z);
@@ -80,6 +81,7 @@ export function createNature(world, rng) {
     const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
     const h = terrain.heightAt(x, z);
     if (h < 0.5) continue;
+    if (world.waterDepth && world.waterDepth(x, z) > 0.3) continue;
     if (world.creative && Math.hypot(x, z) < 300) continue;
     if (world.occupied(x, z, 2) || world.poiAt(x, z) || world.roads.edgeDistance(x, z, 24) < 3) continue;
     rocks.push({ x, y: h, z, s: rng.float(0.8, 3.2), rot: rng.float(0, Math.PI * 2) });

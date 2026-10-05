@@ -478,3 +478,50 @@ export function genMarket(ctx, rng) {
   ctx.spot(ctx.lootSpots, -3, 0.1, 0);
   ctx.spot(ctx.ammoSpots, 3, 0.1, 0, 0, 3);
 }
+
+// ------------------------------------------------------------- BÓVEDA
+// Búnker blindado de la isla central. La puerta (en el hueco del frente,
+// +Z) la gestiona game/vault.js: sólo se abre con la tarjeta del Guardián.
+// Devuelve el hueco de la puerta en coordenadas del mundo.
+export function genVault(ctx) {
+  const W = 12, D = 10, H = 4.2, t = 0.6, hw = W / 2, hd = D / 2;
+  const y0 = BASE, y1 = BASE + H;
+  const wall = 0x6f747a, trim = 0xe0a020, black = 0x2a2c30;
+  foundation(ctx, hw, hd, 0x55575c);
+  const door = { a: -1.6, b: 1.6, bottom: y0, top: y0 + 3.0 };
+  ctx.wall('x', -hw, hw, hd - t, hd, y0, y1, [door], wall);
+  ctx.wall('x', -hw, hw, -hd, -hd + t, y0, y1, [], wall);
+  ctx.wall('z', -hd + t, hd - t, -hw, -hw + t, y0, y1, [], wall);
+  ctx.wall('z', -hd + t, hd - t, hw - t, hw, y0, y1, [], wall);
+  ctx.box(-hw - 0.4, y1, -hd - 0.4, hw + 0.4, y1 + 0.7, hd + 0.4, 0x55575c);
+  // Marco de la puerta con franjas de peligro
+  ctx.box(-2.2, y0, hd - 0.05, -1.6, y0 + 3.6, hd + 0.35, black);
+  ctx.box(1.6, y0, hd - 0.05, 2.2, y0 + 3.6, hd + 0.35, black);
+  ctx.box(-2.2, y0 + 3.0, hd - 0.05, 2.2, y0 + 3.6, hd + 0.35, black);
+  for (let i = 0; i < 6; i++) ctx.box(-2.15 + i * 0.75, y0 + 3.62, hd + 0.05, -1.85 + i * 0.75, y0 + 3.7, hd + 0.3, trim, false);
+  // Lector de tarjetas junto a la puerta
+  ctx.box(2.35, y0 + 1.2, hd, 2.75, y0 + 1.8, hd + 0.18, black);
+  ctx.box(2.42, y0 + 1.5, hd + 0.17, 2.68, y0 + 1.7, hd + 0.2, 0xd63a2f, false);
+  // Dentro: estanterías con lingotes y luces
+  for (const x of [-hw + t + 0.4, hw - t - 1.2]) {
+    ctx.box(x, y0, -hd + t + 1, x + 0.8, y0 + 2.2, hd - t - 2, 0x3a3d42);
+    for (let k = 0; k < 3; k++) {
+      const z = -hd + t + 1.5 + k * 1.8;
+      ctx.box(x + 0.1, y0 + 1.0, z, x + 0.7, y0 + 1.25, z + 0.9, trim, false);
+      ctx.box(x + 0.1, y0 + 1.9, z, x + 0.7, y0 + 2.15, z + 0.9, trim, false);
+    }
+  }
+  for (const x of [-3, 3]) ctx.box(x - 0.4, y1 - 0.12, -0.4, x + 0.4, y1, 0.4, 0xfff1b0, false);
+  ctx.spot(ctx.chestSpots, -3, y0, -hd + t + 0.8, -3, 0);
+  ctx.spot(ctx.chestSpots, 0, y0, -hd + t + 0.8, 0, 0);
+  ctx.spot(ctx.chestSpots, 3, y0, -hd + t + 0.8, 3, 0);
+  // Sacos terreros delante
+  genSandbags(ctx, -6, hd + 4, -3, hd + 4.6);
+  genSandbags(ctx, 3, hd + 4, 6, hd + 4.6);
+  const a = ctx.tp(-1.6, y0, hd - t), b = ctx.tp(1.6, door.top, hd);
+  const out = ctx.tp(0, y0, hd + 3);
+  return {
+    minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]), minZ: Math.min(a[2], b[2]), maxZ: Math.max(a[2], b[2]),
+    y0: a[1], y1: b[1], alongX: ctx.rot % 2 === 0, front: { x: out[0], z: out[2] },
+  };
+}

@@ -2,18 +2,19 @@ import * as THREE from 'three';
 import { MAP_SIZE, HALF } from './constants.js';
 import { isMobileQuality } from '../game/models.js';
 
-// Textura con la altura del terreno (para saber la profundidad del agua y
-// pintar la orilla con espuma y tonos turquesa).
-function heightTexture(terrain) {
-  const N = 256;
+// Textura con la profundidad del agua (mar, lagos y ríos) para pintar la
+// orilla con espuma y tonos turquesa.
+function depthTexture(world) {
+  const N = world.hydro.rivers.length ? 512 : 256;
+  const terrain = world.terrain;
   const data = new Uint8Array(N * N * 4);
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const x = -HALF + ((i + 0.5) / N) * MAP_SIZE;
       const z = -HALF + ((j + 0.5) / N) * MAP_SIZE;
-      const h = terrain.heightAt(x, z);
-      // -20..+10 m -> 0..255
-      const v = Math.max(0, Math.min(255, Math.round(((h + 20) / 30) * 255)));
+      const d = world.waterLevelAt(x, z) - terrain.heightAt(x, z);
+      // profundidad -10..+20 m -> 0..255
+      const v = Math.max(0, Math.min(255, Math.round(((d + 10) / 30) * 255)));
       const k = (j * N + i) * 4;
       data[k] = v;
       data[k + 1] = v;
@@ -28,8 +29,13 @@ function heightTexture(terrain) {
   return tex;
 }
 
-export function createWater(scene, terrain, sunDir) {
+// Mar (plano infinito a nivel 0) más la malla de lagos y ríos, todo con el
+// mismo material. El atributo `flow` = (corriente x, z, amplitud del oleaje).
+export function createWater(scene, world, sunDir) {
   const geo = new THREE.PlaneGeometry(8000, 8000, 1, 1).rotateX(-Math.PI / 2);
+  const flow = new Float32Array(geo.attributes.position.count * 3);
+  for (let i = 2; i < flow.length; i += 3) flow[i] = 1;
+  geo.setAttribute('flow', new THREE.BufferAttribute(flow, 3));
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     fog: true,
@@ -53,10 +59,13 @@ export function createWater(scene, terrain, sunDir) {
     ]),
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
+      attribute vec3 flow;
       varying vec3 vWorld;
+      varying vec3 vFlow;
       void main() {
         vec4 wp = modelMatrix * vec4(position, 1.0);
         vWorld = wp.xyz;
+        vFlow = flow;
         vec4 mvPosition = viewMatrix * wp;
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
@@ -69,6 +78,7 @@ export function createWater(scene, terrain, sunDir) {
       uniform vec3 sunDir, sunColor, deep, mid, shallow, skyTop, skyHorizon;
       uniform float mapSize;
       varying vec3 vWorld;
+      varying vec3 vFlow;
 
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) {
@@ -76,8 +86,10 @@ export function createWater(scene, terrain, sunDir) {
         vec2 u = f * f * (3.0 - 2.0 * f);
         return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
       }
-      // Altura de las olas (suma de ondas) para sacar la normal.
+      // Altura de las olas (suma de ondas) para sacar la normal. En los ríos
+      // el dibujo se desplaza con la corriente; en los lagos hay menos oleaje.
       float waves(vec2 p) {
+        p -= vFlow.xy * time;
         float h = 0.0;
         h += sin(dot(p, vec2(0.12, 0.05)) + time * 1.1) * 0.35;
         h += sin(dot(p, vec2(-0.07, 0.15)) + time * 1.4) * 0.25;
@@ -88,15 +100,14 @@ export function createWater(scene, terrain, sunDir) {
         h += (vnoise(p * 0.35 + vec2(time * 0.35, time * 0.2)) - 0.5) * 0.35;
         h += (vnoise(p * 1.1 - vec2(time * 0.5, -time * 0.3)) - 0.5) * 0.12;
       #endif
-        return h;
+        return h * vFlow.z;
       }
 
       void main() {
         vec2 p = vWorld.xz;
         vec2 uv = p / mapSize + 0.5;
-        float ground = -16.0;
-        if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) ground = texture2D(heightTex, uv).r * 30.0 - 20.0;
-        float depth = max(0.0, -ground);
+        float depth = 16.0;
+        if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) depth = max(0.0, texture2D(heightTex, uv).r * 30.0 - 10.0);
 
         float e = 0.6;
         float h0 = waves(p);
@@ -124,7 +135,7 @@ export function createWater(scene, terrain, sunDir) {
       #else
         float foamNoise = vnoise(p * 1.6 + vec2(time * 0.6, time * 0.4));
       #endif
-        float foam = foamLine * smoothstep(0.35, 0.75, foamNoise + foamLine * 0.45);
+        float foam = foamLine * smoothstep(0.35, 0.75, foamNoise + foamLine * 0.45) * (0.3 + 0.7 * vFlow.z);
         col = mix(col, vec3(0.95, 0.98, 1.0), foam * 0.9);
 
         float alpha = mix(0.45, 0.93, smoothstep(0.0, 3.5, depth));
@@ -135,10 +146,19 @@ export function createWater(scene, terrain, sunDir) {
         #include <fog_fragment>
       }`,
   });
-  mat.uniforms.heightTex.value = heightTexture(terrain);
+  mat.uniforms.heightTex.value = depthTexture(world);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = 0;
   mesh.renderOrder = 1;
   scene.add(mesh);
+  // Lagos y ríos (comparten material: el tiempo se actualiza a la vez)
+  const inland = world.terrain.hydro?.buildGeometry();
+  if (inland) {
+    const m = new THREE.Mesh(inland, mat);
+    m.renderOrder = 1;
+    m.name = 'inland-water';
+    scene.add(m);
+    mesh.userData.inland = m;
+  }
   return mesh;
 }

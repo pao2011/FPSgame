@@ -4,6 +4,21 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Isla de la Bóveda:** 🏝️ un **gran lago en el centro con una isla** donde
+espera el 💀 **Guardián de la Bóveda** con sus secuaces; al morir suelta una
+💳 **tarjeta** que abre la 🔒 **bóveda** (cofres seguros y armas
+legendarias). Además, 🌊 un **río que cruza toda la isla**, ⚓ **cuatro
+puertos** en la costa, 🗺️ **nombres de las zonas en el minimapa** y ⛰️
+**terreno HD** con gráficos en *Alto* (doble resolución, relieve fino y
+roca con textura).
+
+**Mapa renovado:** 🛣️ **carreteras limpias** (el relieve ya no atraviesa el
+asfalto: firme con pendiente máxima del 12 %, taludes y desfiladeros), 🏞️
+**ríos y lagos** (se nada y se navega en ellos) con **puentes**, 🕯️ **cuevas
+y trincheras** bajo tierra con iluminación (antorchas, faroles y cristales) y
+cofres, y ⚔️ **más densidad**: más zonas y más juntas, bots que acuden a los
+tiroteos y primeras fases de la tormenta más cortas.
+
 **Novedades 0.5:** 🎨 **gráficos renovados** (materiales PBR con
 iluminación de entorno, oclusión ambiental, personajes articulados, fachadas y
 asfalto con textura, césped animado, armas detalladas, trazadoras, casquillos

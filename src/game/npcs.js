@@ -121,12 +121,42 @@ export class NPCs {
       n.icon.visible = true;
     }
     this.boss = null;
+    this.guardian = null;
   }
 
   // Tras crear los bots de la partida (sólo contra bots, battle royale).
   startBoss(mode) {
-    if (!this.list.length || this.game.net || mode.respawn || mode.creative || mode.noBots) return;
-    this.spawnBoss();
+    if (this.game.net || mode.respawn || mode.creative || mode.noBots) return;
+    if (this.list.length) this.spawnBoss();
+    this.spawnGuardian();
+  }
+
+  // Guardián de la Bóveda (isla del lago central) con sus secuaces. Al morir
+  // suelta la tarjeta que abre la bóveda.
+  spawnGuardian() {
+    const g = this.game;
+    const I = g.world.island;
+    if (!I?.boss) return;
+    const add = (x, z, diff, loadout, extra) => {
+      const b = g.bots.spawnExtra(99, diff, x, z, loadout);
+      b.pos.set(x, g.world.groundBelow(x, z, 200) + 1, z);
+      b.vel.set(0, 0, 0);
+      b.mode = 'ground';
+      b.boss = true; // no cuenta para el recuento de supervivientes
+      b.home = { x: I.x, z: I.z, r: I.R * 0.8 };
+      Object.assign(b, extra);
+      if (!g.chars.includes(b)) g.chars.push(b);
+      return b;
+    };
+    this.guardian = add(I.boss.x, I.boss.z, 'dificil', {
+      weapons: [makeWeapon('heavyar', 5), makeWeapon('tactical', 4), makeWeapon('glauncher', 4)],
+      heals: { shieldpot: 2, medkit: 2 },
+    }, { bossKind: 'guardian', name: '💀 Guardián de la Bóveda', dmgTaken: 0.4, shield: 100 });
+    const pool = ['ar', 'smg', 'shotgun', 'burst', 'pistol'];
+    I.minions.forEach((m, i) => add(m.x, m.z, 'normal', {
+      weapons: [makeWeapon(pool[i % pool.length], 1 + (i % 3))],
+      heals: { bandage: 2, smallshield: 1 },
+    }, { bossKind: 'minion', name: `Secuaz ${i + 1}` }));
   }
 
   spawnBoss() {
@@ -139,10 +169,11 @@ export class NPCs {
     });
     b.pos.y = g.world.groundBelow(castle.x, castle.z, 200) + 1;
     b.boss = true;
+    b.bossKind = 'king';
     b.dmgTaken = 0.35;
     b.shield = 100;
     b.name = '👑 Rey del Castillo';
-    b.home = { x: castle.x, z: castle.z };
+    b.home = { x: castle.x, z: castle.z, r: 45 };
     if (!g.chars.includes(b)) g.chars.push(b);
     this.boss = b;
   }
@@ -248,7 +279,15 @@ export class NPCs {
       this.addGold(victim.boss ? 0 : 40);
       this.progress('kills');
     }
-    if (victim.boss) {
+    if (victim.bossKind === 'guardian') {
+      // Suelta la tarjeta de la bóveda (y algo de botín)
+      g.vault?.dropCard(victim.pos);
+      g.pickups.spawn({ kind: 'consumable', type: 'shieldpot', count: 2 }, victim.pos.clone().setY(victim.pos.y + 0.8), new THREE.Vector3(1.5, 4, 0));
+      if (killer === g.player) this.addGold(400, '¡Has derrotado al Guardián de la Bóveda!');
+      g.hud.killFeed('💀 <b>El Guardián de la Bóveda</b> ha caído: ¡ha soltado la tarjeta!', false);
+      this.guardian = null;
+    }
+    if (victim.bossKind === 'king') {
       // Botín del jefe: arma mítica y un saco de oro
       const at = victim.pos.clone().setY(victim.pos.y + 0.8);
       g.pickups.spawn(makeWeapon('heavyar', 5), at.clone(), new THREE.Vector3(1.5, 4, 0));
@@ -296,11 +335,13 @@ export class NPCs {
         if (r.q.state === 'active') g.hud.toast(`💎 Fragmento de reliquia ${r.q.v}/${r.q.goal}`);
       }
     }
-    // El jefe no se aleja demasiado del castillo
-    const b = this.boss;
-    if (b && b.alive && b.home && b.mode === 'ground' && Math.hypot(b.pos.x - b.home.x, b.pos.z - b.home.z) > 45 && !b.target) {
-      b.goal = new THREE.Vector3(b.home.x, b.pos.y, b.home.z);
-      b.task = 'rotate';
+    // Los jefes y los secuaces no se alejan de su sitio (castillo, isla)
+    for (const b of g.bots.list) {
+      if (!b.home || !b.alive || b.mode !== 'ground' || b.target) continue;
+      if (Math.hypot(b.pos.x - b.home.x, b.pos.z - b.home.z) > b.home.r) {
+        b.goal = new THREE.Vector3(b.home.x, b.pos.y, b.home.z);
+        b.task = 'rotate';
+      }
     }
   }
 }

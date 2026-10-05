@@ -128,6 +128,53 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 - **Puertas reales** en las casas del mapa (E; los bots también las abren).
 - **Mapa de calor** de aterrizajes y eliminaciones al terminar.
 
+### Mapa (actualización)
+- **Carreteras sin montañas encima:** cada carretera tiene un perfil de
+  altura suavizado (pendiente máxima ~12 %) y el terreno se moldea a su
+  alrededor como un corredor continuo con taludes (desmontes entre rocas si
+  cruza una loma). Las salidas compartidas y los cruces quedan a nivel y el
+  asfalto se subdivide para que el relieve nunca asome. El trazado elige la
+  ruta con menos desmonte y evita las conexiones que exigirían cortar media
+  montaña.
+- **Ríos y lagos** (`src/world/hydro.js`): tres lagos en hondonadas y dos ríos
+  con meandros que bajan hasta el mar, cada uno con su propio nivel de agua
+  (nadar, lanchas, IA, minimapa), orillas de arena húmeda y corriente
+  animada. **Puentes** con barandillas y pilar donde una carretera cruza un río.
+- **Bajo tierra** (`src/world/underground.js`): dos **cuevas** (salas y
+  túneles cubiertos, roca irregular, estalactitas, cristales de colores,
+  antorchas y un tragaluz) y dos **redes de trincheras** (zigzag con
+  tablones, sacos terreros, banquetas de tiro, escaleras, refugios cubiertos
+  y faroles). Excavadas en la rejilla del terreno: se entra por rampas y la
+  IA puede llegar a todos sus cofres. Luz horneada en los vértices y luces
+  dinámicas cerca del jugador; no llueve dentro.
+- **Más densidad:** 14 zonas (antes 12) más cerca del centro, más
+  edificios junto a las carreteras, los bots acuden a los tiroteos lejanos y
+  prefieren aterrizar en zonas con nombre, y las dos primeras fases de la
+  tormenta son más cortas.
+
+### Isla de la Bóveda (actualización)
+- **Lago central con isla** (`planCentralLake` en `world.js`; los lagos de
+  `hydro.js` admiten isla): en la isla, una **bóveda blindada**
+  (`genVault`) y una **pasarela de madera** hasta la orilla; dos lanchas en el
+  lago. La IA cruza los lagos a nado (sólo el mar profundo la bloquea).
+- **Guardián de la Bóveda** con cinco **secuaces** (sólo contra bots, como el
+  Rey del Castillo): defienden la isla y no se alejan de ella. Al morir, el
+  Guardián suelta una **tarjeta**; quien la lleva la pierde si cae. Con la
+  tarjeta, **E** en la puerta la abre (`game/vault.js`): cofres que siempre
+  aparecen y dos armas legendarias. Bóveda y tarjeta salen en el mapa.
+- **Gran río** que sale del lago central hacia dos costas opuestas por la
+  dirección con menos montañas (con puentes donde lo cruzan carreteras).
+- **Cuatro puertos** repartidos por la costa (antes uno) y **nombres de las
+  zonas en el minimapa**; al entrar en la isla o en una cueva/trinchera
+  aparece su nombre.
+- **Terreno HD en calidad Alta:** malla de 2 m (antes 4 m) con relieve fino
+  en el terreno natural (no en zonas, carreteras ni orillas), microrrelieve
+  en el sombreado con ruido en tres planos (sin estirarse en las laderas) y
+  más variedad de color. El mapa (zonas, cofres, carreteras) es idéntico en
+  todas las calidades. `?calidad=alta|normal|baja|movil` en la URL.
+- Arreglado: los bots reutilizados entre partidas ya no heredan las marcas
+  de jefe (aguante extra, «no cuenta como superviviente»).
+
 ---
 
 ## ✅ Optimización para móviles

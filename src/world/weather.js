@@ -137,7 +137,12 @@ export class Weather {
     // Niebla más cerrada con mal tiempo y de noche
     const night = THREE.MathUtils.clamp((this.hour - 20) / 1.5, 0, 1);
     this.fogMul = K.fog * (1 - night * 0.3);
-    if (this.rain.visible) this.updateRain(dt);
+    if (this.rain.visible) {
+      // Sin lluvia dentro de cuevas y refugios
+      const c = g.camera.position;
+      this.rain.material.visible = !g.world.coveredAt?.(c.x, c.y, c.z);
+      this.updateRain(dt);
+    }
   }
 
   updateRain(dt) {

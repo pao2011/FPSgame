@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { random } from '../core/rng.js';
 
 const PHASES = [
-  { wait: 90, shrink: 70, radius: 520, dps: 1 },
-  { wait: 70, shrink: 60, radius: 320, dps: 1 },
+  // Las dos primeras fases son algo más cortas y cerradas: los jugadores se
+  // juntan antes y hay que andar menos para encontrar pelea.
+  { wait: 75, shrink: 65, radius: 470, dps: 1 },
+  { wait: 60, shrink: 55, radius: 290, dps: 1 },
   { wait: 60, shrink: 50, radius: 190, dps: 2 },
   { wait: 50, shrink: 40, radius: 100, dps: 5 },
   { wait: 40, shrink: 35, radius: 48, dps: 8 },
@@ -104,7 +106,7 @@ export class Storm {
       for (let i = 0; i < 12; i++) {
         const a = (i / 12) * Math.PI * 2;
         n++;
-        if (this.world.terrain.heightAt(x + Math.cos(a) * rr, z + Math.sin(a) * rr) > 1.5) land++;
+        if (this.world.isLand(x + Math.cos(a) * rr, z + Math.sin(a) * rr)) land++;
       }
     }
     return land / n;
@@ -123,7 +125,7 @@ export class Storm {
       for (let i = 0; i < 30; i++) {
         const a = rng.float(0, Math.PI * 2), d = curR * rng.float(1.0, 1.8);
         const x = this.center.x + Math.cos(a) * d, z = this.center.y + Math.sin(a) * d;
-        if ((this.world.terrain.heightAt(x, z) > 1.5 && Math.hypot(x, z) < 600) || i === 29) {
+        if ((this.world.isLand(x, z) && Math.hypot(x, z) < 600) || i === 29) {
           this.drift = { from: this.center.clone(), to: new THREE.Vector2(x, z) };
           cx = x;
           cz = z;
@@ -135,7 +137,7 @@ export class Storm {
       const a = rng.float(0, Math.PI * 2);
       const r = Math.sqrt(rng.next()) * maxOff;
       const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-      if (this.world.terrain.heightAt(x, z) > 1.5 || i === 39) {
+      if (this.world.isLand(x, z) || i === 39) {
         this.next.set(x, z);
         break;
       }

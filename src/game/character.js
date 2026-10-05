@@ -7,7 +7,7 @@ import { EMOTES } from './cosmetics.js';
 
 export const R = 0.35; // medio ancho de la caja de colisión
 const STEP = 0.55; // altura máxima de escalón
-const SWIM_Y = WATER_LEVEL - 1.25;
+const SWIM_DEPTH = 1.25; // se nada con los pies a esta profundidad bajo la superficie
 
 export const SKINS = [0xf1c9a5, 0xe0b48a, 0xc68a5a, 0xa86f48, 0x8d5a3a, 0x5e3a24];
 export const SHIRTS = [0x2f6fd6, 0xd63a2f, 0x2fa84f, 0xe0a020, 0x8a3fd6, 0x1fb5b0, 0xe05a9a, 0x444a55, 0xff7a1a, 0xf2f2f2, 0x1b1b22, 0x7ad0ff];
@@ -225,8 +225,10 @@ export class Character {
       }
     }
     this.swimming = false;
-    if (this.mode === 'ground' && this.pos.y < SWIM_Y) {
-      this.pos.y = SWIM_Y;
+    // Mar, lagos y ríos: cada uno con su nivel de agua
+    const swimY = (this.game.world.waterLevelAt?.(this.pos.x, this.pos.z) ?? WATER_LEVEL) - SWIM_DEPTH;
+    if (this.mode === 'ground' && this.pos.y < swimY) {
+      this.pos.y = swimY;
       if (this.vel.y < 0) this.vel.y = 0;
       this.onGround = true;
       this.swimming = true;

@@ -27,8 +27,9 @@ export class MapRenderer {
         const z = -HALF + ((py + 0.5) / SIZE) * MAP_SIZE;
         const h = t.heightAt(x, z);
         const i = (py * SIZE + px) * 4;
-        if (h < 0) {
-          const d = Math.min(1, -h / 12);
+        const wd = this.world.waterDepth ? this.world.waterDepth(x, z) : -h;
+        if (wd > 0) {
+          const d = Math.min(1, wd / 12);
           img.data[i] = 70 - d * 40;
           img.data[i + 1] = 160 - d * 60;
           img.data[i + 2] = 220 - d * 50;
@@ -70,6 +71,18 @@ export class MapRenderer {
       const [x1, z1] = this.toPx(p.x + p.fw / 2, p.z + p.fd / 2);
       ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
       ctx.strokeRect(x0, z0, x1 - x0, z1 - z0);
+    }
+    // Cuevas y trincheras: los pasillos excavados en oscuro
+    for (const s of this.world.sites || []) {
+      ctx.fillStyle = s.kind === 'cave' ? 'rgba(52,46,58,0.9)' : 'rgba(92,70,44,0.95)';
+      for (let j = 0; j < s.nz; j++) {
+        for (let i = 0; i < s.nx; i++) {
+          if (!s.get(i, j)) continue;
+          const [x0, z0] = this.toPx(s.ox + i * 4, s.oz + j * 4);
+          const [x1, z1] = this.toPx(s.ox + (i + 1) * 4, s.oz + (j + 1) * 4);
+          ctx.fillRect(x0, z0, x1 - x0 + 0.5, z1 - z0 + 0.5);
+        }
+      }
     }
   }
 
@@ -167,11 +180,34 @@ export class MapRenderer {
     const [bx, by] = this.toPx(p.pos.x - metersShown / 2, p.pos.z - metersShown / 2);
     ctx.drawImage(this.base, bx, by, metersShown * srcScale, metersShown * srcScale, 0, 0, w, h);
     this.drawStormOverlay(ctx, game.storm, scale, ox, oy, w, h);
+    this.drawMiniNames(ctx, scale, ox, oy, w, h);
     this.drawSafePath(ctx, game, scale, ox, oy);
     if (p.mode === 'bus' || (game.bus.active && p.mode === 'lobby')) this.drawBusPath(ctx, game.bus, scale, ox, oy);
     this.drawMates(ctx, game, scale, ox, oy);
     this.drawMarks(ctx, game, scale, ox, oy);
     this.drawPlayer(ctx, w / 2, h / 2, p.yaw, 6);
+  }
+
+  // Nombres de las zonas y lugares destacados que caen dentro del minimapa.
+  drawMiniNames(ctx, scale, ox, oy, w, h) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    const label = (name, x, z, big, dy = 0) => {
+      const px = ox + x * scale, py = oy + z * scale + dy;
+      if (px < -40 || py < -10 || px > w + 40 || py > h + 10) return;
+      ctx.font = big ? 'bold 11px "Lilita One", "Arial Black", sans-serif' : 'bold 9px "Inter", sans-serif';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.strokeText(name, px, py);
+      ctx.fillStyle = big ? '#fff' : '#ffe9a8';
+      ctx.fillText(name, px, py);
+    };
+    for (const p of this.world.pois) label(p.name.toUpperCase(), p.x, p.z, true);
+    // (la isla central lleva el nombre bajo el icono de la bóveda)
+    for (const l of this.world.landmarks) label(l.major ? l.name.toUpperCase() : l.name, l.x, l.z, !!l.major, l.major ? 15 : 0);
+    ctx.restore();
   }
 
   // Compañeros de equipo (puntos de color)
@@ -199,6 +235,17 @@ export class MapRenderer {
       ctx.textBaseline = 'middle';
       for (const v of game.reboot.vans) ctx.fillText(v.cd > 0 ? '⏳' : '🚐', ox + v.pos.x * scale, oy + v.pos.z * scale);
       for (const c of game.reboot.cards) ctx.fillText('💳', ox + c.mesh.position.x * scale, oy + c.mesh.position.z * scale);
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
+    }
+    // Bóveda de la isla central y su tarjeta
+    if (game.vault?.v) {
+      const v = game.vault;
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(v.open ? '🔓' : '🔒', ox + v.v.x * scale, oy + v.v.z * scale);
+      if (v.card) ctx.fillText('💳', ox + v.card.pos.x * scale, oy + v.card.pos.z * scale);
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     }
@@ -267,6 +314,16 @@ export class MapRenderer {
     // lugares destacados (más pequeños)
     for (const lm of this.world.landmarks) {
       const x = ox + lm.x * scale, y = oy + lm.z * scale;
+      if (lm.major) {
+        // Isla central: como una zona (en grande)
+        ctx.font = 'bold 15px "Lilita One", "Arial Black", sans-serif';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+        ctx.strokeText(lm.name.toUpperCase(), x, y + 18);
+        ctx.fillStyle = '#ffd34d';
+        ctx.fillText(lm.name.toUpperCase(), x, y + 18);
+        continue;
+      }
       ctx.font = 'bold 11px "Inter", sans-serif';
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
