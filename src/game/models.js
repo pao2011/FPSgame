@@ -1433,6 +1433,67 @@ export function makeCarModel(color = 0xd63a2f, wrecked = false) {
   return g;
 }
 
+// Quad: chasis bajo, guardabarros, manillar y ruedas grandes de tacos.
+export function makeQuadModel(color = 0xf07a1a) {
+  const g = new THREE.Group();
+  const dark = 0x1b1f26;
+  box(g, 1.0, 0.35, 2.0, 0x2a2c30, 0, 0.6, 0, METAL); // chasis
+  box(g, 1.2, 0.25, 0.8, color, 0, 0.95, -0.65, { phong: true, shininess: 60 }); // capó
+  box(g, 1.2, 0.25, 0.7, color, 0, 0.92, 0.7, { phong: true, shininess: 60 }); // trasera
+  box(g, 0.55, 0.22, 0.9, 0x1e1e1e, 0, 1.08, 0.1); // asiento
+  for (const x of [-0.62, 0.62]) for (const z of [-0.7, 0.75]) box(g, 0.32, 0.08, 0.7, color, x, 1.08, z, { phong: true, shininess: 60 }); // guardabarros
+  box(g, 0.08, 0.45, 0.08, 0x333333, 0, 1.25, -0.7, METAL); // columna
+  cylZ(g, 0.03, 0.8, 0x222222, 0, 1.48, -0.72, 8, METAL).rotation.y = Math.PI / 2; // manillar
+  for (const x of [-0.42, 0.42]) box(g, 0.07, 0.07, 0.12, 0x111111, x, 1.48, -0.72);
+  box(g, 0.5, 0.14, 0.05, 0xfff6c0, 0, 0.98, -1.06, { emissive: 0x777755 }); // faro
+  box(g, 0.9, 0.1, 0.4, 0x3a3a3a, 0, 1.12, 1.05, METAL); // portabultos
+  const wheels = [];
+  for (const x of [-0.72, 0.72]) {
+    for (const z of [-0.72, 0.78]) {
+      const w = new THREE.Group();
+      w.position.set(x, 0.42, z);
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.38, 12).rotateZ(Math.PI / 2), mat(dark));
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.4, 8).rotateZ(Math.PI / 2), mat(color));
+      w.add(tire, hub);
+      for (let k = 0; k < 8; k++) {
+        const lug = box(w, 0.4, 0.07, 0.1, 0x111111, 0, Math.cos((k / 8) * Math.PI * 2) * 0.42, Math.sin((k / 8) * Math.PI * 2) * 0.42);
+        lug.rotation.x = (k / 8) * Math.PI * 2;
+      }
+      g.add(w);
+      wheels.push(w);
+    }
+  }
+  g.userData.wheels = wheels;
+  return g;
+}
+
+// Lancha: casco en V, cabina con parabrisas, asiento y motor fueraborda.
+export function makeBoatModel(color = 0x2f6fd6) {
+  const g = new THREE.Group();
+  const hull = new THREE.Shape();
+  hull.moveTo(-1.0, 1.6);
+  hull.lineTo(1.0, 1.6);
+  hull.lineTo(1.05, -0.6);
+  hull.quadraticCurveTo(0.8, -2.0, 0, -2.5);
+  hull.quadraticCurveTo(-0.8, -2.0, -1.05, -0.6);
+  hull.lineTo(-1.0, 1.6);
+  const hg = new THREE.ExtrudeGeometry(hull, { depth: 0.75, bevelEnabled: true, bevelSize: 0.08, bevelThickness: 0.08, bevelSegments: 2 }).rotateX(Math.PI / 2).translate(0, 0.85, 0);
+  const hm = new THREE.Mesh(hg, mat(0xf2f2f2, { phong: true, shininess: 60 }));
+  g.add(hm);
+  box(g, 2.12, 0.18, 3.6, color, 0, 0.45, -0.1, { phong: true, shininess: 60, sharp: true }); // franja
+  box(g, 1.8, 0.08, 3.4, 0x8a5a32, 0, 0.82, 0.1); // cubierta
+  box(g, 1.5, 0.5, 0.9, color, 0, 1.1, -0.6, { phong: true, shininess: 60 }); // consola
+  box(g, 1.45, 0.45, 0.05, 0x29445e, 0, 1.55, -0.95, { phong: true, shininess: 120 }).rotation.x = -0.4; // parabrisas
+  cylZ(g, 0.12, 0.05, 0x222222, -0.3, 1.4, -0.45, 12, METAL); // volante
+  box(g, 0.6, 0.35, 0.5, 0x1e1e1e, -0.3, 1.0, 0.3); // asiento
+  box(g, 0.6, 0.35, 0.5, 0x1e1e1e, 0.35, 1.0, 0.9);
+  box(g, 0.5, 0.9, 0.45, 0x2a2c30, 0, 0.75, 1.75, METAL); // motor
+  box(g, 0.56, 0.3, 0.5, color, 0, 1.25, 1.75, { phong: true, shininess: 60 });
+  for (const x of [-1, 1]) box(g, 0.05, 0.08, 2.4, 0xc0c6ce, x * 0.98, 1.0, 0.2, METAL); // barandillas
+  g.userData.wheels = [];
+  return g;
+}
+
 function makeMaterialModel(m) {
   const g = new THREE.Group();
   if (m === 'wood') {

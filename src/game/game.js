@@ -1492,7 +1492,7 @@ export class Game {
     }
     const E = `<kbd>${this.key('interact')}</kbd>`;
     if (p.vehicle) {
-      this.hud.setPrompt(`${E} Salir del coche`);
+      this.hud.setPrompt(`${E} Bajar ${p.vehicle.kindName === 'lancha' ? 'de la lancha' : 'del ' + p.vehicle.kindName}`);
       if (input.hit('interact')) this.vehicles.exit(p);
       return;
     }
@@ -1547,7 +1547,7 @@ export class Game {
     if (!target) {
       const car = this.vehicles.findNear(p.pos);
       if (car) {
-        this.hud.setPrompt(`${E} Conducir coche`);
+        this.hud.setPrompt(`${E} ${car.kindName === 'lancha' ? 'Pilotar la lancha' : 'Conducir ' + car.kindName}${car.fuel <= 0 ? ' (sin gasolina)' : ''}`);
         if (input.hit('interact')) {
           this.build.setActive(false);
           this.vehicles.enter(p, car);

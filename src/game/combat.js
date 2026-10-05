@@ -457,6 +457,7 @@ export class Combat {
     this.game.effects.impact(hit.point, hit.normal, hit.kind === 'terrain' ? 0xb59a6a : 0xffd27a);
     const data = hit.box?.data;
     if (data?.type === 'build') this.game.build.damage(data.piece, base);
+    else if (data?.type === 'car') data.ref.damage(base * 0.6);
   }
 
   // Aplica el daño acumulado por objetivo (la escopeta suma sus perdigones).

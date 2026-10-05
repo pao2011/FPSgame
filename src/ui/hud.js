@@ -551,7 +551,13 @@ export class HUD {
 
     // Velocímetro
     this.set('speedShow', e.speed, 'display', p.vehicle ? 'block' : 'none');
-    if (p.vehicle) this.set('speed', e.speed, 'html', `${Math.round(Math.abs(p.vehicle.speed) * 3.6)}<small> km/h</small>`);
+    if (p.vehicle) {
+      const v = p.vehicle;
+      const fuel = Math.round(v.fuel ?? 100), hp = v.def ? Math.max(0, Math.round((v.hp / v.def.hp) * 100)) : 100;
+      this.set('speed', e.speed, 'html', `${Math.round(Math.abs(v.speed) * 3.6)}<small> km/h</small>
+        <div class="vbars"><span>⛽<i style="width:${fuel * 0.6}px" class="${fuel < 20 ? 'low' : ''}"></i></span><span>🔧<i style="width:${hp * 0.6}px" class="${hp < 30 ? 'low' : ''}"></i></span></div>
+        ${v.refueling ? '<div class="vref">Repostando…</div>' : fuel <= 0 ? '<div class="vref low">Sin gasolina · busca una gasolinera</div>' : ''}`);
+    }
 
     // Feed de eliminaciones
     for (let i = this.feed.length - 1; i >= 0; i--) {

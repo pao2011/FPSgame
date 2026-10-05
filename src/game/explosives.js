@@ -443,6 +443,11 @@ export class Explosives {
         g.audio.hit(false);
       } else c.damage(dmg, 'explosion', owner);
     }
+    for (const v of g.vehicles.list) {
+      if (v.dead) continue;
+      const d = tmpA.copy(v.pos).setY(v.pos.y + 0.8).distanceTo(pos);
+      if (d < r + 2) v.damage(o.damage * 2.5 * (1 - 0.6 * Math.min(1, d / (r + 2))));
+    }
     for (const dm of g.dummies.list) {
       if (!dm.alive) continue;
       const center = tmpA.copy(dm.pos).setY(dm.pos.y + 1.2);
