@@ -420,6 +420,7 @@ export class Menu {
         <button class="small-btn" id="binds-reset">Restablecer controles</button>`;
     } else if (tab === 'hud') {
       body = `
+        <div class="opt-row"><label>Idioma</label><div class="seg" data-seg="lang">${[['es', 'Español'], ['en', 'English'], ['pt', 'Português']].map(([v, n]) => `<button data-v="${v}" class="${(s.lang || 'es') === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         ${check('damageNumbers', 'Mostrar números de daño')}
         ${range('hudScale', 'Tamaño de la interfaz', 0.7, 1.4, 0.05, mult)}
         <div class="opt-row"><label>Color de la mira</label><input type="color" data-k="crosshairColor" value="${s.crosshairColor || '#ffffff'}"></div>
@@ -570,6 +571,12 @@ export class Menu {
         else ui.style.display = 'flex';
       });
     });
+    el.querySelectorAll('[data-seg="lang"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.lang = b.dataset.v;
+      this.game.applySettings();
+      rerender();
+    }));
     el.querySelectorAll('[data-seg="voiceMode"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       s.voiceMode = b.dataset.v;

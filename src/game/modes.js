@@ -133,6 +133,7 @@ export const DEFAULT_SETTINGS = {
   soundViz: false, // indicadores de sonido alrededor de la mira
   compassSounds: true, // disparos y pasos cercanos en la brújula
   subtitles: false,
+  lang: 'es', // idioma de la interfaz: es | en | pt
   weather: true, // clima y ciclo de día en las partidas
   music: 40, // volumen de la música dinámica (0 = sin música)
   spatialAudio: true, // sonido 3D (HRTF)

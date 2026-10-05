@@ -15,6 +15,7 @@ import { Replay, Viewer } from './replay.js';
 import { EditCourse } from './editcourse.js';
 import { Music } from '../core/music.js';
 import { MapDoors } from './mapdoors.js';
+import { i18n } from '../ui/i18n.js';
 import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
@@ -331,6 +332,7 @@ export class Game {
     root.setProperty('--cross', s.crosshairColor || '#ffffff');
     this.touch?.applySettings();
     this.a11y?.apply();
+    i18n.set(s.lang || 'es');
     this.music?.setVolume((s.music ?? 40) / 100 * (s.volume / 100));
     if (this.audio) this.audio.spatial = s.spatialAudio !== false;
     if (this.renderer && this.quality === 'movil') {
