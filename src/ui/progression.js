@@ -24,7 +24,7 @@ export function itemIcon(type, id) {
     return `<div class="cos-icon" style="--ic:${col}">${TRAIL_ICON[id] || '✨'}</div>`;
   }
   if (type === 'emote') return `<div class="cos-icon emote">${EMOTE_ICON[id] || '💃'}</div>`;
-  if (type === 'screen') return `<div class="cos-icon screen" style="background:${SCREENS[id]?.bg}">${SCREENS[id]?.icon || ''}</div>`;
+  if (type === 'screen') return `<div class="cos-icon cos-screen" style="background:${SCREENS[id]?.bg}">${SCREENS[id]?.icon || ''}</div>`;
   return '';
 }
 const COLOR_PARTS = [['shirt', 'Camiseta', SHIRTS], ['pants', 'Pantalón', PANTS], ['hair', 'Pelo', HAIR], ['skin', 'Piel', SKINS]];

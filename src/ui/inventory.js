@@ -126,7 +126,7 @@ export class InventoryPanel {
     const p = g.player;
     this.sig = JSON.stringify([p.inventory, p.ammo, p.mats, p.selected, this.sel, this.qty]);
     const hex = (n) => '#' + n.toString(16).padStart(6, '0');
-    const ammo = Object.keys(AMMO).map((a) => this.resRow('ammo', a, AMMO[a].name, hex(AMMO[a].color), g.infiniteAmmo ? 999 : p.ammo[a] || 0)).join('');
+    const ammo = Object.keys(AMMO).map((a) => this.resRow('ammo', a, AMMO[a].short || AMMO[a].name, hex(AMMO[a].color), g.infiniteAmmo ? 999 : p.ammo[a] || 0)).join('');
     const mats = Object.keys(MATERIALS).map((m) => this.resRow('mat', m, MATERIALS[m].name, MATERIALS[m].color, p.mats[m] || 0)).join('');
     const ghost = this.ghost;
     this.el.innerHTML = `<div class="inv-panel">
