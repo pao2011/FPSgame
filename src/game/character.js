@@ -543,6 +543,28 @@ export class Character {
       m.armR.rotation.x = 1.8 - (1 - swingT / 0.55) * 2.4;
       er = 0.5;
     }
+    // Recargar: la mano izquierda baja al cargador y vuelve
+    const reloading = this.isPlayer ? this.game.combat?.reloading : this.reloadT > 0;
+    if (reloading && item?.kind === 'weapon') {
+      const k = (this.game.time * 3) % 1;
+      const s2 = Math.sin(k * Math.PI);
+      m.armL.rotation.x -= 0.6 * s2;
+      m.armL.rotation.z = 0.3;
+      el = 0.9 + s2 * 0.6;
+      if (m.hand.children[0]) m.hand.children[0].rotation.z = 0.35 * s2;
+    }
+    // Construir y editar: brazo derecho adelante señalando la pieza
+    if (this.isPlayer && (this.game.build?.active || this.game.build?.editing)) {
+      const t = this.game.time;
+      m.armR.rotation.set(Math.PI / 2 + this.pitch * 0.8, 0, -0.1);
+      er = this.game.build.editing ? 0.15 + Math.abs(Math.sin(t * 10)) * 0.25 : 0.2;
+      m.hand.visible = !this.game.build.editing;
+    }
+    // Usar curas: el objeto se acerca a la cara
+    if ((this.isPlayer ? this.game.combat?.using : this.using) && (item?.kind === 'consumable' || this.using)) {
+      m.armR.rotation.set(2.1 + Math.sin(this.game.time * 6) * 0.08, 0, -0.35);
+      er = 1.4;
+    }
     joints(kl, kr, el, er);
   }
 
