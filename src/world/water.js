@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MAP_SIZE, HALF } from './constants.js';
 import { isMobileQuality } from '../game/models.js';
+import { NOISE_GLSL, noiseTexture } from './noisetex.js';
 
 // Textura con la profundidad del agua (mar, lagos y ríos) para pintar la
 // orilla con espuma y tonos turquesa.
@@ -80,12 +81,8 @@ export function createWater(scene, world, sunDir) {
       varying vec3 vWorld;
       varying vec3 vFlow;
 
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float vnoise(vec2 p) {
-        vec2 i = floor(p), f = fract(p);
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-      }
+      ${NOISE_GLSL}
+      #define vnoise texNoise
       // Altura de las olas (suma de ondas) para sacar la normal. En los ríos
       // el dibujo se desplaza con la corriente; en los lagos hay menos oleaje.
       float waves(vec2 p) {
@@ -147,6 +144,7 @@ export function createWater(scene, world, sunDir) {
       }`,
   });
   mat.uniforms.heightTex.value = depthTexture(world);
+  mat.uniforms.tNoise = { value: noiseTexture() };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = 0;
   mesh.renderOrder = 1;

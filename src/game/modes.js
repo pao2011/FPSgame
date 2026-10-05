@@ -153,8 +153,10 @@ export const DEFAULT_SETTINGS = {
   touchOpacity: 0.85,
   touchFullscreen: true,
   vibration: true,
-  resScale: 70, // % de resolución en calidad «móvil»
-  autoRes: true, // resolución dinámica en calidad «móvil»
+  resScale: 85, // % de resolución en calidad «móvil»
+  autoRes: true, // resolución dinámica (todas las calidades)
+  ao: true, // oclusión ambiental en calidad alta
+  gfxV: 2, // versión de los ajustes gráficos (migraciones en loadSettings)
   fpsCap: 0, // 0 = sin límite · 30 = ahorro de batería
   viewDist: 1, // distancia de visión: 0.7 corta · 1 normal · 1.3 lejana
   gyro: 'off', // apuntar con el giroscopio: off | ads (al apuntar) | always
@@ -186,6 +188,12 @@ export function loadSettings() {
     if (raw) {
       const s = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
       s.online = { ...DEFAULT_SETTINGS.online, ...s.online };
+      // v2 de gráficos: la resolución por defecto de la calidad Móvil pasa
+      // del 70 % (se veía pixelado) al 85 % con antialiasing
+      if ((s.gfxV | 0) < 2) {
+        if (s.resScale <= 70) s.resScale = 85;
+        s.gfxV = 2;
+      }
       if (!MODES[s.mode]) s.mode = s.mode === 'practice' ? 'creative' : 'solo';
       return s;
     }

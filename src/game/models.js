@@ -9,13 +9,17 @@ import { CAMOS, PICKAXES, GLIDERS, BAGS } from './cosmetics.js';
 
 let PBR = true;
 let QUALITY = 'normal';
-export function setModelQuality(q) {
+let LITE = false;
+// lite: versión ligera de sombreados y modelos (calidad Móvil, y Normal/Baja
+// en móviles y tabletas).
+export function setModelQuality(q, lite = q === 'movil') {
   QUALITY = q;
   PBR = q !== 'baja' && q !== 'movil';
+  LITE = lite;
 }
 export const usesPBR = () => PBR;
 export const modelQuality = () => QUALITY;
-export const isMobileQuality = () => QUALITY === 'movil';
+export const isMobileQuality = () => LITE;
 
 const matCache = new Map();
 export function mat(color, opts = {}) {

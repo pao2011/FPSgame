@@ -21,6 +21,7 @@ import { i18n } from '../ui/i18n.js';
 import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
+import { LightPool } from './lightpool.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -42,7 +43,7 @@ import { Vehicles } from './vehicles.js';
 import { BotManager } from './bots.js';
 import { HUD } from '../ui/hud.js';
 import { Menu } from '../ui/menu.js';
-import { TouchControls, isTouchDevice } from '../ui/touch.js';
+import { TouchControls, isTouchDevice, isMobileDevice } from '../ui/touch.js';
 import { Progress } from './progress.js';
 import { Creative } from './creative.js';
 import { MapRenderer } from '../ui/minimap.js';
@@ -59,6 +60,8 @@ const SKY_COLOR = SKY.horizon;
 const tmpV = new THREE.Vector3();
 const tmpF = new THREE.Vector3();
 const tmpR = new THREE.Vector3();
+const tmpSx = new THREE.Vector3();
+const tmpSy = new THREE.Vector3();
 const tmpCol = new THREE.Color();
 
 // Como Object3D.updateMatrixWorld, pero sin bajar por objetos ocultos (miles
@@ -82,6 +85,37 @@ function updateVisibleMatrices(o, force) {
   }
 }
 
+// Oclusión ambiental a media resolución: el pase de normales, el cálculo de
+// la AO y el filtrado se hacen con la mitad de píxeles en cada eje (la
+// cuarta parte del coste) y el resultado se mezcla a resolución completa.
+// Las líneas y partículas que hay que ocultar en el pase de normales se
+// buscan una vez por segundo en vez de recorrer la escena cada fotograma.
+function makeHalfResAO(scene, camera, w, h) {
+  const half = (v) => Math.max(1, Math.round(v / 2));
+  const ao = new GTAOPass(scene, camera, half(w), half(h));
+  ao.updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.5, thickness: 1.5, scale: 1.2 });
+  ao.blendIntensity = 0.85;
+  const setSize = ao.setSize.bind(ao);
+  ao.setSize = (sw, sh) => setSize(half(sw), half(sh));
+  let hide = [];
+  let n = 0;
+  ao._overrideVisibility = function () {
+    if (--n <= 0) {
+      n = 60;
+      hide = [];
+      scene.traverse((o) => {
+        if (o.isPoints || o.isLine || o.isLine2) hide.push(o);
+      });
+    }
+    for (const o of hide) {
+      if (!o.visible) continue;
+      o.visible = false;
+      this._visibilityCache.push(o);
+    }
+  };
+  return ao;
+}
+
 export class Game {
   constructor(container) {
     this.settings = loadSettings();
@@ -92,29 +126,44 @@ export class Game {
     const low = this.settings.quality === 'baja' || mobile;
     const high = this.settings.quality === 'alta';
     this.quality = mobile ? 'movil' : low ? 'baja' : high ? 'alta' : 'normal';
-    setModelQuality(this.quality);
     const tc = this.settings.touchControls;
     this.isTouch = tc === 'on' || (tc !== 'off' && isTouchDevice());
+    this.mobileDevice = isMobileDevice();
+    const gfx = (this.gfx = this.graphicsProfile());
+    setModelQuality(this.quality, gfx.lite);
+    // Presupuestos de CPU reducidos (IA, animaciones lejanas, minimapa…)
+    this.liteCpu = this.quality === 'movil' || this.mobileDevice;
 
     // ------------------------------------------------------------ RENDER
-    const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: low ? false : !this.usePost, powerPreference: 'high-performance' }));
-    // Calidad móvil: resolución ajustable y dinámica (baja si van mal los FPS).
+    // Antialiasing del propio lienzo (MSAA): casi gratis en las GPU de los
+    // móviles y evita los dientes de sierra al bajar la resolución. Con
+    // posprocesado el MSAA lo hace el composer.
+    const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: gfx.msaa && !gfx.post, powerPreference: 'high-performance' }));
+    // Resolución dinámica: baja si no se llega a los FPS de la pantalla.
     this.dynRes = 1;
-    this.perf = { t: 0, n: 0, cool: 0 };
+    this.perf = { t: 0, n: 0, good: 0, hold: 0, pending: null, hz: 60, hzT: 0, hzN: 0 };
     renderer.setPixelRatio(this.pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
-    renderer.shadowMap.enabled = !low;
-    renderer.shadowMap.type = high ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    renderer.shadowMap.enabled = gfx.shadow > 0;
+    renderer.shadowMap.type = THREE.PCFShadowMap; // (PCFSoft ya no existe en three.js)
+    // Las sombras se redibujan como mucho gfx.shadowHz veces por segundo
+    // (con pantallas de 120/144 Hz, un fotograma sí y otro no).
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
+    this.shadowT = 0;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.autoClear = false;
     container.appendChild(renderer.domElement);
     this.canvas = renderer.domElement;
+    this.detectGpu();
 
     this.scene = new THREE.Scene();
     // Las matrices se actualizan a mano en render() (sólo lo visible)
     this.scene.matrixWorldAutoUpdate = false;
     this.scene.fog = new THREE.Fog(SKY_COLOR, 200, 1300);
+    // Luces puntuales de los efectos (fogonazos, explosiones, cuevas)
+    this.lights = new LightPool(this.scene, gfx.lights);
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, innerWidth / innerHeight, 0.1, 5000);
     this.camera.rotation.order = 'YXZ';
 
@@ -143,10 +192,11 @@ export class Game {
       }
     }
     const sun = (this.sun = new THREE.DirectionalLight(0xffefd2, 3.0));
-    sun.castShadow = !low;
-    sun.shadow.mapSize.set(high ? 4096 : 2048, high ? 4096 : 2048);
+    sun.castShadow = gfx.shadow > 0;
+    sun.shadow.mapSize.set(gfx.shadow || 512, gfx.shadow || 512);
     const sc = sun.shadow.camera;
-    const ext = high ? 95 : 70;
+    const ext = gfx.shadowExt;
+    this.shadowTexel = (ext * 2) / (gfx.shadow || 512);
     sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = 400;
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.04;
@@ -158,10 +208,10 @@ export class Game {
     // creativo usa su propia isla plana (sandbox, no es un mapa de partida).
     this.seed = MAP_SEED;
     // Calidad alta: terreno HD (malla de 2 m con relieve fino)
-    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1', hd: this.quality === 'alta' });
-    this.grass = new Grass(this.scene, this.world, this.quality);
+    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1', hd: this.quality === 'alta', lod: gfx.lod });
+    this.grass = new Grass(this.scene, this.world, this.quality, gfx.grass);
     // Luces dinámicas de cuevas y trincheras (cerca de la cámara)
-    this.underFx = new UndergroundFx(this.scene, this.world.sites, this.quality);
+    this.underFx = new UndergroundFx(this.world.sites, gfx.caveLights ? this.lights : null);
     this.grass.onAutoOff = () => this.hud?.toast('Rendimiento: se ha quitado el césped para ganar FPS');
     this.weather = new Weather(this);
 
@@ -169,7 +219,7 @@ export class Game {
     this.gamepad = new GamepadInput(this);
     this.touch = null;
     this.audio = audio;
-    audio.lite = this.quality === 'movil';
+    audio.lite = this.liteCpu;
     this.effects = new Effects(this);
     this.explosives = new Explosives(this);
     this.trails = new Trails(this);
@@ -278,41 +328,167 @@ export class Game {
     this.loop();
   }
 
-  // Posprocesado (calidad normal/alta): MSAA + bloom + tonemapping final.
+  // Perfil gráfico según la calidad y el aparato. En móviles y tabletas,
+  // Normal y Baja son versiones ligeras (sin posprocesado, sombras pequeñas
+  // que se redibujan a 30 Hz…) para llegar a 60-120 FPS.
+  //   post: composer (MSAA en HDR + bloom) · ao: oclusión ambiental
+  //   shadow: tamaño del mapa de sombras (0 = sin sombras) · shadowHz: veces
+  //   por segundo que se redibujan (0 = cada fotograma) · maxDpr/scale:
+  //   resolución · minRes: mínimo de la resolución dinámica.
+  graphicsProfile() {
+    const q = this.quality, m = this.mobileDevice, s = this.settings;
+    //   lite: sombreados y modelos ligeros · lod: tabla de distancias de
+    //   dibujado (world/lod.js) · fog: factor de la niebla (tapa el recorte).
+    const base = { post: false, ao: false, msaa: true, shadow: 0, shadowExt: 70, shadowHz: 0, grass: 1, lights: 0, caveLights: false, maxDpr: 2, scale: 1, minRes: 0.65, lite: false, lod: q, fog: 1 };
+    if (q === 'alta') {
+      return { ...base, post: true, ao: !m && s.ao !== false, shadow: m ? 2048 : 3072, shadowExt: 95, shadowHz: m ? 60 : 0, lights: 3, caveLights: true, minRes: m ? 0.65 : 0.75 };
+    }
+    if (q === 'normal') {
+      return m
+        ? { ...base, shadow: 1024, shadowExt: 55, shadowHz: 30, grass: 0.5, lights: 1, scale: 0.85, minRes: 0.6, lite: true, lod: 'baja', fog: 0.9 }
+        : { ...base, shadow: 2048, shadowHz: 60, lights: 2, caveLights: true, maxDpr: 1.5, minRes: 0.75 };
+    }
+    if (q === 'baja') {
+      return m
+        ? { ...base, scale: 0.75, minRes: 0.6, lite: true, lod: 'movil', fog: 0.75 }
+        : { ...base, msaa: false, lights: 1, maxDpr: 1, scale: 0.75, minRes: 0.75 };
+    }
+    // Móvil: resolución ajustable (Opciones → Móvil)
+    return { ...base, scale: (s.resScale || 85) / 100, minRes: 0.6, lite: true, fog: 0.72 };
+  }
+
+  // Tarjeta gráfica que usa el navegador. Si dibuja por software (aceleración
+  // por hardware desactivada o tarjeta en la lista negra) el juego va lento
+  // aunque el ordenador sea bueno: se avisa con un cartel.
+  detectGpu() {
+    try {
+      const gl = this.renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      this.gpuName = String((ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '');
+    } catch {
+      this.gpuName = '';
+    }
+    this.softwareGL = /swiftshader|llvmpipe|softpipe|software|basic render/i.test(this.gpuName);
+    if (!this.softwareGL || this.mobileDevice) return;
+    const el = document.createElement('div');
+    el.id = 'gpu-warning';
+    el.innerHTML = `<b>⚠ El navegador no está usando la tarjeta gráfica</b>
+      <span>El juego se está dibujando con el procesador (${this.gpuName.replace(/[<>&]/g, '')}), por eso va lento aunque tengas un buen PC.
+      Activa «Usar aceleración por hardware» en la configuración del navegador (Chrome/Edge: Configuración → Sistema) y reinícialo.</span>
+      <button type="button">Entendido</button>`;
+    el.querySelector('button').addEventListener('click', () => el.remove());
+    document.body.appendChild(el);
+  }
+
+  // Posprocesado (calidad alta): MSAA + bloom + oclusión ambiental + tonemapping.
   get usePost() {
-    return this.settings.quality !== 'baja' && this.settings.quality !== 'movil';
+    return !!this.gfx?.post;
   }
 
   pixelRatio() {
-    const dpr = devicePixelRatio || 1;
-    if (this.quality === 'movil') return Math.min(dpr, 2) * ((this.settings.resScale || 70) / 100) * this.dynRes;
-    if (this.quality === 'baja') return Math.min(dpr, 1) * 0.75;
-    return Math.min(dpr, this.quality === 'alta' ? 2 : 1.5);
+    const g = this.gfx;
+    return Math.min(devicePixelRatio || 1, g.maxDpr) * g.scale * this.dynRes;
   }
 
-  // Resolución dinámica (calidad móvil): mide los FPS y ajusta la resolución.
-  adaptResolution(raw) {
-    if (this.quality !== 'movil' || this.settings.autoRes === false || this.state !== 'playing' || this.paused) return;
+  // Aplica la resolución actual al lienzo y al posprocesado.
+  applyPixelRatio() {
+    const pr = this.pixelRatio();
+    if (Math.abs(pr - this.renderer.getPixelRatio()) < 0.01) return;
+    this.renderer.setPixelRatio(pr);
+    this.renderer.setSize(innerWidth, innerHeight);
+    if (this.composer) {
+      this.composer.setPixelRatio(pr);
+      this.composer.setSize(innerWidth, innerHeight);
+    }
+  }
+
+  // Frecuencia de la pantalla (60, 90, 120, 144 Hz…): la mayor tasa de
+  // requestAnimationFrame vista en ventanas de 1 s, redondeada.
+  trackRefresh(ts) {
     const pf = this.perf;
+    if (!pf.hzT) pf.hzT = ts;
+    pf.hzN++;
+    const el = ts - pf.hzT;
+    if (el < 1000) return;
+    const rate = (pf.hzN * 1000) / el;
+    pf.hzT = ts;
+    pf.hzN = 0;
+    if (document.hidden || el > 1500) return;
+    const std = [30, 60, 72, 75, 90, 100, 120, 144, 165, 240];
+    const hz = std.reduce((b, v) => (Math.abs(v - rate) < Math.abs(b - rate) ? v : b), 60);
+    if (hz > pf.hz && rate > hz * 0.93) pf.hz = hz;
+  }
+
+  // FPS a los que se intenta llegar: los de la pantalla (máx. 120), o el
+  // límite elegido en Opciones.
+  targetFps() {
+    let t = Math.min(120, this.perf.hz || 60);
+    const lim = this.settings.fpsLimit | 0;
+    if (lim) t = Math.min(t, lim);
+    const cap = this.frameCap();
+    if (cap) t = Math.min(t, cap);
+    return t;
+  }
+
+  // Resolución dinámica: mide los FPS y baja la resolución si no se llega a
+  // los de la pantalla; la sube poco a poco cuando sobra. Si bajarla no
+  // mejora nada (el límite es el procesador o la pantalla, no la gráfica),
+  // se deshace: así no se ve borroso sin motivo.
+  adaptResolution(raw) {
+    const pf = this.perf;
+    if (this.settings.autoRes === false || this.state !== 'playing' || this.paused) {
+      pf.t = pf.n = 0;
+      return;
+    }
     pf.t += raw;
     pf.n++;
-    if (pf.t < 2) return;
+    if (pf.t < 1.5) return;
     const fps = pf.n / pf.t;
     pf.t = pf.n = 0;
-    const target = this.settings.fpsCap === 30 ? 28 : 50;
-    let next = this.dynRes;
-    // Con la resolución ya al mínimo, se acorta también la distancia de visión
-    this.drawAuto = this.drawAuto || 1;
-    if (fps < target - 6 && this.dynRes <= 0.55) this.drawAuto = Math.max(0.6, this.drawAuto - 0.1);
-    else if (fps > target + 6 && this.dynRes >= 1) this.drawAuto = Math.min(1, this.drawAuto + 0.05);
-    if (fps < target - 6) next = Math.max(0.55, this.dynRes - 0.12);
-    else if (fps > target + 6 && ++pf.cool >= 3) next = Math.min(1, this.dynRes + 0.06);
-    if (next !== this.dynRes) {
-      pf.cool = 0;
-      this.dynRes = next;
-      this.renderer.setPixelRatio(this.pixelRatio());
-      this.renderer.setSize(innerWidth, innerHeight);
+    const g = this.gfx;
+    const target = this.targetFps();
+    const prev = this.dynRes;
+    if (pf.hold > 0) pf.hold--;
+    // Distancia de visión automática (móviles): con la resolución ya al
+    // mínimo, también se acorta lo que se dibuja a lo lejos
+    if (this.mobileDevice || this.quality === 'movil') {
+      this.drawAuto = this.drawAuto || 1;
+      if (fps < target * 0.85 && this.dynRes <= g.minRes + 0.01) this.drawAuto = Math.max(0.6, this.drawAuto - 0.1);
+      else if (fps > target * 0.95 && this.dynRes >= 1) this.drawAuto = Math.min(1, this.drawAuto + 0.05);
     }
+    // Último recurso si ni con la resolución al mínimo (o sin que bajarla
+    // ayude) se llega: quitar la oclusión ambiental (un pase entero menos)
+    const stuck = this.dynRes <= g.minRes + 0.01 || pf.hold > 0;
+    pf.slow = fps < target * 0.75 && stuck ? (pf.slow || 0) + 1 : 0;
+    if (pf.slow >= 3 && this.aoPass?.enabled) {
+      pf.slow = 0;
+      this.aoPass.enabled = false;
+      this.hud?.toast('Rendimiento: se ha quitado la oclusión ambiental para ganar FPS');
+    }
+    if (pf.pending) {
+      // ¿Sirvió la última bajada?
+      const p = pf.pending;
+      pf.pending = null;
+      if (fps < p.fps * 1.05 && fps < target * 0.9) {
+        this.dynRes = p.prev;
+        pf.hold = 20; // 30 s sin volver a intentarlo
+        this.applyPixelRatio();
+        return;
+      }
+    }
+    if (fps < target * 0.88 && this.dynRes > g.minRes + 0.001 && pf.hold === 0) {
+      this.dynRes = Math.max(g.minRes, this.dynRes - (fps < target * 0.7 ? 0.15 : 0.08));
+      pf.pending = { fps, prev };
+      pf.good = 0;
+    } else if (fps >= target * 0.96 && this.dynRes < 1) {
+      if (++pf.good >= 4) {
+        pf.good = 0;
+        this.dynRes = Math.min(1, this.dynRes + 0.05);
+      }
+    } else {
+      pf.good = 0;
+    }
+    if (this.dynRes !== prev) this.applyPixelRatio();
   }
 
   setupPost() {
@@ -329,12 +505,10 @@ export class Game {
       this.viewPass.clearDepth = true;
       this.bloomPass = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.5, 1.2);
       composer.addPass(this.mainPass);
-      // Oclusión ambiental (rincones y bases de muros más oscuros) en calidad alta
-      if (this.quality === 'alta') {
+      // Oclusión ambiental (rincones y bases de muros más oscuros)
+      if (this.gfx.ao) {
         try {
-          this.aoPass = new GTAOPass(this.scene, this.camera, size.x, size.y);
-          this.aoPass.updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.5, thickness: 1.5, scale: 1.2 });
-          this.aoPass.blendIntensity = 0.85;
+          this.aoPass = makeHalfResAO(this.scene, this.camera, size.x, size.y);
           composer.addPass(this.aoPass);
         } catch (err) {
           console.warn('Sin oclusión ambiental:', err);
@@ -370,12 +544,10 @@ export class Game {
     this.music?.setVolume((s.music ?? 40) / 100 * (s.volume / 100));
     if (this.audio) this.audio.spatial = s.spatialAudio !== false;
     if (this.world?.lod) this.world.lod.t = 0; // distancia de visión al momento
-    if (this.renderer && this.quality === 'movil') {
-      const pr = this.pixelRatio();
-      if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.01) {
-        this.renderer.setPixelRatio(pr);
-        this.renderer.setSize(innerWidth, innerHeight);
-      }
+    if (this.renderer && this.gfx) {
+      if (this.quality === 'movil') this.gfx.scale = (s.resScale || 85) / 100;
+      if (s.autoRes === false) this.dynRes = 1;
+      this.applyPixelRatio();
     }
   }
 
@@ -919,7 +1091,7 @@ export class Game {
   // (menor en móvil); lo que no cabe espera al siguiente fotograma.
   processPaths() {
     if (!this.pathQueue.length) return;
-    const mobile = this.quality === 'movil';
+    const mobile = this.liteCpu;
     const budget = mobile ? 1.5 : this.quality === 'baja' ? 2.5 : 4;
     const maxNodes = mobile ? 9000 : this.quality === 'baja' ? 15000 : 30000;
     const t0 = performance.now();
@@ -1248,6 +1420,7 @@ export class Game {
   // ---------------------------------------------------------- LOOP
   loop = (ts) => {
     requestAnimationFrame(this.loop);
+    this.trackRefresh(ts || 0);
     // Límite de FPS (Opciones)
     const lim = this.settings.fpsLimit | 0;
     if (lim > 0 && ts - this.lastFrame < 1000 / lim - 1) return;
@@ -1296,7 +1469,7 @@ export class Game {
   frameCap() {
     // 30 FPS con «Ahorro de batería» o con la batería baja (táctil)
     let cap = this.settings.fpsCap === 30 || this.touch?.extras?.saving ? 30 : 0;
-    if (this.quality === 'movil') {
+    if (this.liteCpu) {
       if (this.paused && !this.net) cap = 15;
       else if (this.state === 'menu' || this.hud?.mapOpen) cap = cap ? Math.min(cap, 30) : 30;
     }
@@ -1846,7 +2019,8 @@ export class Game {
   // Distancia de dibujado de objetos pequeños (botín, cofres, puertas…):
   // más corta en calidad móvil/baja.
   propDist(base) {
-    return base * (this.quality === 'movil' ? 0.6 : this.quality === 'baja' ? 0.8 : 1);
+    const k = { movil: 0.6, baja: 0.8 }[this.gfx.lod] ?? 1;
+    return base * k;
   }
 
   // Niebla base según la cámara; el tiempo (lluvia, niebla) y la calidad
@@ -1861,7 +2035,7 @@ export class Game {
     const [near, far] = this.fogBase || [200, 1250];
     // Distancia de visión (Opciones) × ajuste automático por rendimiento
     const view = (this.settings.viewDist || 1) * (this.drawAuto || 1);
-    const k = (this.weather?.active ? this.weather.fogMul ?? 1 : 1) * (this.quality === 'movil' ? 0.72 : 1) * Math.min(1, 0.5 + 0.5 * view);
+    const k = (this.weather?.active ? this.weather.fogMul ?? 1 : 1) * this.gfx.fog * Math.min(1, 0.5 + 0.5 * view);
     fog.near = near * k;
     fog.far = far * k;
     const cam = this.camera.position;
@@ -1966,14 +2140,33 @@ export class Game {
 
   focusShadow(focus) {
     const s = this.sun;
-    s.target.position.set(focus.x, Math.max(0, focus.y), focus.z);
-    s.position.copy(s.target.position).addScaledVector(this.sunDir, 200);
+    const t = s.target.position.set(focus.x, Math.max(0, focus.y), focus.z);
+    // El centro se ajusta a la rejilla de texeles del mapa de sombras (en
+    // los ejes de la luz): los bordes de las sombras no tiemblan al andar.
+    const z = this.sunDir;
+    const x = tmpSx.set(z.z, 0, -z.x).normalize(); // up × z
+    const y = tmpSy.crossVectors(z, x);
+    const k = this.shadowTexel || 0.05;
+    const px = x.dot(t), py = y.dot(t);
+    t.addScaledVector(x, Math.round(px / k) * k - px).addScaledVector(y, Math.round(py / k) * k - py);
+    s.position.copy(t).addScaledVector(z, 200);
     s.target.updateMatrixWorld();
   }
 
   render() {
     const r = this.renderer;
+    this.lights.update(this.camera.position);
     updateVisibleMatrices(this.scene, false);
+    // Sombras: se redibujan como mucho gfx.shadowHz veces por segundo, y una
+    // sola vez por fotograma (antes también en el pase de la oclusión).
+    if (r.shadowMap.enabled) {
+      const hz = this.gfx.shadowHz;
+      this.shadowT += this.frameDt || 0;
+      if (!hz || this.shadowT >= 0.75 / hz) {
+        r.shadowMap.needsUpdate = true;
+        this.shadowT = 0;
+      }
+    }
     const view = this.state === 'playing' && this.camMode === 'fp' && this.player.mode === 'ground' && this.combat.viewmodel.visible && !this.spectating && !this.player.emote;
     if (this.composer) {
       this.viewPass.enabled = view;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { usesPBR, isMobileQuality } from '../game/models.js';
+import { NOISE_GLSL, bindNoise } from './noisetex.js';
 
 const tmpColor = new THREE.Color();
 const va = new THREE.Vector3();
@@ -34,6 +35,7 @@ export function buildingMaterial() {
   // Móvil: el dibujo sólo se calcula de cerca (más allá, color liso)
   if (isMobileQuality()) m.defines = { LITE: '' };
   m.onBeforeCompile = (sh) => {
+    bindNoise(sh);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float pat;\nvarying float vPat;\nvarying vec3 vBW;\nvarying vec3 vBN;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPat = pat;\nvBW = (modelMatrix * vec4(position, 1.0)).xyz;\nvBN = normalize(mat3(modelMatrix) * normal);');
@@ -43,11 +45,8 @@ varying float vPat;
 varying vec3 vBW;
 varying vec3 vBN;
 float bH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float bN(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(bH(i), bH(i + vec2(1.0, 0.0)), u.x), mix(bH(i + vec2(0.0, 1.0)), bH(i + vec2(1.0, 1.0)), u.x), u.y);
-}
+${NOISE_GLSL}
+#define bN texNoise
 float bLine(float f, float w) { return smoothstep(0.0, w, f) * smoothstep(1.0, 1.0 - w, f); }
 // Devuelve el multiplicador de color (x) y cuánto aclarar (y, juntas).
 vec2 surfacePattern(float pat, vec3 p, vec3 n) {

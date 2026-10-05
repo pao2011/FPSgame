@@ -1,24 +1,22 @@
 import * as THREE from 'three';
 import { isMobileQuality } from '../game/models.js';
 import { smoothstep } from '../core/rng.js';
+import { NOISE_GLSL, bindNoise } from './noisetex.js';
 
 // Grano de asfalto, parches y grietas (procedural, coordenadas de mundo).
 // En calidad móvil, versión ligera (menos ruido por píxel, sin grietas).
 function addAsphaltDetail(mat) {
   if (isMobileQuality()) mat.defines = { ...mat.defines, LITE: '' };
   mat.onBeforeCompile = (sh) => {
+    bindNoise(sh);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vAWorld;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvAWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vAWorld;
-float aHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float aNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(aHash(i), aHash(i + vec2(1.0, 0.0)), u.x), mix(aHash(i + vec2(0.0, 1.0)), aHash(i + vec2(1.0, 1.0)), u.x), u.y);
-}`)
+${NOISE_GLSL}
+#define aNoise texNoise`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 p = vAWorld.xz;

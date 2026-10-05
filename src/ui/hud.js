@@ -333,6 +333,12 @@ export class HUD {
   setScope(on) {
     this.scoped = on;
     this.set('scope', this.el.scope, 'display', on ? 'block' : 'none');
+    // En táctil los botones van por encima de la mira telescópica (si no, el
+    // negro de alrededor tapa el botón de dejar de apuntar)
+    if (this.last.scopeBody !== on) {
+      this.last.scopeBody = on;
+      document.body.classList.toggle('scoped', on);
+    }
   }
 
   setPrompt(text) {
@@ -461,12 +467,12 @@ export class HUD {
     const mm = e.mini;
     this.miniT = (this.miniT || 0) - dt;
     if (this.miniT <= 0) {
-      this.miniT = g.quality === 'movil' ? 0.075 : 0;
+      this.miniT = g.liteCpu ? 0.075 : 0;
       g.mapRenderer.drawMini(this.miniCtx, mm.width, mm.height, g, p.mode === 'ground' ? 220 : 420);
     }
     this.fullT = (this.fullT || 0) - dt;
     if (this.mapOpen && this.fullT <= 0) {
-      this.fullT = g.quality === 'movil' ? 0.1 : 0;
+      this.fullT = g.liteCpu ? 0.1 : 0;
       g.mapRenderer.drawFull(this.fullCtx, e.fullmapCanvas.width, e.fullmapCanvas.height, g);
     }
 

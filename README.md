@@ -42,6 +42,18 @@ grandes**, **correr automáticamente**, 📳 vibración al acertar o eliminar, �
 **batería y hora** en pantalla y **ahorro automático con la batería baja**
 (todo en *Opciones → Móvil y táctil*).
 
+**Más FPS en PC y móvil:** 🚀 **resolución dinámica en todas las calidades**
+(apunta a los 60, 90 o 120 Hz de tu pantalla y, si bajar la resolución no
+ayuda, la deja como estaba para que no se vea borroso), las sombras se dibujan
+**una sola vez por fotograma** (antes, en *Alta*, dos), **oclusión ambiental a
+media resolución**, ruido de los sombreados **precalculado en una textura**,
+luces de efectos compartidas (de 6 luces siempre encendidas a 1-3), **Normal y
+Baja ligeras en móviles y tabletas** (sin posprocesado, sombras pequeñas a
+30 Hz, antialiasing), calidad *Móvil* **más nítida** (85 % de resolución con
+antialiasing en vez de 70 % sin él) y **aviso si el navegador no usa la
+tarjeta gráfica**. En táctil, el botón de dejar de apuntar ya se ve con la
+mira del francotirador.
+
 **Optimización para móviles:** el mundo se dibuja por parcelas (sólo lo que
 se ve y está cerca: ~8 veces menos triángulos en calidad *Móvil*), sombreados
 ligeros para el cielo, el agua, el suelo y los edificios, lluvia calculada en
@@ -487,7 +499,8 @@ Controles* (en el móvil hay controles táctiles; ver la
 | `npm warn deprecated ...` · `found X vulnerabilities` | Avisos informativos | Puedes ignorarlos |
 | Pantalla negra · *Error al iniciar* · mensaje sobre **WebGL** | El navegador no tiene aceleración gráfica | Activa *Usar aceleración de hardware* en la configuración del navegador, actualiza el navegador y los drivers de la tarjeta gráfica |
 | El ratón no mueve la cámara | El juego no ha capturado el ratón | Haz clic dentro de la ventana del juego. **Esc** lo suelta |
-| Va lento / a tirones | Ordenador o gráfica modestos | En **Opciones** elige *Calidad gráfica: Baja* (o añade `?calidad=baja` a la dirección), baja los *Jugadores por partida* en el panel *Jugar* y cierra otras pestañas |
+| Va lento en un PC bueno | El navegador dibuja sin la tarjeta gráfica (sale un cartel rojo avisándolo) o usa la gráfica integrada del portátil | Activa *Usar aceleración por hardware* (Chrome/Edge: *Configuración → Sistema*) y reinicia el navegador. En portátiles con dos gráficas: *Configuración de Windows → Pantalla → Gráficos* → elige el navegador → *Alto rendimiento*. En *Opciones → Calidad gráfica* aparece la tarjeta que se está usando |
+| Va lento / a tirones | Ordenador o gráfica modestos | En **Opciones** elige *Calidad gráfica: Normal* o *Baja* (o añade `?calidad=baja` a la dirección), deja activada la *Resolución dinámica*, baja los *Jugadores por partida* en el panel *Jugar* y cierra otras pestañas |
 | Al abrir `index.html` con doble clic la página sale en blanco | `index.html` es para el modo desarrollo y necesita `npm run dev` | Para doble clic usa **`jugar.html`** |
 
 Si te sale otro error, copia el mensaje completo de la terminal: la primera
@@ -502,8 +515,20 @@ Se añaden al final de la dirección (por ejemplo `jugar.html?calidad=baja`):
 | Opción | Efecto |
 | --- | --- |
 | `?calidad=baja` | Sin sombras, sin posprocesado y menor resolución |
-| `?calidad=movil` | Como *baja*, con resolución ajustable y dinámica (la de los móviles) |
-| `?calidad=alta` | Sombras más nítidas y mayor resolución |
+| `?calidad=movil` | Como *baja*, con menos distancia de dibujado y resolución ajustable (la de los móviles) |
+| `?calidad=normal` | Sombras y materiales completos, sin posprocesado |
+| `?calidad=alta` | Bloom, oclusión ambiental, terreno HD y sombras más nítidas |
+
+Todas las calidades usan **resolución dinámica** (se puede quitar en
+*Opciones*). En móviles y tabletas, *Normal* y *Baja* usan un perfil ligero
+pensado para 60-120 FPS.
+
+**¿Mejor descargado o en el navegador?** Da igual para los FPS: `jugar.html`,
+`npm run dev` y la web usan el mismo motor del navegador (WebGL), así que van
+igual de rápido. Lo que sí importa es que el navegador use la tarjeta
+gráfica (ver *Problemas frecuentes*) y jugar en pantalla completa con pocas
+pestañas abiertas. En Android, la APK tampoco es más rápida que Chrome, pero
+va a pantalla completa y sin barras del navegador.
 
 El mapa es **único**: la isla se genera siempre con la misma semilla
 (`MAP_SEED` en `src/world/constants.js`). El resto de ajustes (modo,

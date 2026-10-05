@@ -31,7 +31,7 @@ export class Weather {
     this.baseSunDir = game.sunDir.clone();
     // Lluvia: segmentos que caen en una caja alrededor de la cámara. La caída
     // se calcula en la GPU (shader de vértices): la CPU no toca las gotas.
-    const low = game.quality === 'baja' || game.quality === 'movil';
+    const low = game.quality === 'baja' || game.quality === 'movil' || game.liteCpu;
     this.N = game.quality === 'movil' ? 700 : low ? 1200 : 3500;
     const drop = new Float32Array(this.N * 8);
     for (let i = 0; i < this.N; i++) {

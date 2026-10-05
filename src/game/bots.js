@@ -279,7 +279,7 @@ class Bot extends Character {
   animLOD(dt, item, swingT) {
     const g = this.game;
     const d2 = this.pos.distanceToSquared(g.camera.position);
-    const mobile = g.quality === 'movil';
+    const mobile = g.liteCpu;
     const every = d2 < 45 * 45 ? 1 : d2 < 110 * 110 ? (mobile ? 3 : 2) : mobile ? 5 : 3;
     this.animAcc = (this.animAcc || 0) + dt;
     this.animN = (this.animN || 0) + 1;

@@ -58,14 +58,11 @@ export class Explosives {
       this.fireballs.push({ mesh: m, flash, t: 0, max: 0.45, r: 1 });
     }
     this.fbIdx = 0;
-    // Luces puntuales: siempre en la escena (añadir/quitar luces obliga a
-    // recompilar todos los shaders = tirón). En calidad móvil no se añaden:
-    // cada luz encarece cada píxel iluminado.
-    const lights = game.quality !== 'movil';
-    this.light = new THREE.PointLight(0xffa040, 0, 40, 2);
-    this.fireLight = new THREE.PointLight(0xff7a20, 0, 20, 2);
+    // Luces virtuales: la escena tiene un número fijo de luces reales que se
+    // reparten entre los efectos (ver lightpool.js)
+    this.light = game.lights.add(new THREE.PointLight(0xffa040, 0, 40, 2), 3);
+    this.fireLight = game.lights.add(new THREE.PointLight(0xff7a20, 0, 20, 2), 1);
     this.fireZone = null;
-    if (lights) this.scene.add(this.light, this.fireLight);
     this.lightT = 0;
 
     const smokeMat = new THREE.SpriteMaterial({ map: getSmokeTexture(), color: 0x777777, transparent: true, depthWrite: false });

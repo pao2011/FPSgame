@@ -90,6 +90,10 @@ class CharacterPreview {
         this.running = false;
         return;
       }
+      requestAnimationFrame(tick);
+      // Oculto (p. ej. en partida con el menú escondido): no se dibuja, que
+      // es un segundo contexto WebGL que restaría FPS al juego
+      if (!this.canvas.offsetParent) return;
       this.t += 0.016;
       if (this.model) {
         this.model.root.rotation.y = Math.PI + Math.sin(this.t * 0.6) * 0.6 + 0.3;
@@ -98,7 +102,6 @@ class CharacterPreview {
         this.model.armR.rotation.x = -Math.sin(this.t * 2) * 0.05;
       }
       this.renderer.render(this.scene, this.camera);
-      requestAnimationFrame(tick);
     };
     tick();
   }
@@ -120,6 +123,8 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Más FPS en PC y móvil', 'Resolución dinámica en todas las calidades (apunta a los 60, 90 o 120 Hz de tu pantalla y no baja la nitidez si no sirve de nada), sombras que se dibujan una sola vez por fotograma, oclusión ambiental a media resolución, ruido de los sombreados precalculado, luces de efectos compartidas, perfil ligero de Normal y Baja en móviles, calidad Móvil más nítida (con antialiasing) y aviso si el navegador no usa la tarjeta gráfica.'],
+  ['Mira telescópica en táctil', 'El botón de dejar de apuntar (y el resto de botones) se ve también mientras miras por la mira del francotirador.'],
   ['Novedades para móviles', 'Apuntar con el giroscopio, disparo automático, asistencia de apuntado táctil, botón de curación rápida, doble toque para marcar, mapa táctil (toca para marcar, pellizca para hacer zoom), disposiciones «Garra» y «Botones grandes», correr automáticamente, más vibraciones, batería y hora en pantalla y ahorro automático con la batería baja.'],
   ['Optimización para móviles', 'El mundo se dibuja por parcelas (sólo lo visible y cercano), sombreados más ligeros, lluvia en la tarjeta gráfica, rutas de los bots sin tirones, menos FPS en menús y pausa, shaders precompilados y nueva opción «Distancia de visión».'],
   ['Isla de la Bóveda', 'En el centro del mapa, un gran lago con una isla: el Guardián de la Bóveda y sus secuaces la defienden. Al morir suelta una tarjeta que abre la bóveda blindada (cofres seguros y armas legendarias). Se llega por una pasarela, nadando o en lancha.'],
@@ -468,8 +473,8 @@ export class Menu {
           <small class="hint">${this.game.touch ? 'Arrastra los botones donde quieras y cambia su tamaño.' : 'Disponible con los controles táctiles activos.'}</small></div>
         ${check('vibration', 'Vibración')}
         ${check('touchFullscreen', 'Pantalla completa al jugar (navegador)')}
-        ${range('resScale', 'Resolución (calidad Móvil)', 40, 100, 5, pct)}
-        ${check('autoRes', 'Resolución dinámica (baja la resolución si van lentos los FPS)')}
+        ${range('resScale', 'Resolución (calidad Móvil)', 50, 100, 5, pct)}
+        ${check('autoRes', 'Resolución dinámica', 'Si no se llega a los FPS de la pantalla (60, 90 o 120 Hz), baja un poco la resolución; si bajarla no ayuda, la deja como estaba.')}
         <div class="opt-row"><label>Ahorro de batería</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS']])}</div>
         <h4 class="opt-sub">Apuntar y disparar</h4>
         <div class="opt-row"><label>Apuntar con el giroscopio</label>${seg('gyro', [['off', 'Desactivado'], ['ads', 'Al apuntar'], ['always', 'Siempre']])}
@@ -508,8 +513,10 @@ export class Menu {
             <button data-v="baja" class="${s.quality === 'baja' ? 'on' : ''}">Baja (PCs modestos)</button>
             <button data-v="movil" class="${s.quality === 'movil' ? 'on' : ''}">Móvil</button>
           </div>
-          <small class="hint" data-hint="quality"></small>
-        </div>`;
+          <small class="hint" data-hint="quality">${this.game.mobileDevice ? 'En móviles y tabletas, Normal y Baja usan una versión ligera (sin posprocesado y sombras más sencillas) para ir a 60-120 FPS. Móvil: lo más ligero.' : 'Alta: bloom, oclusión ambiental y terreno HD. Normal: sombras y materiales completos sin posprocesado. Baja: para PCs modestos.'}${this.game.gpuName ? `<br>Tarjeta gráfica en uso: <b>${this.game.gpuName.replace(/[<>&]/g, '')}</b>${this.game.softwareGL ? ' ⚠ (sin aceleración por hardware)' : ''}` : ''}</small>
+        </div>
+        ${check('autoRes', 'Resolución dinámica', 'Si no se llega a los FPS de la pantalla, baja un poco la resolución (y la vuelve a subir cuando sobra).')}
+        ${check('ao', 'Oclusión ambiental (calidad Alta)', 'Sombras suaves en rincones y bases de muros. Se aplica al recargar.')}`;
     }
     return `
       <h2>Opciones</h2>

@@ -83,7 +83,7 @@ export class World {
     this.ladders = [];
     this.doors = [];
     this.landmarks = []; // lugares destacados con nombre (mapa)
-    this.lod = new LodSet(modelQuality());
+    this.lod = new LodSet(opts.lod || modelQuality());
     this.hydro = new Hydro(); // ríos y lagos
     this.sites = []; // cuevas y trincheras
     this.generate();

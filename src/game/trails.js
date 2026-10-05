@@ -30,7 +30,7 @@ export class Trails {
     this.idx = 0;
     this.glow = getGlowTexture();
     this.heart = heartTexture();
-    const n = game.quality === 'movil' || game.quality === 'baja' ? 90 : 220;
+    const n = game.quality === 'movil' || game.quality === 'baja' || game.liteCpu ? 90 : 220;
     for (let i = 0; i < n; i++) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
       sp.visible = false;

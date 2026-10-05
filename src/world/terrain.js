@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MAP_SIZE, HALF, LOBBY } from './constants.js';
 import { smoothstep } from '../core/rng.js';
 import { usesPBR, isMobileQuality } from '../game/models.js';
+import { NOISE_GLSL, bindNoise } from './noisetex.js';
 
 const tmpColor = new THREE.Color();
 
@@ -14,6 +15,7 @@ export function addGroundDetail(mat, hd = false) {
   if (isMobileQuality()) mat.defines = { ...mat.defines, LITE: '' };
   mat.customProgramCacheKey = () => (hd ? 'groundHD' : 'ground');
   mat.onBeforeCompile = (sh) => {
+    bindNoise(sh);
     if (hd) sh.fragmentShader = '#define GROUND_HD\n' + sh.fragmentShader;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vGWorld;\nvarying vec3 vGNormal;')
@@ -22,12 +24,8 @@ export function addGroundDetail(mat, hd = false) {
       .replace('#include <common>', `#include <common>
 varying vec3 vGWorld;
 varying vec3 vGNormal;
-float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float gNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), u.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
+${NOISE_GLSL}
+#define gNoise texNoise
 // Ruido en los tres planos: no se estira en las laderas empinadas
 float gN3(vec3 p) { return (gNoise(p.xz) + gNoise(p.zy + 17.0) + gNoise(p.xy + 31.0)) * 0.3333; }
 float gDetail(vec3 p) { return gN3(p * 0.9) * 0.55 + gN3(p * 2.3) * 0.3 + gN3(p * 5.7) * 0.15; }`)

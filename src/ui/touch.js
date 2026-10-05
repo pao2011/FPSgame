@@ -84,6 +84,20 @@ export function isNativeApp() {
   return !!window.Capacitor?.isNativePlatform?.();
 }
 
+// Móvil o tableta (no un portátil con pantalla táctil): decide el perfil
+// gráfico ligero de las calidades Normal y Baja.
+export function isMobileDevice() {
+  try {
+    if (isNativeApp()) return true;
+    const ua = navigator.userAgent || '';
+    if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua)) return true;
+    if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true; // iPadOS
+    return matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900;
+  } catch {
+    return false;
+  }
+}
+
 export class TouchControls {
   constructor(game) {
     this.game = game;
