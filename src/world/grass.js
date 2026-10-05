@@ -143,6 +143,20 @@ export class Grass {
 
   update(dt, camPos) {
     if (!this.enabled) return;
+    // Rendimiento: si los FPS se hunden un buen rato, se quita el césped
+    this.fpsAcc = (this.fpsAcc || 0) + dt;
+    this.fpsN = (this.fpsN || 0) + 1;
+    if (this.fpsAcc > 5) {
+      const fps = this.fpsN / this.fpsAcc;
+      this.slow = fps < 28 ? (this.slow || 0) + 1 : 0;
+      this.fpsAcc = this.fpsN = 0;
+      if (this.slow >= 3) {
+        this.enabled = false;
+        this.mesh.visible = false;
+        this.onAutoOff?.();
+        return;
+      }
+    }
     this.uniforms.uTime.value += dt;
     const cx = Math.floor(camPos.x / CHUNK), cz = Math.floor(camPos.z / CHUNK);
     // Muy alto (autobús, caída libre): no merece la pena dibujarla.

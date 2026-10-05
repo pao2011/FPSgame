@@ -133,6 +133,7 @@ export class Game {
     this.seed = MAP_SEED;
     this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
     this.grass = new Grass(this.scene, this.world, this.quality);
+    this.grass.onAutoOff = () => this.hud?.toast('Rendimiento: se ha quitado el césped para ganar FPS');
     this.weather = new Weather(this);
 
     this.input = new Input(this.canvas);

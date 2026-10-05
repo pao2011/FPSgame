@@ -111,6 +111,12 @@ export class MapDoors {
   update(dt) {
     const g = this.game;
     const cam = g.camera.position;
+    // Rendimiento: sólo se dibujan las puertas cercanas (4 mallas cada una)
+    this.cullT = (this.cullT || 0) - dt;
+    if (this.cullT <= 0) {
+      this.cullT = 0.5;
+      for (const door of this.list) door.hinge.visible = door.center.distanceToSquared(cam) < 140 * 140;
+    }
     // Animación de la hoja (abre hacia dentro de la casa)
     for (const door of this.near(cam.x, cam.z)) {
       const want = door.open ? -Math.PI * 0.55 : 0;
