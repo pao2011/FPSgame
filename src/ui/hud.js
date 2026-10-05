@@ -474,9 +474,11 @@ export class HUD {
     if (st.active) {
       const t = Math.max(0, Math.ceil(st.timer));
       const mmss = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-      if (st.state === 'wait') stTxt = `<span class="ico">🌀</span> La tormenta se cerrará en <b>${mmss}</b>`;
+      if (st.state === 'wait' && st.drift) stTxt = `<span class="ico">➡</span> ¡La zona se está moviendo! <b>${mmss}</b>`;
+      else if (st.state === 'wait') stTxt = `<span class="ico">🌀</span> La tormenta se cerrará en <b>${mmss}</b>`;
       else if (st.state === 'shrink') stTxt = `<span class="ico">⚠</span> ¡La tormenta se está cerrando! <b>${mmss}</b>`;
       else stTxt = '<span class="ico">🌀</span> Tormenta final';
+      if (g.weather?.label) stTxt += `<div class="wx">${g.weather.label}</div>`;
       if (p.mode !== 'lobby') {
         const out = st.distanceOutside(p.pos.x, p.pos.z);
         if (out > 0) stTxt += `<div class="warn">Fuera de la zona segura · ${Math.round(out)} m</div>`;

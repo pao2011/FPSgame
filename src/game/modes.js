@@ -105,6 +105,7 @@ export const DEFAULT_SETTINGS = {
   soundViz: false, // indicadores de sonido alrededor de la mira
   compassSounds: true, // disparos y pasos cercanos en la brújula
   subtitles: false,
+  weather: true, // clima y ciclo de día en las partidas
   // Mando
   padScheme: 'clasico', // clasico | pro (constructor pro)
   padSens: 1,

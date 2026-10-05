@@ -8,6 +8,7 @@ import { Accessibility } from '../ui/accessibility.js';
 import { GamepadInput } from '../core/gamepad.js';
 import { MatchLoader } from '../ui/tips.js';
 import { Trails } from './trails.js';
+import { Weather } from '../world/weather.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -124,6 +125,7 @@ export class Game {
     this.seed = MAP_SEED;
     this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
     this.grass = new Grass(this.scene, this.world, this.quality);
+    this.weather = new Weather(this);
 
     this.input = new Input(this.canvas);
     this.gamepad = new GamepadInput(this);
@@ -531,6 +533,7 @@ export class Game {
     this.containers.reset(o.rng);
     this.dummies.reset();
     this.player.team = o.team;
+    this.weather.start(o.stormRng, mode);
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
     this.storm.mesh.visible = true;
     this.arenaAngle = o.stormRng.float(0, Math.PI * 2);
@@ -744,6 +747,7 @@ export class Game {
 
   quitToMenu() {
     this.inventory?.hide();
+    this.weather.reset();
     const wasOnline = !!this.net || this.mode.online;
     if (this.mode.creative) this.creative.stop();
     // Abandonar a mitad de partida también da XP (sin bonus de puesto)
@@ -1268,6 +1272,7 @@ export class Game {
     this.effects.update(dt);
     this.grass.update(dt, this.camera.position);
     this.trails.update(dt);
+    if (this.state === 'playing') this.weather.update(dt);
     this.inventory.update();
     this.a11y.update(dt);
     this.updatePings(dt);

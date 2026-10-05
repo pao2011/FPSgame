@@ -448,6 +448,7 @@ export class Menu {
     } else {
       body = `
         ${range('fov', 'Campo de visión', 65, 100, 1, deg)}
+        ${check('weather', 'Clima y ciclo de día en las partidas', 'Lluvia, niebla o nubes y la hora avanzando hasta el anochecer.')}
         ${range('volume', 'Volumen', 0, 100, 5, pct)}
         <div class="opt-row"><label>Límite de FPS</label>
           <select data-k="fpsLimit">${[0, 30, 60, 120, 144, 240].map((v) => `<option value="${v}" ${Number(s.fpsLimit) === v ? 'selected' : ''}>${v ? v + ' FPS' : 'Sin límite'}</option>`).join('')}</select></div>

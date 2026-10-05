@@ -3935,3 +3935,4 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 .st-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .st-table th, .st-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 .st-table th { opacity: 0.6; font-weight: 600; }
+#storm-info .wx { font-size: 12px; opacity: 0.85; margin-top: 3px; }

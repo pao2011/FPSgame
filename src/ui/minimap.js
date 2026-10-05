@@ -97,6 +97,25 @@ export class MapRenderer {
     }
   }
 
+  // Ruta discontinua hasta la siguiente zona segura (si estás fuera de ella).
+  drawSafePath(ctx, game, scale, ox, oy) {
+    const st = game.storm, p = game.player;
+    if (!st.active || st.state === 'done' || !p.alive || p.mode === 'bus' || p.mode === 'lobby') return;
+    const dx = p.pos.x - st.next.x, dz = p.pos.z - st.next.y;
+    const d = Math.hypot(dx, dz);
+    if (d <= st.nextRadius) return;
+    const ex = st.next.x + (dx / d) * st.nextRadius, ez = st.next.y + (dz / d) * st.nextRadius;
+    ctx.save();
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(ox + p.pos.x * scale, oy + p.pos.z * scale);
+    ctx.lineTo(ox + ex * scale, oy + ez * scale);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   drawPlayer(ctx, x, y, yaw, size = 7) {
     ctx.save();
     ctx.translate(x, y);
@@ -148,6 +167,7 @@ export class MapRenderer {
     const [bx, by] = this.toPx(p.pos.x - metersShown / 2, p.pos.z - metersShown / 2);
     ctx.drawImage(this.base, bx, by, metersShown * srcScale, metersShown * srcScale, 0, 0, w, h);
     this.drawStormOverlay(ctx, game.storm, scale, ox, oy, w, h);
+    this.drawSafePath(ctx, game, scale, ox, oy);
     if (p.mode === 'bus' || (game.bus.active && p.mode === 'lobby')) this.drawBusPath(ctx, game.bus, scale, ox, oy);
     this.drawMates(ctx, game, scale, ox, oy);
     this.drawMarks(ctx, game, scale, ox, oy);
@@ -221,6 +241,7 @@ export class MapRenderer {
       ctx.fillText(String(i + 1), 4, (i + 0.5) * (h / 10) + 4);
     }
     this.drawStormOverlay(ctx, game.storm, scale, ox, oy, w, h);
+    if (game.state === 'playing') this.drawSafePath(ctx, game, scale, ox, oy);
     if (game.bus.active || game.player.mode === 'bus') this.drawBusPath(ctx, game.bus, scale, ox, oy);
     // nombres de zonas
     ctx.textAlign = 'center';
