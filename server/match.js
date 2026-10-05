@@ -3,7 +3,7 @@
 // los estados y arbitra lo que se comparte: cofres, objetos del suelo,
 // vehículos, construcciones, eliminaciones, marcador y final de la partida.
 import { RNG } from '../src/core/rng.js';
-import { lootForChest, lootForAmmoBox } from '../src/game/items.js';
+import { lootForChest, lootForAmmoBox, setLootPool } from '../src/game/items.js';
 import { HitGuard } from './anticheat.js';
 
 let nextMatch = 1;
@@ -249,7 +249,9 @@ export class Match {
     const i = m.i | 0;
     if (i < 0 || i > 5000 || this.chests.has(i)) return;
     this.chests.add(i);
+    setLootPool(this.mode.lootPool); // modos temporales (sólo ciertas armas)
     const loot = m.kind === 'ammo' ? lootForAmmoBox(this.rng) : lootForChest(this.rng);
+    setLootPool(null);
     const items = loot.map((it, k) => [`c${i}_${k}`, it]);
     this.chestItems.set(i, items);
     this.broadcast({ t: 'm.chest', i, by: this.owns(c, m.by) ? m.by : me.id, items });

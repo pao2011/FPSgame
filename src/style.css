@@ -3973,3 +3973,9 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 #viewer .vw-bar button.exit { background: #b8402e; color: #fff; }
 #viewer .vw-bar input[type=range] { width: min(360px, 60vw); }
 #viewer .vw-time { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; }
+#edit-course { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.6); padding: 8px 16px; border-radius: 12px; font-size: 16px; pointer-events: auto; }
+#edit-course button { margin-left: 8px; padding: 2px 10px; font-size: 13px; }
+.arena-res, .arena-box { margin-top: 10px; background: rgba(255, 211, 77, 0.12); border: 1px solid rgba(255, 211, 77, 0.35); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+.arena-res small, .arena-box small { opacity: 0.8; }
+.arena-box { margin: 0 0 10px; }
+.mode-card .ltm-badge { position: absolute; top: 6px; right: 6px; background: #ff5a8a; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 6px; }

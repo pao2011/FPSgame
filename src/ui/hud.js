@@ -525,7 +525,7 @@ export class HUD {
       const low = p.mats[m] < BUILD_COST ? ' low' : '';
       return `<span class="mat ${m}${sel}${low}"><i></i>${p.mats[m]}</span>`;
     }).join('');
-    const gold = g.npcs?.list.length && g.state === 'playing' && !g.mode.creative ? `<span class="mat gold" title="Oro (PNJ)">💰 ${p.gold || 0}</span>` : '';
+    const gold = g.npcs?.list.length && g.state === 'playing' && !g.mode.creative && !g.mode.noBots ? `<span class="mat gold" title="Oro (PNJ)">💰 ${p.gold || 0}</span>` : '';
     this.set('mats', e.mats, 'html', gold + mats);
 
     // Barra de construcción

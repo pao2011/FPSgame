@@ -342,7 +342,8 @@ export class Menu {
 
   modesHTML() {
     return `<h2>Modos de juego</h2><div class="mode-grid">${Object.values(MODES).map((m) => `
-      <button class="mode-card ${this.s.mode === m.id ? 'on' : ''}" data-mode="${m.id}">
+      <button class="mode-card ${this.s.mode === m.id ? 'on' : ''}" data-mode="${m.id}" style="position:relative">
+        ${m.ltm ? '<span class="ltm-badge">TEMPORAL</span>' : m.ranked ? '<span class="ltm-badge" style="background:#c99200">CLASIFICATORIA</span>' : ''}
         <div class="mode-icon">${m.icon}</div>
         <div class="mode-name">${m.name}</div>
         <div class="mode-desc">${m.desc}</div>

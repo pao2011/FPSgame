@@ -227,13 +227,20 @@ export function makeWeapon(type, rarity) {
   return { kind: 'weapon', type, rarity: clampRarity(type, rarity), mag: WEAPONS[type].mag };
 }
 
+// Modos temporales: armas permitidas (null = todas, con sus pesos normales).
+let POOL = null;
+export function setLootPool(weights) {
+  POOL = weights || null;
+}
+const weaponWeights = () => POOL || WEAPON_WEIGHTS;
+
 function pickKey(rng, weights) {
   const keys = Object.keys(weights);
   return keys[rng.weighted(keys.map((k) => weights[k]))];
 }
 
 function rollWeapon(rng, rarityWeights) {
-  const type = pickKey(rng, WEAPON_WEIGHTS);
+  const type = pickKey(rng, weaponWeights());
   return makeWeapon(type, rng.weighted(rarityWeights));
 }
 
@@ -257,7 +264,7 @@ export function lootForChest(rng) {
   const out = [w, ammoFor(w.type, 1.5)];
   if (rng.chance(0.7)) out.push(rollConsumable(rng));
   if (rng.chance(0.4)) out.push(rollThrowable(rng));
-  if (rng.chance(0.3)) out.push(ammoFor(pickKey(rng, WEAPON_WEIGHTS)));
+  if (rng.chance(0.3)) out.push(ammoFor(pickKey(rng, weaponWeights())));
   return out;
 }
 
@@ -269,12 +276,12 @@ export function lootForFloor(rng) {
   }
   if (r < 0.72) return [rollConsumable(rng)];
   if (r < 0.85) return [rollThrowable(rng)];
-  return [ammoFor(pickKey(rng, WEAPON_WEIGHTS))];
+  return [ammoFor(pickKey(rng, weaponWeights()))];
 }
 
 export function lootForAmmoBox(rng) {
-  const a = pickKey(rng, WEAPON_WEIGHTS);
-  const b = pickKey(rng, WEAPON_WEIGHTS);
+  const a = pickKey(rng, weaponWeights());
+  const b = pickKey(rng, weaponWeights());
   const out = [ammoFor(a), ammoFor(b)];
   if (rng.chance(0.35)) out.push(rollThrowable(rng));
   return out;

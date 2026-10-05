@@ -30,6 +30,24 @@ export const WEEKLY = [
   { id: 'w_heads25', name: 'Acierta 25 disparos a la cabeza', stat: 'heads', goal: 25, xp: 2500, tokens: 50 },
   { id: 'w_online3', name: 'Juega 3 partidas online', stat: 'online', goal: 3, xp: 2000, tokens: 40 },
 ];
+// Arena: divisiones por puntos acumulados.
+export const ARENA_DIVS = [
+  { name: 'Abierta I', min: 0 }, { name: 'Abierta II', min: 100 }, { name: 'Abierta III', min: 250 },
+  { name: 'Contendiente I', min: 450 }, { name: 'Contendiente II', min: 700 }, { name: 'Contendiente III', min: 1000 },
+  { name: 'Campeón I', min: 1400 }, { name: 'Campeón II', min: 1900 }, { name: 'Campeón III', min: 2500 },
+];
+export function arenaDiv(points) {
+  let d = 0;
+  for (let i = 0; i < ARENA_DIVS.length; i++) if (points >= ARENA_DIVS[i].min) d = i;
+  return d;
+}
+// Puntos de una partida de Arena: 20 por eliminación + bonus por puesto.
+export function arenaPoints(r) {
+  const place = r.win ? 1 : r.place || 99;
+  const bonus = place === 1 ? 60 : place <= 5 ? 30 : place <= 10 ? 15 : place <= 25 ? 5 : 0;
+  return r.kills * 20 + bonus;
+}
+
 const CHALLENGES = Object.fromEntries([...DAILY, ...WEEKLY].map((c) => [c.id, c]));
 
 function dayKey(d = new Date()) {
@@ -68,6 +86,8 @@ function fresh() {
     seen: [], // objetos nuevos ya vistos en la taquilla
     challenges: { day: '', week: '', daily: [], weekly: [] },
     modes: {}, // estadísticas por modo: { solo: { matches, wins, kills } }
+    arena: { points: 0, matches: 0, best: 0 },
+    cup: { week: '', games: [] }, // Copa semanal: puntos de hasta 5 partidas de Arena
   };
 }
 
@@ -93,6 +113,8 @@ export class Progress {
     for (const t of COSMETIC_KEYS) out.owned[t] = (out.owned[t] || []).filter((id) => cosmetic(t, id));
     out.challenges = { ...f.challenges, ...(d.challenges || {}) };
     out.modes = { ...(d.modes || {}) };
+    out.arena = { ...f.arena, ...(d.arena || {}) };
+    out.cup = { ...f.cup, ...(d.cup || {}) };
     this.data = out;
     this.refreshChallenges();
     if (save) this.save(false);
@@ -293,6 +315,26 @@ export class Progress {
       m.kills += r.kills;
       if (r.win) m.wins++;
     }
+    // Arena: puntos, división y Copa semanal
+    let arena = null;
+    if (r.mode === 'arena') {
+      const A = this.data.arena;
+      const before = arenaDiv(A.points);
+      const gained = arenaPoints(r);
+      A.points += gained;
+      A.matches++;
+      A.best = Math.max(A.best, gained);
+      const wk = weekKey();
+      const cup = this.data.cup;
+      if (cup.week !== wk) {
+        cup.week = wk;
+        cup.games = [];
+      }
+      if (cup.games.length < 5) cup.games.push(gained);
+      const div = arenaDiv(A.points);
+      arena = { gained, points: A.points, div: ARENA_DIVS[div].name, up: div > before, cup: cup.games.reduce((a, b) => a + b, 0), cupLeft: 5 - cup.games.length };
+      add(`Arena: ${gained} puntos`, gained * 2);
+    }
     // Desafíos diarios y semanales
     const top10 = r.win || (!r.respawn && r.place && r.place <= 10) ? 1 : 0;
     const chDone = this.advanceChallenges({ ...r, matches: 1, wins: r.win ? 1 : 0, top10, online: r.online ? 1 : 0, minutes: Math.floor(r.time / 60) });
@@ -310,7 +352,7 @@ export class Progress {
     }
     const rewards = this.addXp(total);
     this.save();
-    return { lines, total, levelBefore, level: this.level, rewards, achievements: ach, challenges: chDone };
+    return { lines, total, levelBefore, level: this.level, rewards, achievements: ach, challenges: chDone, arena };
   }
 
   // Estadísticas sueltas fuera de una partida (p. ej. el modo creativo).

@@ -12,6 +12,7 @@ import { Weather } from '../world/weather.js';
 import { NPCs } from './npcs.js';
 import { RebootVans } from './reboot.js';
 import { Replay, Viewer } from './replay.js';
+import { EditCourse } from './editcourse.js';
 import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
@@ -40,7 +41,7 @@ import { TouchControls, isTouchDevice } from '../ui/touch.js';
 import { Progress } from './progress.js';
 import { Creative } from './creative.js';
 import { MapRenderer } from '../ui/minimap.js';
-import { itemName, itemRarity, RARITIES, MATERIALS, AMMO, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon, stackDef } from './items.js';
+import { itemName, itemRarity, RARITIES, MATERIALS, AMMO, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon, stackDef, setLootPool } from './items.js';
 import { mergeBinds, keyName } from '../core/binds.js';
 import { CreativePanel } from '../ui/creative.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
@@ -200,6 +201,7 @@ export class Game {
     this.reboot = new RebootVans(this);
     this.replay = new Replay(this);
     this.viewer = new Viewer(this);
+    this.editCourse = new EditCourse(this);
     this.npcDialog = new NpcDialog(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
@@ -408,7 +410,7 @@ export class Game {
     this.prepareMatch(mode, { rng: random, stormRng: random, team: 0 });
 
     // Equipos (el jugador siempre en el equipo 0)
-    const total = mode.noBots ? 1 : mode.id === 'duel' ? 2 : clamp(this.settings.players | 0, 2, 60);
+    const total = mode.noBots ? 1 : mode.id === 'duel' ? 2 : mode.id === 'team20' ? 40 : clamp(this.settings.players | 0, 2, 60);
     const nb = total - 1;
     const teams = [];
     if (mode.teams) {
@@ -432,6 +434,7 @@ export class Game {
       p.model.root.visible = this.camMode !== 'fp';
       this.creative.start();
     }
+    if (mode.editCourse) this.editCourse.start();
     this.touch?.fullscreen();
     this.input.lock();
   }
@@ -539,6 +542,7 @@ export class Game {
     this.explosives.reset();
     this.effects.clear();
     this.pickups.clear();
+    setLootPool(mode.lootPool);
     spawnFloorLoot(this, this.world.lootSpots, o.rng, !!o.online);
     this.containers.reset(o.rng);
     this.dummies.reset();
@@ -569,6 +573,7 @@ export class Game {
   // creativo o (modos con reaparición) directamente en el aire.
   beginMatch(o) {
     this.viewer.hide();
+    this.editCourse.stop();
     this.replay.start();
     const mode = this.mode;
     const p = this.player;
@@ -761,6 +766,8 @@ export class Game {
 
   quitToMenu() {
     this.inventory?.hide();
+    this.editCourse.stop();
+    setLootPool(null);
     this.viewer.hide();
     this.weather.reset();
     const wasOnline = !!this.net || this.mode.online;
@@ -1297,6 +1304,7 @@ export class Game {
     this.grass.update(dt, this.camera.position);
     this.trails.update(dt);
     this.replay.record(dt);
+    if (this.state === 'playing') this.editCourse.update(dt);
     if (this.state === 'playing') {
       this.npcs.update(dt);
       this.reboot.update(dt);

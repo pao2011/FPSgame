@@ -34,6 +34,34 @@ export const MODES = {
     id: 'zerobuild', name: 'Construcción cero', icon: '🚫', teamSize: 1, build: false, online: true, maxPlayers: 24,
     desc: 'Solitario sin construir: sólo movimiento, coberturas del mapa y puntería.',
   },
+  // ---- Modos temporales (ltm) y Arena
+  arena: {
+    id: 'arena', name: 'Arena', icon: '🏆', teamSize: 1, build: true, online: true, maxPlayers: 24, ranked: true,
+    desc: 'Solitario con puntos: eliminaciones y puesto suman para subir de división y para la Copa semanal.',
+  },
+  snipers: {
+    id: 'snipers', name: 'Sólo francotiradores', icon: '🎯', teamSize: 1, build: true, online: true, maxPlayers: 24, ltm: true,
+    lootPool: { sniper: 6, hunting: 5, dmr: 4, revolver: 1 },
+    desc: 'Temporal · Sólo rifles de francotirador, de caza y de tirador. Paciencia y buena puntería.',
+  },
+  shotguns: {
+    id: 'shotguns', name: 'Tiroteo de escopetas', icon: '💥', teamSize: 1, build: true, online: true, maxPlayers: 24, ltm: true,
+    lootPool: { shotgun: 6, tactical: 5, doublebarrel: 4 },
+    desc: 'Temporal · Sólo escopetas. Peleas a quemarropa y mucha construcción.',
+  },
+  rockets: {
+    id: 'rockets', name: 'Lluvia de cohetes', icon: '🚀', teamSize: 1, build: true, online: true, maxPlayers: 24, ltm: true,
+    lootPool: { rocket: 6, glauncher: 4, ar: 2, smg: 2 },
+    desc: 'Temporal · Lanzacohetes y lanzagranadas por todas partes. Construye… y vuelve a construir.',
+  },
+  team20: {
+    id: 'team20', name: 'Equipos de 20', icon: '🎌', teamSize: 20, build: true, online: true, maxPlayers: 40, ltm: true,
+    desc: 'Temporal · Dos equipos de 20 en la isla grande. El último equipo en pie gana.',
+  },
+  editcourse: {
+    id: 'editcourse', name: 'Práctica de edición', icon: '✏️', teamSize: 1, build: true, noBots: true, infinite: true, ltm: true, editCourse: true,
+    desc: 'Temporal · Un circuito de paredes para editar contra el reloj. ¡Bate tu mejor tiempo!',
+  },
   creative: {
     id: 'creative', name: 'Modo creativo', icon: '🎨', teamSize: 1, build: true, noBots: true, infinite: true, creative: true, noBus: true,
     desc: 'Isla plana para ti: vuelo, catálogo con todas las armas y objetos, todos los edificios de la isla, bots y dianas a demanda, prefabricados de construcción, guardar construcciones, hora del día y mucho más.',

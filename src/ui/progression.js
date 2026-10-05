@@ -6,7 +6,7 @@ import { SHIRTS, PANTS, HAIR, SKINS, randomOutfit } from '../game/character.js';
 import {
   PASS, PASS_REWARDS, SHOP, ACHIEVEMENTS, RARITY_COLORS, RARITY_NAMES, COSMETIC_TYPES, TRAILS, EMOTES, SCREENS, cosmetic,
 } from '../game/cosmetics.js';
-import { rewardText, challengeDef } from '../game/progress.js';
+import { rewardText, challengeDef, ARENA_DIVS, arenaDiv } from '../game/progress.js';
 import { MODES } from '../game/modes.js';
 import { esc } from './online.js';
 
@@ -235,7 +235,14 @@ export class ProgressionUI {
       <h3>Desafíos semanales <small>se renuevan el lunes</small></h3><div class="ach-list">${pr.data.challenges.weekly.map((c) => chRow(c, true)).join('')}</div></div>`;
     const st = pr.data.stats;
     const modeRows = Object.entries(pr.data.modes || {}).map(([id, m]) => `<tr><td>${esc(MODES[id]?.name || id)}</td><td>${m.matches}</td><td>${m.wins}</td><td>${m.kills}</td><td>${m.matches ? (m.kills / m.matches).toFixed(1) : '0'}</td></tr>`).join('');
-    const stats = `<div class="mode-stats"><h3>Estadísticas</h3>
+    const A = pr.data.arena || { points: 0, matches: 0, best: 0 };
+    const di = arenaDiv(A.points);
+    const next = ARENA_DIVS[di + 1];
+    const cup = pr.data.cup || { games: [] };
+    const arenaBox = `<div class="arena-box"><b>🏆 Arena · ${esc(ARENA_DIVS[di].name)}</b> <small>${A.points} puntos${next ? ` · ${next.min - A.points} para ${esc(next.name)}` : ' · división máxima'}</small>
+      <div class="abar"><i style="width:${next ? ((A.points - ARENA_DIVS[di].min) / (next.min - ARENA_DIVS[di].min)) * 100 : 100}%"></i></div>
+      <small>Copa semanal: ${cup.games.reduce((a, b) => a + b, 0)} puntos en ${cup.games.length}/5 partidas · mejor partida: ${A.best} puntos</small></div>`;
+    const stats = `<div class="mode-stats"><h3>Estadísticas</h3>${arenaBox}
       <div class="st-grid"><span>Partidas<b>${st.matches}</b></span><span>Victorias<b>${st.wins}</b></span><span>Eliminaciones<b>${st.kills}</b></span><span>Top 10<b>${st.top10}</b></span><span>Daño<b>${st.damage}</b></span><span>Cofres<b>${st.chests}</b></span></div>
       ${modeRows ? `<table class="st-table"><tr><th>Modo</th><th>Partidas</th><th>Victorias</th><th>Elim.</th><th>Elim./partida</th></tr>${modeRows}</table>` : '<p class="hint">Juega partidas para ver tus estadísticas por modo.</p>'}</div>`;
     const complete = pr.level >= PASS.tiers;
@@ -410,6 +417,8 @@ export class ProgressionUI {
       <div class="xp-lines">${res.lines.map((l) => `<div><span>${esc(l.label)}</span><b>+${l.xp}</b></div>`).join('')}</div>
       ${up ? `<div class="lvl-up">⬆ ¡NIVEL ${res.level}!</div>` : `<div class="lvl-now">Nivel ${res.level} · ${this.progress.tierXp}/${PASS.xpPerTier} XP</div>`}
       ${rewards ? `<div class="rewards">${rewards}</div>` : ''}
+      ${res.arena ? `<div class="arena-res">🏆 Arena: <b>+${res.arena.gained}</b> puntos · ${res.arena.points} en total · <b>${esc(res.arena.div)}</b>${res.arena.up ? ' ⬆ ¡Nueva división!' : ''}
+        <small>Copa semanal: ${res.arena.cup} puntos${res.arena.cupLeft > 0 ? ` · te quedan ${res.arena.cupLeft} partidas` : ' · completada'}</small></div>` : ''}
     </div>`;
   }
 }
