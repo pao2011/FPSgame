@@ -192,6 +192,16 @@ export class MapRenderer {
 
   // Marcas de ubicación (pings) y destino del mapa.
   drawMarks(ctx, game, scale, ox, oy) {
+    // Furgonetas de reaparición (en modos por equipos)
+    if (game.reboot?.enabled) {
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const v of game.reboot.vans) ctx.fillText(v.cd > 0 ? '⏳' : '🚐', ox + v.pos.x * scale, oy + v.pos.z * scale);
+      for (const c of game.reboot.cards) ctx.fillText('💳', ox + c.mesh.position.x * scale, oy + c.mesh.position.z * scale);
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
+    }
     for (const pg of game.pings) {
       ctx.fillStyle = pg.mine ? '#ffd34d' : '#3fa9ff';
       ctx.strokeStyle = '#000';

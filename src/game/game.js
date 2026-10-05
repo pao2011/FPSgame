@@ -10,6 +10,7 @@ import { MatchLoader } from '../ui/tips.js';
 import { Trails } from './trails.js';
 import { Weather } from '../world/weather.js';
 import { NPCs } from './npcs.js';
+import { RebootVans } from './reboot.js';
 import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
@@ -195,6 +196,7 @@ export class Game {
     this.a11y = new Accessibility(this);
     this.loader = new MatchLoader(this);
     this.npcs = new NPCs(this);
+    this.reboot = new RebootVans(this);
     this.npcDialog = new NpcDialog(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
@@ -540,6 +542,7 @@ export class Game {
     this.player.team = o.team;
     this.weather.start(o.stormRng, mode);
     this.npcs.reset(mode, !!o.online);
+    this.reboot.reset();
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
     this.storm.mesh.visible = true;
     this.arenaAngle = o.stormRng.float(0, Math.PI * 2);
@@ -899,6 +902,7 @@ export class Game {
   onElimination(victim, killer, type) {
     if (this.net?.isLocal(victim)) this.net.sendElim(victim, killer, type);
     this.npcs.onElim(victim, killer);
+    this.reboot.onElim(victim);
     // Los bots a veces celebran la eliminación con un gesto
     if (killer?.isBot && killer !== victim && Math.random() < 0.3) {
       const id = ['baile', 'saludo', 'victoria', 'aplauso'][Math.floor(Math.random() * 4)];
@@ -1279,7 +1283,10 @@ export class Game {
     this.effects.update(dt);
     this.grass.update(dt, this.camera.position);
     this.trails.update(dt);
-    if (this.state === 'playing') this.npcs.update(dt);
+    if (this.state === 'playing') {
+      this.npcs.update(dt);
+      this.reboot.update(dt);
+    }
     if (this.state === 'playing') this.weather.update(dt);
     this.inventory.update();
     this.a11y.update(dt);
@@ -1553,6 +1560,7 @@ export class Game {
       return;
     }
 
+    if (this.reboot.interact(input, dt, E)) return;
     const npc = !target || target.score < 1.2 ? this.npcs.findNear(p.pos) : null;
     if (npc) {
       const what = npc.role === 'merchant' ? 'Comerciar con' : npc.quest?.state === 'new' ? 'Misión de' : 'Hablar con';
