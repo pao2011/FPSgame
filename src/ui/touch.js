@@ -18,6 +18,7 @@ const ICONS = {
   edit: svg('<path d="M4 17.5V20h2.5L17.8 8.7l-2.5-2.5zM19.7 6.8a1 1 0 0 0 0-1.4l-1.1-1.1a1 1 0 0 0-1.4 0l-1 1 2.5 2.5z" fill="currentColor"/>'),
   catalog: svg('<path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z" fill="currentColor"/>'),
   close: svg('<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'),
+  inv: svg('<path d="M8 7V5a4 4 0 0 1 8 0v2h3l1 14H4L5 7zm2 0h4V5a2 2 0 0 0-4 0z" fill="currentColor"/>'),
   use: svg('<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V3a1.5 1.5 0 0 1 3 0v7h.5V5a1.5 1.5 0 0 1 3 0v9c0 4-2.5 7-6.5 7-3 0-4.6-1.6-6-3.7L4 13.5a1.4 1.4 0 0 1 2.2-1.7z" fill="currentColor"/>'),
 };
 
@@ -36,6 +37,7 @@ const BUTTONS = [
   { id: 'pause', icon: 'pause' },
   { id: 'cam', key: 'KeyV' },
   { id: 'chat' },
+  { id: 'inv', key: 'Tab' },
 ];
 
 export function isTouchDevice() {
@@ -97,6 +99,99 @@ export class TouchControls {
     const s = this.game.settings;
     this.root.style.setProperty('--tsz', String(s.touchSize || 1));
     this.root.style.setProperty('--top', String(s.touchOpacity ?? 0.85));
+    this.applyLayout(s.touchLayout || {});
+  }
+
+  // Disposición personalizada: { id: { x, y, s } } con x/y en fracción de la
+  // pantalla (centro del botón) y s = escala del botón.
+  applyLayout(layout) {
+    for (const [id, el] of Object.entries(this.btn)) {
+      const l = layout[id];
+      el.style.setProperty('--ls', String(l?.s || 1));
+      if (l && Number.isFinite(l.x) && Number.isFinite(l.y)) {
+        const half = 'var(--s) * var(--tsz) * var(--ls, 1) / 2';
+        el.style.left = `calc(${(l.x * 100).toFixed(2)}% - ${half})`;
+        el.style.top = `calc(${(l.y * 100).toFixed(2)}% - ${half})`;
+        el.style.right = el.style.bottom = 'auto';
+      } else el.style.left = el.style.top = el.style.right = el.style.bottom = '';
+    }
+  }
+
+  // ---------------------------------------------------------- EDITOR
+  // Personalizar botones: arrastrar para moverlos y regla para el tamaño.
+  editLayout(onClose) {
+    if (this.editing) return;
+    const g = this.game;
+    this.releaseAll?.();
+    this.editing = { layout: JSON.parse(JSON.stringify(g.settings.touchLayout || {})), sel: 'fire', drag: null, onClose };
+    this.root.classList.add('editing');
+    this.root.dataset.mode = 'edit';
+    this.state.mode = 'edit';
+    const bar = (this.editBar = document.createElement('div'));
+    bar.className = 't-edit-bar';
+    bar.innerHTML = `<b>Personalizar botones</b><span>Arrastra un botón para moverlo</span>
+      <label>Tamaño <input type="range" min="0.6" max="1.8" step="0.05" value="1"></label>
+      <button data-e="reset">Restablecer</button><button data-e="cancel">Cancelar</button><button data-e="save" class="ok">Guardar</button>`;
+    document.body.appendChild(bar);
+    const range = bar.querySelector('input');
+    const sync = () => {
+      for (const el of Object.values(this.btn)) el.classList.toggle('t-sel', el.dataset.act === this.editing.sel);
+      range.value = String(this.editing.layout[this.editing.sel]?.s || 1);
+    };
+    this.editing.sync = sync;
+    range.addEventListener('input', () => {
+      const e = this.editing;
+      const el = this.btn[e.sel];
+      const r = el.getBoundingClientRect();
+      e.layout[e.sel] = { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight, ...e.layout[e.sel], s: Number(range.value) };
+      this.applyLayout(e.layout);
+    });
+    bar.addEventListener('click', (ev) => {
+      const k = ev.target.closest('[data-e]')?.dataset.e;
+      if (!k) return;
+      if (k === 'reset') {
+        this.editing.layout = {};
+        this.applyLayout({});
+        sync();
+        return;
+      }
+      if (k === 'save') {
+        g.settings.touchLayout = this.editing.layout;
+        g.applySettings();
+      } else this.applyLayout(g.settings.touchLayout || {});
+      this.endEdit();
+    });
+    sync();
+  }
+
+  endEdit() {
+    const e = this.editing;
+    if (!e) return;
+    this.editing = null;
+    this.root.classList.remove('editing');
+    for (const el of Object.values(this.btn)) el.classList.remove('t-sel');
+    this.editBar?.remove();
+    this.state.mode = null;
+    e.onClose?.();
+  }
+
+  editDown(ev) {
+    const el = ev.target.closest('[data-act]');
+    if (!el) return;
+    const e = this.editing;
+    e.sel = el.dataset.act;
+    const r = el.getBoundingClientRect();
+    e.drag = { id: ev.pointerId, dx: ev.clientX - (r.left + r.width / 2), dy: ev.clientY - (r.top + r.height / 2) };
+    e.sync();
+  }
+
+  editMove(ev) {
+    const e = this.editing;
+    if (!e.drag || e.drag.id !== ev.pointerId) return;
+    const x = Math.max(0.03, Math.min(0.97, (ev.clientX - e.drag.dx) / innerWidth));
+    const y = Math.max(0.05, Math.min(0.95, (ev.clientY - e.drag.dy) / innerHeight));
+    e.layout[e.sel] = { s: e.layout[e.sel]?.s || 1, x, y };
+    this.applyLayout(e.layout);
   }
 
   // Pantalla completa y horizontal (sólo funciona tras un toque del usuario).
@@ -184,6 +279,7 @@ export class TouchControls {
   // ---------------------------------------------------------- PUNTEROS
   onDown(e) {
     e.preventDefault();
+    if (this.editing) return this.editDown(e);
     const g = this.game;
     const input = this.input;
     try {
@@ -228,6 +324,7 @@ export class TouchControls {
   }
 
   onMove(e) {
+    if (this.editing) return this.editMove(e);
     const p = this.ptrs.get(e.pointerId);
     if (!p) return;
     e.preventDefault();
@@ -242,6 +339,10 @@ export class TouchControls {
   }
 
   onUp(e) {
+    if (this.editing) {
+      if (this.editing.drag?.id === e.pointerId) this.editing.drag = null;
+      return;
+    }
     const p = this.ptrs.get(e.pointerId);
     if (!p) return;
     this.ptrs.delete(e.pointerId);
@@ -312,8 +413,8 @@ export class TouchControls {
       g.menu.online.openChat();
       return;
     }
-    if (act === 'aim' && (g.build.busy || g.creative?.busy)) {
-      input.tap('mouse2'); // construyendo: material · editando: reiniciar · creativo: cancelar
+    if (act === 'aim' && (g.build.busy || g.creative?.busy || this.holdingC4())) {
+      input.tap('mouse2'); // construyendo: material · editando: reiniciar · creativo: cancelar · C4: detonar
       return;
     }
     if (def.toggle) {
@@ -324,9 +425,14 @@ export class TouchControls {
     if (def.key) input.press(def.key);
   }
 
+  holdingC4() {
+    const it = this.game.player.item;
+    return it?.kind === 'throwable' && it.type === 'c4';
+  }
+
   releaseButton(act, def) {
     if (def?.toggle || !def?.key || act === 'pause' || act === 'chat') return;
-    if (act === 'aim' && (this.game.build.busy || this.game.creative?.busy)) return;
+    if (act === 'aim' && (this.game.build.busy || this.game.creative?.busy || this.holdingC4())) return;
     this.input.release(def.key);
   }
 
@@ -351,6 +457,7 @@ export class TouchControls {
 
   // ---------------------------------------------------------- CADA FOTOGRAMA
   update() {
+    if (this.editing) return;
     const g = this.game;
     const p = g.player;
     const playing = g.state === 'playing' && !g.paused && !g.waiting;

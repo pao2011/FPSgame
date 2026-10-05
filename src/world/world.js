@@ -7,10 +7,12 @@ import { BuildingCtx, genHouse, genWarehouse, genSilo, genHay, genContainer, PAL
 import {
   genShop, genGasStation, genChurch, genWaterTower, genRadioTower, genLighthouse, genBunker, genWatchtower,
   genTent, genFactory, genStadium, genPier, genCrane, genRuins, genFountain, genLamp, genBench, genFence, genSandbags,
+  genWindmill, genCastle, genMarket,
 } from './structures.js';
 import { RoadNetwork, RectIndex } from './roads.js';
 import { createNature } from './nature.js';
 import { createWater } from './water.js';
+import { createLobbyIsland } from './lobby.js';
 import { HALF, ISLAND_RADIUS } from './constants.js';
 
 const POI_NAMES = {
@@ -68,6 +70,8 @@ export class World {
     this.carSpots = [];
     this.wreckSpots = [];
     this.ladders = [];
+    this.doors = [];
+    this.landmarks = []; // lugares destacados con nombre (mapa)
     this.generate();
   }
 
@@ -87,6 +91,8 @@ export class World {
     this.nature = createNature(this, this.rng);
     this.addWater();
     this.addClouds();
+    this.lobby = createLobbyIsland(this);
+    this.dummySpots.push(...this.lobby.dummies);
   }
 
   // ------------------------------------------------------------ UTILIDADES
@@ -668,6 +674,7 @@ export class World {
     const plan = this.plan(kind, x, z, rot, W, D, { ...extra, pad: { x, z, radius: Math.max(W, D) * 0.75 + 2, height: h } });
     if (this.tryPlan(plan)) {
       this.pads.push(plan.pad);
+      if (extra.label) this.landmarks.push({ name: extra.label, x, z });
       return plan;
     }
     return null;
@@ -685,7 +692,7 @@ export class World {
       if (!this.isFlatEnough(x, z, 9, 9).ok) continue;
       best = { x, z, h };
     }
-    if (best) this.addLandmark('radio', best.x, best.z, rng.int(0, 3), 16, 12, { chests: 1, chestChance: 0.9 });
+    if (best) this.addLandmark('radio', best.x, best.z, rng.int(0, 3), 16, 12, { chests: 1, chestChance: 0.9, label: 'Antena' });
     // Faro en la costa (lejos del puerto)
     const port = this.pois.find((p) => p.type === 'port');
     for (let i = 0; i < 3000; i++) {
@@ -697,15 +704,15 @@ export class World {
       if (port && Math.hypot(x - port.x, z - port.z) < 350) continue;
       if (this.terrain.rawHeight(x * 1.08, z * 1.08) > -1) continue;
       if (!this.awayFromAll(x, z, 12)) continue;
-      if (this.addLandmark('lighthouse', x, z, rotFacing(-x, -z), 22, 12, { chests: 1, chestChance: 0.9 }, Math.max(3, h))) break;
+      if (this.addLandmark('lighthouse', x, z, rotFacing(-x, -z), 22, 12, { chests: 1, chestChance: 0.9, label: 'Faro' }, Math.max(3, h))) break;
     }
-    const scatter = (kind, count, W, D, extra, test) => {
+    const scatter = (kind, count, W, D, extra, test, flat = 6) => {
       let n = 0;
       for (let i = 0; i < 2500 && n < count; i++) {
         const [x, z] = this.randomLand(rng);
         if (!this.awayFromAll(x, z, Math.max(W, D) / 2 + 6)) continue;
         if (test && !test(x, z)) continue;
-        const f = this.isFlatEnough(x, z, Math.max(W, D) * 0.6, 6);
+        const f = this.isFlatEnough(x, z, Math.max(W, D) * 0.6, flat);
         if (!f.ok || f.avg > 46) continue;
         if (this.addLandmark(kind, x, z, rng.int(0, 3), W, D, typeof extra === 'function' ? extra() : extra)) n++;
       }
@@ -716,6 +723,10 @@ export class World {
     scatter('watchtower', 4, 5, 5, { chests: 1, chestChance: 0.6 });
     scatter('watertower', 2, 9, 9, { chests: 1, chestChance: 0.7 });
     scatter('bunker', 2, 14, 10, { chests: 2, chestChance: 0.8 });
+    // Estructuras nuevas: castillo, molinos y mercadillos
+    scatter('castle', 1, 28, 28, { chests: 3, chestChance: 1, label: 'Castillo Corona' }, null, 10);
+    scatter('windmill', 2, 9, 9, () => ({ chests: 2, chestChance: 0.8, label: 'Molino' }));
+    scatter('market', 2, 19, 15, () => ({ chests: 1, chestChance: 0.8, label: 'Mercadillo' }));
     // Campamentos: 3 tiendas en círculo
     let camps = 0;
     for (let i = 0; i < 2000 && camps < 3; i++) {
@@ -763,6 +774,9 @@ export class World {
         case 'pier': genPier(ctx, rng, { length: p.length, deckLocal: 1.6 - y }); break;
         case 'crane': genCrane(ctx); break;
         case 'ruins': genRuins(ctx, rng); break;
+        case 'windmill': genWindmill(ctx, rng); break;
+        case 'castle': genCastle(ctx, rng); break;
+        case 'market': genMarket(ctx, rng); break;
         case 'fountain': genFountain(ctx); break;
         case 'lamp': genLamp(ctx); break;
         case 'bench': genBench(ctx); break;
@@ -780,16 +794,20 @@ export class World {
           p.chestChance = 0.5;
           break;
       }
-      // Pocos cofres: se elige un subconjunto de los candidatos
-      const cands = rng.shuffle(ctx.chestSpots.slice());
+      // Todos los huecos son candidatos: en cada partida cada cofre aparece
+      // con una probabilidad (el mapa es fijo, los cofres no).
+      const cands = ctx.chestSpots;
       const max = p.chests ?? 1;
-      const n = rng.chance(p.chestChance ?? 0.6) ? Math.min(cands.length, max > 1 ? rng.int(1, max) : 1) : 0;
-      this.chestSpots.push(...cands.slice(0, n));
-      // Si no hay cofre, el hueco puede tener botín en el suelo
-      for (const c of cands.slice(n, n + 1)) if (rng.chance(0.35)) this.lootSpots.push(c);
+      const expected = (p.chestChance ?? 0.6) * (max > 1 ? (1 + max) / 2 : 1);
+      const chance = Math.min(0.8, Math.max(0.18, (expected / Math.max(1, cands.length)) * 1.25));
+      for (const c of cands) {
+        c.chance = chance;
+        this.chestSpots.push(c);
+      }
       this.lootSpots.push(...ctx.lootSpots);
       this.ammoSpots.push(...ctx.ammoSpots);
       this.ladders.push(...ctx.ladders);
+      this.doors.push(...ctx.doors);
     }
     for (const d of this.dummySpots) d.y = this.terrain.heightAt(d.x, d.z);
     for (const c of [...this.carSpots, ...this.wreckSpots]) c.y = this.terrain.heightAt(c.x, c.z);

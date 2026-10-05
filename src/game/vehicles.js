@@ -1,39 +1,47 @@
 import * as THREE from 'three';
-import { makeCarModel, mergeGroupGeometry } from './models.js';
-import { GRAVITY } from '../world/constants.js';
+import { makeCarModel, makeQuadModel, makeBoatModel, mergeGroupGeometry } from './models.js';
+import { GRAVITY, WATER_LEVEL, ISLAND_RADIUS } from '../world/constants.js';
 import { clamp } from '../core/rng.js';
 
 const COLORS = [0xd63a2f, 0x2f6fd6, 0xf2c230, 0x2fa84f, 0xf07a1a, 0xe8e8e8];
 const vcMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const MAX_SPEED = 26;
-const REVERSE = 8;
 const tmp = new THREE.Vector3();
 
-let protoGeo = null;
-function carParts(color) {
-  // Carrocería fusionada por color + 4 ruedas independientes (giran).
-  const g = makeCarModel(color, false);
-  const wheels = g.userData.wheels;
+// Tipos de vehículo: velocidad, aceleración, giro, vida, consumo (gasolina
+// por metro), altura del asiento y medidas para las colisiones.
+export const VEHICLE_KINDS = {
+  car: { name: 'coche', model: (c) => makeCarModel(c, false), max: 26, accel: 13, reverse: 8, turn: 1.7, hp: 500, fuelUse: 1 / 45, seatY: 0.55, hx: 1.0, hz: 2.1, h: 1.7 },
+  quad: { name: 'quad', model: makeQuadModel, max: 30, accel: 19, reverse: 7, turn: 2.3, hp: 260, fuelUse: 1 / 60, seatY: 1.05, hx: 0.75, hz: 1.2, h: 1.3, open: true },
+  boat: { name: 'lancha', model: makeBoatModel, max: 30, accel: 12, reverse: 5, turn: 1.4, hp: 380, fuelUse: 1 / 90, seatY: 0.95, hx: 1.05, hz: 2.4, h: 1.5, water: true, open: true },
+};
+
+const protoGeo = {};
+function carParts(kind, color) {
+  // Carrocería fusionada por color + ruedas independientes (giran).
+  const g = VEHICLE_KINDS[kind].model(color);
+  const wheels = g.userData.wheels || [];
   for (const w of wheels) g.remove(w);
-  if (!protoGeo) {
+  if (wheels.length && !protoGeo[kind]) {
     const w = wheels[0].clone();
     w.position.set(0, 0, 0);
-    protoGeo = mergeGroupGeometry(w);
+    protoGeo[kind] = mergeGroupGeometry(w);
   }
   return { body: mergeGroupGeometry(g), wheelPos: wheels.map((w) => w.position.clone()) };
 }
 
 class Vehicle {
-  constructor(game, spot, color) {
+  constructor(game, spot, color, kind = 'car') {
     this.game = game;
     this.spawn = spot;
-    const parts = carParts(color);
+    this.kind = kind;
+    this.def = VEHICLE_KINDS[kind];
+    const parts = carParts(kind, color);
     this.root = new THREE.Group();
     const body = new THREE.Mesh(parts.body, vcMat);
     body.castShadow = true;
     this.root.add(body);
     this.wheels = parts.wheelPos.map((p) => {
-      const w = new THREE.Mesh(protoGeo, vcMat);
+      const w = new THREE.Mesh(protoGeo[kind], vcMat);
       w.position.copy(p);
       w.castShadow = true;
       this.root.add(w);
@@ -57,8 +65,43 @@ class Vehicle {
     this.remoteDriver = null;
     this.netTarget = null;
     this.spin = 0;
+    this.hp = this.def.hp;
+    this.fuel = 100;
+    this.dead = false;
+    this.root.visible = true;
     this.sync();
     this.setCollider(true);
+  }
+
+  get kindName() {
+    return this.def.name;
+  }
+
+  // Daño (balas, choques, explosiones). Al llegar a 0 explota.
+  damage(amount, fromNet = false) {
+    if (this.dead || !(amount > 0)) return;
+    this.hp -= amount;
+    if (this.hp <= 0) this.destroy(fromNet);
+  }
+
+  destroy(fromNet = false) {
+    if (this.dead) return;
+    const g = this.game;
+    this.dead = true;
+    this.hp = 0;
+    const at = this.pos.clone().setY(this.pos.y + 1);
+    g.effects.explosion(at, 6);
+    g.audio.explosion?.(Math.max(0.1, 1 - at.distanceTo(g.camera.position) / 300), false, at);
+    const d = this.driver;
+    if (d) {
+      g.vehicles.exit(d);
+      d.damage?.(35, 'explosion', null);
+    }
+    this.remoteDriver = null;
+    this.speed = 0;
+    this.root.visible = false;
+    this.setCollider(false);
+    if (!fromNet) g.net?.sendVehicleBoom?.(this);
   }
 
   // Conducido por otro jugador: se acerca suavemente al último estado recibido.
@@ -84,11 +127,12 @@ class Vehicle {
     const col = this.game.world.collision;
     if (this.collider) col.remove(this.collider);
     this.collider = null;
-    if (!on) return;
+    if (!on || this.dead) return;
+    const { hx, hz, h } = this.def;
     const c = Math.abs(Math.cos(this.heading)), s = Math.abs(Math.sin(this.heading));
-    const ex = c * 1.0 + s * 2.1, ez = s * 1.0 + c * 2.1;
+    const ex = c * hx + s * hz, ez = s * hx + c * hz;
     const p = this.pos;
-    this.collider = col.add(p.x - ex, p.y, p.z - ez, p.x + ex, p.y + 1.7, p.z + ez, { type: 'car', ref: this });
+    this.collider = col.add(p.x - ex, p.y, p.z - ez, p.x + ex, p.y + h, p.z + ez, { type: 'car', ref: this });
   }
 
   get forward() {
@@ -96,16 +140,25 @@ class Vehicle {
   }
 
   ground(x, z, fromY) {
-    return this.game.world.groundBelow(x, z, fromY);
+    const g = this.game.world.groundBelow(x, z, fromY);
+    // La lancha flota sobre el agua
+    return this.def.water ? Math.max(g, WATER_LEVEL - 0.4) : g;
+  }
+
+  // ¿Está la lancha sobre tierra firme?
+  beached() {
+    return this.game.world.groundBelow(this.pos.x, this.pos.z, this.pos.y + 1.2) > WATER_LEVEL - 0.25;
   }
 
   // ¿Choca la carrocería en esta posición? (ignora bordillos bajos)
   blocked(x, y, z, heading) {
     const col = this.game.world.collision;
     const fx = -Math.sin(heading), fz = -Math.cos(heading);
-    for (const s of [-1.35, 0, 1.35]) {
+    const { hx, hz, h } = this.def;
+    const r = hx * 0.95;
+    for (const s of [-hz * 0.65, 0, hz * 0.65]) {
       const cx = x + fx * s, cz = z + fz * s;
-      const hits = col.query(cx - 0.95, y + 0.6, cz - 0.95, cx + 0.95, y + 1.7, cz + 0.95, this._q || (this._q = []));
+      const hits = col.query(cx - r, y + 0.6, cz - r, cx + r, y + h, cz + r, this._q || (this._q = []));
       for (const b of hits) if (b.data?.type !== 'leaves') return b;
     }
     return null;
@@ -115,25 +168,29 @@ class Vehicle {
     const driving = !!this.driver;
     let throttle = 0, steerIn = 0, brake = false;
     if (driving && input) {
-      if (input.down('KeyW')) throttle += 1;
-      if (input.down('KeyS')) throttle -= 1;
-      if (input.down('KeyA')) steerIn += 1;
-      if (input.down('KeyD')) steerIn -= 1;
-      brake = input.down('Space');
+      if (input.held('forward')) throttle += 1;
+      if (input.held('back')) throttle -= 1;
+      if (input.held('left')) steerIn += 1;
+      if (input.held('right')) steerIn -= 1;
+      brake = input.held('jump');
     }
-    if (throttle > 0) this.speed += (this.speed < 0 ? 26 : 13) * dt;
+    const D = this.def;
+    if (this.fuel <= 0) throttle = 0; // sin gasolina
+    if (throttle > 0) this.speed += (this.speed < 0 ? 26 : D.accel) * dt;
     else if (throttle < 0) this.speed -= (this.speed > 0 ? 26 : 9) * dt;
     else this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 5 * dt);
     if (brake) this.speed *= Math.max(0, 1 - 4 * dt);
     this.speed *= 1 - 0.15 * dt;
 
     const gy0 = this.ground(this.pos.x, this.pos.z, this.pos.y + 1.2);
-    const inWater = gy0 < -0.9;
-    if (inWater) this.speed *= Math.max(0, 1 - 2.5 * dt);
-    this.speed = clamp(this.speed, -REVERSE, MAX_SPEED);
+    if (D.water) {
+      // En tierra la lancha apenas avanza
+      if (this.beached()) this.speed = clamp(this.speed, -2.5, 3);
+    } else if (gy0 < -0.9) this.speed *= Math.max(0, 1 - 2.5 * dt);
+    this.speed = clamp(this.speed, -D.reverse, D.max);
 
     this.steer += (steerIn - this.steer) * Math.min(1, dt * 6);
-    const turn = this.steer * 1.7 * clamp(this.speed / 7, -1, 1) * (brake ? 1.5 : 1);
+    const turn = this.steer * D.turn * clamp(this.speed / 7, -1, 1) * (brake ? 1.5 : 1);
     const newHeading = this.heading + turn * dt;
 
     // Movimiento con sub-pasos y colisión
@@ -147,18 +204,26 @@ class Vehicle {
       const ny = Math.max(this.pos.y, ng);
       const hit = ng - this.pos.y > 0.9 ? true : this.blocked(nx, ny, nz, h);
       if (hit) {
-        if (Math.abs(this.speed) > 10) this.game.audio.land();
+        if (Math.abs(this.speed) > 10) {
+          this.game.audio.land();
+          if (driving) this.damage(Math.abs(this.speed) * 1.6);
+        }
         this.speed = -this.speed * 0.25;
         break;
       }
       this.pos.x = nx;
       this.pos.z = nz;
     }
+    if (driving) this.fuel = Math.max(0, this.fuel - Math.abs(dist) * D.fuelUse);
     this.heading = newHeading;
 
     // Gravedad / apoyo en el suelo
     const gy = this.ground(this.pos.x, this.pos.z, this.pos.y + 1.2);
-    if (this.pos.y > gy + 0.05) {
+    if (D.water && !this.beached()) {
+      // Flotar con un ligero vaivén
+      this.pos.y += (gy + Math.sin(performance.now() / 600 + this.index) * 0.06 - this.pos.y) * Math.min(1, dt * 4);
+      this.vy = 0;
+    } else if (this.pos.y > gy + 0.05) {
       this.vy -= GRAVITY * dt;
       this.pos.y = Math.max(gy, this.pos.y + this.vy * dt);
       if (this.pos.y === gy) this.vy = 0;
@@ -217,15 +282,40 @@ class Vehicle {
       w.rotation.x = this.spin;
       w.rotation.y = i % 2 === 0 ? this.steer * 0.45 : 0; // delanteras
     });
-    this.seatPos.set(this.pos.x, this.pos.y + 0.55, this.pos.z).addScaledVector(this.forward, -0.1);
+    this.seatPos.set(this.pos.x, this.pos.y + this.def.seatY, this.pos.z).addScaledVector(this.forward, this.kind === 'boat' ? 0.3 : -0.1);
   }
 }
 
 export class Vehicles {
   constructor(game, spots) {
     this.game = game;
-    this.list = spots.map((s, i) => new Vehicle(game, s, COLORS[i % COLORS.length]));
+    // Uno de cada tres aparcamientos tiene un quad; las lanchas esperan en
+    // calas de la costa (puntos fijos: iguales para todos en online).
+    this.list = spots.map((s, i) => new Vehicle(game, s, COLORS[i % COLORS.length], i % 3 === 2 ? 'quad' : 'car'));
+    for (const s of this.boatSpots()) this.list.push(new Vehicle(game, s, COLORS[this.list.length % COLORS.length], 'boat'));
     this.list.forEach((v, i) => (v.index = i));
+    this.gas = game.world.plans.filter((p) => p.kind === 'gas').map((p) => ({ x: p.x, z: p.z }));
+  }
+
+  // Agua poco profunda junto a la orilla, repartida alrededor de la isla.
+  boatSpots() {
+    const t = this.game.world.terrain;
+    if (this.game.world.creative) return [];
+    const out = [];
+    for (let k = 0; k < 10; k++) {
+      const a = (k / 10) * Math.PI * 2 + 0.2;
+      for (let r = ISLAND_RADIUS - 220; r < ISLAND_RADIUS + 120; r += 6) {
+        const x = Math.cos(a) * r, z = Math.sin(a) * r;
+        if (t.heightAt(x, z) < WATER_LEVEL - 1.4) {
+          // Que haya tierra cerca (cala) para poder subirse desde la orilla
+          const lx = Math.cos(a) * (r - 14), lz = Math.sin(a) * (r - 14);
+          if (t.heightAt(lx, lz) > 0.5) out.push({ x, z, y: WATER_LEVEL - 0.4, rot: Math.atan2(-Math.cos(a), -Math.sin(a)) }); // proa hacia mar abierto
+          break;
+        }
+      }
+      if (out.length >= 6) break;
+    }
+    return out;
   }
 
   reset() {
@@ -235,7 +325,7 @@ export class Vehicles {
   findNear(pos, maxDist = 3.6) {
     let best = null, bd = maxDist;
     for (const v of this.list) {
-      if (v.driver || v.remoteDriver || v.pendingEnter) continue;
+      if (v.dead || v.driver || v.remoteDriver || v.pendingEnter) continue;
       const d = Math.hypot(v.pos.x - pos.x, v.pos.z - pos.z);
       if (d < bd && Math.abs(v.pos.y - pos.y) < 2.5) {
         bd = d;
@@ -329,6 +419,7 @@ export class Vehicles {
   update(dt, input) {
     const cam = this.game.camera.position;
     for (const v of this.list) {
+      if (v.dead) continue;
       const near = v.pos.distanceToSquared(cam) < 260 * 260;
       v.root.visible = near;
       if (v.remoteDriver) {
@@ -341,6 +432,12 @@ export class Vehicles {
       } else if (!v.collider) v.setCollider(true);
     }
     const p = this.game.player;
-    if (p.vehicle) this.game.audio.engine(true, p.vehicle.speed);
+    if (p.vehicle) {
+      this.game.audio.engine(true, p.vehicle.speed);
+      // Gasolineras: repostar parado o despacio cerca de los surtidores
+      const v = p.vehicle;
+      v.refueling = v.fuel < 100 && Math.abs(v.speed) < 4 && this.gas.some((gs) => Math.hypot(gs.x - v.pos.x, gs.z - v.pos.z) < 14);
+      if (v.refueling) v.fuel = Math.min(100, v.fuel + 22 * dt);
+    }
   }
 }

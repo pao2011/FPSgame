@@ -20,6 +20,7 @@ export class BattleBus {
     this.length = 1;
     this.active = false;
     this.doorsTime = 0;
+    this.thanked = false;
   }
 
   // ang/off: ruta (en online la decide el servidor para que sea común).
@@ -34,6 +35,7 @@ export class BattleBus {
     this.t = 0;
     this.active = true;
     this.doorsTime = 3;
+    this.thanked = false;
     this.model.visible = true;
     this.model.rotation.y = Math.atan2(-this.dir.x, -this.dir.z);
     this.pos.copy(this.start);
@@ -64,7 +66,13 @@ export class BattleBus {
     this.pos.copy(this.start).addScaledVector(this.dir, this.t);
     this.pos.y = BUS_ALTITUDE + Math.sin(time * 0.8) * 1.2;
     this.model.rotation.z = Math.sin(time * 0.6) * 0.03;
-    this.model.userData.prop.rotation.z += dt * 25;
+    const u = this.model.userData;
+    u.prop.rotation.z += dt * 25;
+    // Llama del quemador (parpadeo) y balanceo suave del globo
+    const fl = 0.85 + Math.sin(time * 23) * 0.12 + Math.sin(time * 37) * 0.08;
+    u.flame.scale.set(fl, 0.9 + Math.sin(time * 19) * 0.25, fl);
+    u.flameCore.scale.setScalar(0.9 + Math.sin(time * 31) * 0.15);
+    u.balloon.rotation.y = Math.sin(time * 0.3) * 0.08;
     if (this.t >= this.length) {
       this.active = false;
       this.model.visible = false;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { MAP_SIZE, HALF } from './constants.js';
+import { MAP_SIZE, HALF, LOBBY } from './constants.js';
 import { smoothstep } from '../core/rng.js';
+import { usesPBR } from '../game/models.js';
 
 const tmpColor = new THREE.Color();
 
@@ -168,7 +169,7 @@ export class Terrain {
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const mat = usesPBR() ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }) : new THREE.MeshLambertMaterial({ vertexColors: true });
     addGroundDetail(mat);
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.receiveShadow = true;
@@ -233,7 +234,7 @@ export class Terrain {
     const N = this.res;
     const fx = (x + HALF) / this.cell;
     const fz = (z + HALF) / this.cell;
-    if (fx < 0 || fz < 0 || fx >= N || fz >= N) return -16;
+    if (fx < 0 || fz < 0 || fx >= N || fz >= N) return this.lobbyHeight(x, z);
     const i = Math.floor(fx), j = Math.floor(fz);
     const u = fx - i, v = fz - j;
     const V = N + 1;
@@ -244,6 +245,21 @@ export class Terrain {
     const h11 = H[(j + 1) * V + i + 1];
     if (u + v <= 1) return h00 + (h10 - h00) * u + (h01 - h00) * v;
     return h11 + (h01 - h11) * (1 - u) + (h10 - h11) * (1 - v);
+  }
+
+  // Isla de inicio (fuera de la rejilla del mapa): meseta con playa.
+  lobbyHeight(x, z) {
+    const dx = x - LOBBY.x, dz = z - LOBBY.z;
+    const R = LOBBY.radius;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    if (d > R * 1.6) return -16;
+    const a = Math.atan2(dz, dx);
+    const r = R * (1 + 0.07 * Math.sin(a * 3 + 1.3) + 0.04 * Math.sin(a * 7));
+    const t = smoothstep(r * 0.72, r * 1.08, d);
+    const hill = (this.noise(x * 0.04 + 900, z * 0.04) * 0.5 + 0.5) * 1.4 * (1 - smoothstep(r * 0.25, r * 0.7, d));
+    let h = (LOBBY.height + hill) * (1 - t) - 7 * t;
+    if (d > r * 1.08) h = -7 - 9 * smoothstep(r * 1.08, R * 1.6, d);
+    return h;
   }
 
   normalAt(x, z, out) {

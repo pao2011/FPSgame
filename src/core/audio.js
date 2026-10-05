@@ -5,6 +5,17 @@ const SHOTS = {
   pistol: { f: 2300, d: 0.16, g: 0.45, low: 130 },
   shotgun: { f: 1000, d: 0.5, g: 0.9, low: 70 },
   sniper: { f: 1400, d: 0.9, g: 1.0, low: 55 },
+  burst: { f: 2000, d: 0.16, g: 0.5, low: 120 },
+  minigun: { f: 2800, d: 0.09, g: 0.32, low: 160 },
+  tactical: { f: 1150, d: 0.4, g: 0.8, low: 80 },
+  revolver: { f: 1600, d: 0.5, g: 0.85, low: 70 },
+  dmr: { f: 1500, d: 0.55, g: 0.85, low: 65 },
+  rocket: { f: 600, d: 0.7, g: 0.7, low: 50 },
+  glauncher: { f: 500, d: 0.3, g: 0.6, low: 60 },
+  plasma: { f: 3200, d: 0.25, g: 0.4, low: 300, zap: true },
+  bow: { f: 900, d: 0.12, g: 0.3, low: 200, soft: true },
+  heavy: { f: 1500, d: 0.3, g: 0.7, low: 85 },
+  handcannon: { f: 1300, d: 0.55, g: 0.9, low: 60 },
 };
 
 class AudioSys {
@@ -98,7 +109,7 @@ class AudioSys {
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
     const g = c.createGain();
     this._env(g, gain, 0.005, dur, t);
-    o.connect(g).connect(this.master);
+    o.connect(g).connect(this._out || this.master);
     o.start(t);
     o.stop(t + dur + 0.05);
   }
@@ -115,16 +126,135 @@ class AudioSys {
     if (endFreq) f.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
     const g = c.createGain();
     this._env(g, gain, 0.003, dur, t);
-    s.connect(f).connect(g).connect(this.master);
-    s.start(t, Math.random() * 1.5);
+    s.connect(f).connect(g).connect(this._out || this.master);
+    s.start(t, Math.random() * Math.max(0, 1.9 - dur));
     s.stop(t + dur + 0.05);
   }
 
-  shot(kind, volume = 1) {
+  // Audio posicional (HRTF): un panner por sonido, sin atenuar por distancia
+  // (el volumen ya lo calcula quien llama); sólo da la dirección.
+  _at(pos) {
+    if (!pos || !this.ctx || this.spatial === false) return null;
+    const c = this.ctx;
+    const p = c.createPanner();
+    p.panningModel = 'HRTF';
+    p.distanceModel = 'linear';
+    p.rolloffFactor = 0;
+    if (p.positionX) {
+      p.positionX.value = pos.x;
+      p.positionY.value = pos.y;
+      p.positionZ.value = pos.z;
+    } else p.setPosition(pos.x, pos.y, pos.z);
+    p.connect(this.master);
+    setTimeout(() => p.disconnect(), 2500);
+    return p;
+  }
+
+  // Oyente = cámara (llamado cada fotograma).
+  setListener(cam) {
     if (!this.ctx) return;
+    const L = this.ctx.listener;
+    const e = cam.matrixWorld.elements;
+    const fx = -e[8], fy = -e[9], fz = -e[10], ux = e[4], uy = e[5], uz = e[6];
+    if (L.positionX) {
+      const t = this.ctx.currentTime;
+      L.positionX.setValueAtTime(cam.position.x, t);
+      L.positionY.setValueAtTime(cam.position.y, t);
+      L.positionZ.setValueAtTime(cam.position.z, t);
+      L.forwardX.setValueAtTime(fx, t);
+      L.forwardY.setValueAtTime(fy, t);
+      L.forwardZ.setValueAtTime(fz, t);
+      L.upX.setValueAtTime(ux, t);
+      L.upY.setValueAtTime(uy, t);
+      L.upZ.setValueAtTime(uz, t);
+    } else {
+      L.setPosition(cam.position.x, cam.position.y, cam.position.z);
+      L.setOrientation(fx, fy, fz, ux, uy, uz);
+    }
+  }
+
+  shot(kind, volume = 1, pos = null) {
+    if (!this.ctx) return;
+    this._out = this._at(pos);
+    this._shot(kind, volume);
+    this._out = null;
+  }
+
+  _shot(kind, volume = 1) {
     const s = SHOTS[kind] || SHOTS.ar;
+    if (s.zap) {
+      this._tone(s.f * 0.5, s.d, { type: 'sawtooth', gain: s.g * 0.5 * volume, slide: 0.15 });
+      this._tone(s.low * 3, s.d * 0.6, { type: 'square', gain: s.g * 0.25 * volume, slide: 0.4 });
+      return;
+    }
+    if (s.soft) {
+      this._burst(s.d, { freq: s.f, type: 'bandpass', gain: s.g * volume, q: 2 });
+      this._tone(s.low, 0.12, { type: 'triangle', gain: s.g * 0.6 * volume, slide: 0.6 });
+      return;
+    }
     this._burst(s.d, { freq: s.f * 2, endFreq: s.f * 0.25, gain: s.g * volume });
     this._tone(s.low * 2, 0.15, { gain: s.g * 0.7 * volume, slide: 0.25 });
+  }
+
+  // volume: 0..1 según la distancia. impulse: estallido sin metralla.
+  explosion(volume = 1, impulse = false, pos = null) {
+    if (!this.ctx || volume < 0.01) return;
+    this._out = this._at(pos);
+    this._explosion(volume, impulse);
+    this._out = null;
+  }
+
+  _explosion(volume, impulse) {
+    if (impulse) {
+      this._burst(0.5, { freq: 2500, endFreq: 200, type: 'bandpass', gain: 0.6 * volume, q: 1.2 });
+      this._tone(300, 0.4, { type: 'sine', gain: 0.35 * volume, slide: 0.2 });
+      return;
+    }
+    this._burst(1.4, { freq: 1800, endFreq: 60, gain: 1.1 * volume });
+    this._burst(0.25, { freq: 5000, type: 'highpass', gain: 0.25 * volume });
+    this._tone(70, 0.9, { type: 'sine', gain: 0.8 * volume, slide: 0.4 });
+  }
+
+  throwSound(volume = 1) {
+    if (!this.ctx || volume < 0.02) return;
+    this._burst(0.18, { freq: 400, endFreq: 1400, type: 'bandpass', gain: 0.2 * volume, q: 1.5 });
+  }
+
+  bounce(volume = 1) {
+    if (!this.ctx || volume < 0.03) return;
+    this._tone(900 + Math.random() * 300, 0.05, { type: 'triangle', gain: 0.1 * volume });
+  }
+
+  stick(volume = 1) {
+    if (!this.ctx || volume < 0.03) return;
+    this._burst(0.06, { freq: 700, type: 'bandpass', gain: 0.25 * volume, q: 4 });
+    this._tone(1600, 0.06, { type: 'square', gain: 0.05 * volume, delay: 0.05 });
+  }
+
+  smokePop(volume = 1) {
+    if (!this.ctx || volume < 0.02) return;
+    this._burst(1.2, { freq: 1200, endFreq: 300, type: 'bandpass', gain: 0.35 * volume, q: 0.8 });
+  }
+
+  molotov(volume = 1) {
+    if (!this.ctx || volume < 0.02) return;
+    this._burst(0.08, { freq: 4000, type: 'highpass', gain: 0.35 * volume });
+    this._burst(0.9, { freq: 500, endFreq: 1500, gain: 0.45 * volume, delay: 0.05 });
+  }
+
+  detonator() {
+    if (!this.ctx) return;
+    this._tone(1800, 0.05, { type: 'square', gain: 0.08 });
+    this._tone(2400, 0.05, { type: 'square', gain: 0.08, delay: 0.06 });
+  }
+
+  // Zumbido de la minigun mientras giran los cañones.
+  spin(level) {
+    if (!this.ctx) return;
+    const now = this.t;
+    if (this.lastSpin && now - this.lastSpin < 0.06) return;
+    this.lastSpin = now;
+    this._tone(120 + level * 260, 0.08, { type: 'sawtooth', gain: 0.04 });
   }
 
   pickaxe() {
@@ -236,14 +366,74 @@ class AudioSys {
     this._tone(180, 0.2, { type: 'sawtooth', gain: 0.12, slide: 0.5 });
   }
 
-  step() {
-    if (!this.ctx) return;
-    this._burst(0.06, { freq: 400, gain: 0.08 });
+  // Pasos según el suelo: hierba, arena, madera, piedra o metal.
+  step(mat = 'grass', volume = 1, pos = null) {
+    if (!this.ctx || volume < 0.02) return;
+    this._out = this._at(pos);
+    const v = volume;
+    switch (mat) {
+      case 'sand':
+        this._burst(0.12, { freq: 1400, type: 'bandpass', gain: 0.1 * v, q: 0.8 });
+        break;
+      case 'wood':
+        this._tone(170 + Math.random() * 30, 0.08, { type: 'triangle', gain: 0.12 * v, slide: 0.7 });
+        this._burst(0.05, { freq: 900, gain: 0.07 * v });
+        break;
+      case 'stone':
+        this._burst(0.04, { freq: 2600, type: 'highpass', gain: 0.08 * v });
+        this._burst(0.06, { freq: 700, gain: 0.07 * v });
+        break;
+      case 'metal':
+        this._tone(520 + Math.random() * 80, 0.12, { type: 'square', gain: 0.035 * v, slide: 0.9 });
+        this._burst(0.05, { freq: 3000, type: 'bandpass', gain: 0.06 * v, q: 3 });
+        break;
+      default:
+        this._burst(0.07, { freq: 450, gain: 0.08 * v });
+    }
+    this._out = null;
   }
 
   land() {
     if (!this.ctx) return;
     this._burst(0.2, { freq: 300, gain: 0.3 });
+  }
+
+
+  throwItem() {
+    if (!this.ctx) return;
+    this._burst(0.15, { freq: 1200, endFreq: 400, type: 'bandpass', gain: 0.2 });
+  }
+
+  launch() {
+    if (!this.ctx) return;
+    this._tone(200, 0.6, { type: 'triangle', gain: 0.2, slide: 4 });
+    this._burst(0.5, { freq: 400, endFreq: 2400, type: 'bandpass', gain: 0.3 });
+  }
+
+  beep(high = false) {
+    if (!this.ctx) return;
+    this._tone(high ? 1320 : 880, high ? 0.35 : 0.12, { type: 'square', gain: 0.07 });
+  }
+
+  thanks() {
+    if (!this.ctx) return;
+    [660, 880, 990].forEach((f, i) => this._tone(f, 0.18, { type: 'triangle', gain: 0.12, delay: i * 0.08 }));
+  }
+
+  editTile() {
+    if (!this.ctx) return;
+    this._tone(1500, 0.04, { type: 'triangle', gain: 0.06 });
+  }
+
+  ping() {
+    if (!this.ctx) return;
+    this._tone(1200, 0.12, { type: 'sine', gain: 0.15 });
+    this._tone(1800, 0.16, { type: 'sine', gain: 0.12, delay: 0.08 });
+  }
+
+  door() {
+    if (!this.ctx) return;
+    this._burst(0.25, { freq: 500, endFreq: 250, type: 'bandpass', gain: 0.25, q: 2 });
   }
 
   setWind(v) {

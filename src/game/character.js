@@ -3,6 +3,7 @@ import { GRAVITY, HALF, WATER_LEVEL } from '../world/constants.js';
 import { makeCharacter, makeGlider, makeItemModel, optimizeCharacter, mergedMesh, itemKey } from './models.js';
 import { rayAABB } from './dummies.js';
 import { clamp } from '../core/rng.js';
+import { EMOTES } from './cosmetics.js';
 
 export const R = 0.35; // medio ancho de la caja de colisión
 const STEP = 0.55; // altura máxima de escalón
@@ -39,11 +40,18 @@ export class Character {
   // (Re)construye el modelo con los colores indicados.
   setOutfit(outfit) {
     const o = { ...randomOutfit(), ...outfit };
-    const sig = `${o.skin}|${o.shirt}|${o.pants}|${o.hair}|${o.suit || ''}|${o.acc || ''}|${o.camo || ''}`;
+    const sig = `${o.skin}|${o.shirt}|${o.pants}|${o.hair}|${o.suit || ''}|${o.acc || ''}|${o.camo || ''}|${o.pick || ''}|${o.glider || ''}|${o.bag || ''}`;
     if (sig === this.outfitSig) return;
     this.outfitSig = sig;
     this.outfit = o;
     const old = this.model;
+    if ((o.glider || '') !== (this.gliderSkin ?? '')) {
+      const vis = this.glider.visible;
+      this.glider.parent?.remove(this.glider);
+      this.glider = makeGlider(o.glider);
+      this.glider.visible = vis;
+      this.gliderSkin = o.glider || '';
+    }
     this.model = optimizeCharacter(makeCharacter(o));
     if (old) {
       this.game.scene.remove(old.root);
@@ -78,6 +86,27 @@ export class Character {
     this.knocker = null;
     this.reviveT = 0;
     this.invuln = 0;
+    this.noFallT = 0; // sin daño de caída (impulso, plataforma de salto)
+    this.launchT = 0;
+    this.launched = false; // lanzado por una explosión (sin daño al caer)
+    this.padLaunch = false; // plataforma de salto (abre el planeador)
+    this.regen = null; // curación progresiva (Zumo Slurp)
+  }
+
+  // Temporizadores comunes y curación progresiva.
+  tickCommon(dt) {
+    this.noFallT = Math.max(0, this.noFallT - dt);
+    this.launchT = Math.max(0, this.launchT - dt);
+    const r = this.regen;
+    if (r && this.alive && !this.knocked) {
+      let amt = Math.min(r.left, r.rate * dt);
+      r.left -= amt;
+      const toHp = Math.min(amt, 100 - this.health);
+      this.health += toHp;
+      amt -= toHp;
+      if (amt > 0) this.shield = Math.min(100, this.shield + amt);
+      if (r.left <= 0 || (this.health >= 100 && this.shield >= 100)) this.regen = null;
+    }
   }
 
   get height() {
@@ -152,10 +181,17 @@ export class Character {
       }
     }
     this.vel.y -= GRAVITY * dt;
-    return this.move(dt);
+    const land = this.move(dt);
+    // Lanzado por una explosión: al caer no se hace daño
+    if (this.launched && this.onGround && this.vel.y <= 0) {
+      this.launched = false;
+      return 0;
+    }
+    return land;
   }
 
   fallDamage(landSpeed) {
+    if (this.noFallT > 0) return;
     if (landSpeed > 17) this.damage(Math.round((landSpeed - 17) * 5), 'fall');
   }
 
@@ -195,7 +231,8 @@ export class Character {
       this.onGround = true;
       this.swimming = true;
     }
-    const lim = HALF + 150;
+    // Límite del mundo (incluye la isla de inicio, fuera del mapa)
+    const lim = HALF + 560;
     this.pos.x = clamp(this.pos.x, -lim, lim);
     this.pos.z = clamp(this.pos.z, -lim, lim);
     return landSpeed;
@@ -295,7 +332,10 @@ export class Character {
   // eliminación. Devuelve true (eliminado), 'knock' (derribado) o false.
   damage(amount, type, attacker = null) {
     if (!this.alive || amount <= 0) return false;
+    if (this.dmgTaken) amount *= this.dmgTaken; // jefe: aguanta más
     if (attacker && attacker !== this && attacker.team === this.team) return false;
+    // Isla de inicio y modo dios (creativo): sin daño
+    if (this.game.phase === 'lobby' || (this.isPlayer && this.game.godMode)) return false;
     if (this.invuln > 0 && type !== 'storm') return false;
     if (this.knocked) {
       this.knockHp -= amount;
@@ -374,7 +414,7 @@ export class Character {
 
   // ------------------------------------------------------------ MODELO
   setHeld(item) {
-    const key = !item ? 'none' : item.kind === 'weapon' ? `w${item.type}${item.rarity}` : item.kind === 'consumable' ? `c${item.type}` : 'pick';
+    const key = item ? itemKey(item) + (item.kind === 'pickaxe' ? this.outfit?.pick || '' : '') : 'none';
     if (key === this.heldKey) return;
     this.heldKey = key;
     const hand = this.model.hand;
@@ -382,10 +422,11 @@ export class Character {
     if (!item) return;
     // Malla fusionada (1 draw call) + punto de boca de cañón para trazadoras.
     const camo = item.kind === 'weapon' ? this.outfit?.camo || null : null;
-    const mk = itemKey(item) + (camo ? '_' + camo : '');
+    const pick = item.kind === 'pickaxe' ? this.outfit?.pick || null : null;
+    const mk = itemKey(item) + (camo ? '_' + camo : '') + (pick ? '_' + pick : '');
     if (!MUZZLES.has(mk)) MUZZLES.set(mk, makeItemModel(item).userData.muzzle?.position.clone() ?? new THREE.Vector3());
     const m = new THREE.Group();
-    m.add(mergedMesh(mk, () => makeItemModel(item, camo)));
+    m.add(mergedMesh(mk, () => makeItemModel(item, camo, pick)));
     const muzzle = new THREE.Object3D();
     muzzle.position.copy(MUZZLES.get(mk));
     m.add(muzzle);
@@ -406,35 +447,55 @@ export class Character {
     root.rotation.set(0, this.yaw, 0);
     m.body.rotation.set(0, 0, 0);
     m.body.position.set(0, 0, 0);
+    if (m.body.scale.x !== 1) m.body.scale.setScalar(1);
+    m.hand.visible = true;
+    m.head.rotation.set(0, 0, 0);
+    const joints = (kl, kr, el, er) => {
+      if (m.kneeL) {
+        m.kneeL.rotation.set(kl, 0, 0);
+        m.kneeR.rotation.set(kr, 0, 0);
+        m.elbowL.rotation.set(el, 0, 0);
+        m.elbowR.rotation.set(er, 0, 0);
+      }
+    };
+    if (this.emote && this.updateEmote?.(dt, m, joints)) return;
     if (this.mode === 'freefall') {
+      const t = (this.freefallTime || 0) * 3;
       m.body.rotation.x = -1.1 - this.diveAmount * 0.4;
       m.body.position.y = 1.2;
-      m.armL.rotation.set(0, 0, -2.2);
-      m.armR.rotation.set(0, 0, 2.2);
-      m.legL.rotation.set(0.3, 0, -0.25);
-      m.legR.rotation.set(0.3, 0, 0.25);
+      m.armL.rotation.set(Math.sin(t) * 0.1, 0, -2.2 + this.diveAmount * 0.9);
+      m.armR.rotation.set(-Math.sin(t) * 0.1, 0, 2.2 - this.diveAmount * 0.9);
+      m.legL.rotation.set(0.3 - this.diveAmount * 0.2, 0, -0.25);
+      m.legR.rotation.set(0.3 - this.diveAmount * 0.2, 0, 0.25);
+      joints(-0.5 + this.diveAmount * 0.4, -0.5 + this.diveAmount * 0.4, 0.3, 0.3);
       return;
     }
     if (this.mode === 'glide') {
       m.body.rotation.x = -0.15 - this.diveAmount * 0.3;
       m.armL.rotation.set(0, 0, -2.7);
       m.armR.rotation.set(0, 0, 2.7);
-      m.legL.rotation.set(0.15, 0, 0);
-      m.legR.rotation.set(-0.1, 0, 0);
+      m.legL.rotation.set(0.25, 0, 0);
+      m.legR.rotation.set(-0.05, 0, 0);
+      joints(-0.5, -0.25, 0.25, 0.25);
       this.glider.rotation.z = Math.sin(this.glideT * 1.5) * 0.05;
       return;
     }
     if (this.vehicle) {
-      m.legL.rotation.set(-1.4, 0, 0);
-      m.legR.rotation.set(-1.4, 0, 0);
-      m.armL.rotation.set(1.2, 0, 0);
-      m.armR.rotation.set(1.2, 0, 0);
-      m.body.position.y = -0.5;
+      m.legL.rotation.set(1.45, 0, 0.08);
+      m.legR.rotation.set(1.45, 0, -0.08);
+      m.armL.rotation.set(1.1, 0, 0.1);
+      m.armR.rotation.set(1.1, 0, -0.1);
+      joints(-1.5, -1.5, 0.5, 0.5);
+      m.body.position.y = -0.45;
       return;
     }
     const hs = this.hSpeed;
     this.walkPhase += dt * hs * 1.7;
-    const swing = Math.sin(this.walkPhase) * Math.min(1, hs / 5) * 0.8;
+    const amp = Math.min(1, hs / 5);
+    const swing = Math.sin(this.walkPhase) * amp * 0.8;
+    // Rodilla: se dobla al pasar la pierna por debajo y hacia atrás
+    const kneeL = -(0.08 + Math.max(0, Math.sin(this.walkPhase + 1.4)) * 1.1) * amp;
+    const kneeR = -(0.08 + Math.max(0, Math.sin(this.walkPhase + 1.4 + Math.PI)) * 1.1) * amp;
     if (this.knocked) {
       // arrastrándose por el suelo
       m.body.rotation.x = -1.25;
@@ -443,25 +504,175 @@ export class Character {
       m.armR.rotation.set(2.6 - swing, 0, 0.2);
       m.legL.rotation.set(0.1 + swing * 0.4, 0, 0);
       m.legR.rotation.set(0.1 - swing * 0.4, 0, 0);
+      joints(-0.4 - Math.max(0, swing) * 0.6, -0.4 - Math.max(0, -swing) * 0.6, 0.6, 0.6);
       return;
     }
+    let kl = kneeL, kr = kneeR;
     m.legL.rotation.set(swing, 0, 0);
     m.legR.rotation.set(-swing, 0, 0);
+    // Inclinación al correr y rebote al andar
+    m.body.rotation.x = this.sprinting ? 0.12 : 0.03 * amp;
+    m.body.position.y = -Math.abs(Math.sin(this.walkPhase)) * 0.04 * amp;
     if (this.crouching) {
-      m.body.position.y = -0.4;
-      m.legL.rotation.x = swing * 0.5 - 0.9;
-      m.legR.rotation.x = -swing * 0.5 - 0.9;
-      m.body.rotation.x = 0.1;
+      m.body.position.y = -0.35;
+      m.legL.rotation.x = 1.0 + swing * 0.4;
+      m.legR.rotation.x = 1.0 - swing * 0.4;
+      kl = kr = -1.7;
+      m.body.rotation.x = 0.18;
+    } else if (this.mode === 'ground' && !this.onGround && !this.swimming) {
+      // En el aire (salto): piernas recogidas
+      m.legL.rotation.x = 0.6;
+      m.legR.rotation.x = 0.15;
+      kl = -1.1;
+      kr = -0.5;
     }
+    let el = 0.35 + Math.max(0, swing) * 0.5, er = 0.35 + Math.max(0, -swing) * 0.5;
     if (item && item.kind === 'weapon') {
       const aim = Math.PI / 2 + this.pitch;
-      m.armR.rotation.set(aim, 0, 0);
-      m.armL.rotation.set(aim, 0, 0.55);
+      m.armR.rotation.set(aim, 0, -0.05);
+      m.armL.rotation.set(aim - 0.1, 0, 0.6);
+      el = 0.25;
+      er = 0.1;
       if (m.hand.children[0]) m.hand.children[0].rotation.x = -Math.PI / 2;
+      m.head.rotation.x = -this.pitch * 0.4;
     } else {
-      m.armR.rotation.set(-swing * 0.8 + 0.3, 0, 0);
-      m.armL.rotation.set(swing * 0.8, 0, 0);
+      m.armR.rotation.set(-swing * 0.8 + 0.2, 0, -0.06);
+      m.armL.rotation.set(swing * 0.8, 0, 0.06);
     }
-    if (item && item.kind === 'pickaxe' && swingT > 0) m.armR.rotation.x = 1.8 - (1 - swingT / 0.55) * 2.4;
+    if (item && item.kind === 'pickaxe' && swingT > 0) {
+      m.armR.rotation.x = 1.8 - (1 - swingT / 0.55) * 2.4;
+      er = 0.5;
+    }
+    // Recargar: la mano izquierda baja al cargador y vuelve
+    const reloading = this.isPlayer ? this.game.combat?.reloading : this.reloadT > 0;
+    if (reloading && item?.kind === 'weapon') {
+      const k = (this.game.time * 3) % 1;
+      const s2 = Math.sin(k * Math.PI);
+      m.armL.rotation.x -= 0.6 * s2;
+      m.armL.rotation.z = 0.3;
+      el = 0.9 + s2 * 0.6;
+      if (m.hand.children[0]) m.hand.children[0].rotation.z = 0.35 * s2;
+    }
+    // Construir y editar: brazo derecho adelante señalando la pieza
+    if (this.isPlayer && (this.game.build?.active || this.game.build?.editing)) {
+      const t = this.game.time;
+      m.armR.rotation.set(Math.PI / 2 + this.pitch * 0.8, 0, -0.1);
+      er = this.game.build.editing ? 0.15 + Math.abs(Math.sin(t * 10)) * 0.25 : 0.2;
+      m.hand.visible = !this.game.build.editing;
+    }
+    // Usar curas: el objeto se acerca a la cara
+    if ((this.isPlayer ? this.game.combat?.using : this.using) && (item?.kind === 'consumable' || this.using)) {
+      m.armR.rotation.set(2.1 + Math.sin(this.game.time * 6) * 0.08, 0, -0.35);
+      er = 1.4;
+    }
+    joints(kl, kr, el, er);
   }
+
+  // ------------------------------------------------------------ GESTOS
+  startEmote(id) {
+    const def = EMOTES[id];
+    if (!def || !this.alive || this.mode !== 'ground' || this.vehicle || this.knocked) return false;
+    this.emote = { id, anim: def.anim, t: 0 };
+    return true;
+  }
+
+  stopEmote() {
+    this.emote = null;
+  }
+
+  // Anima el gesto en curso; devuelve true si se ha encargado de la pose.
+  updateEmote(dt, m, joints) {
+    const e = this.emote;
+    if (!e) return false;
+    if (!this.alive || this.mode !== 'ground' || this.knocked || this.vehicle) {
+      this.emote = null;
+      return false;
+    }
+    e.t += dt;
+    const t = e.t;
+    // Moverse cancela el gesto (también el de los jugadores remotos y bots)
+    if (t > 0.3 && this.hSpeed > 1.5) {
+      this.emote = null;
+      return false;
+    }
+    const s = Math.sin, c = Math.cos;
+    if (m.hand.children[0]) m.hand.visible = false;
+    switch (e.anim) {
+      case 'wave':
+        m.armR.rotation.set(0.2, 0, 2.5 + s(t * 9) * 0.25);
+        m.armL.rotation.set(0, 0, 0.1);
+        m.head.rotation.z = s(t * 4.5) * 0.08;
+        joints(0, 0, 0.1, 0.9 + s(t * 9) * 0.3);
+        if (t > 2.4) this.emote = null;
+        break;
+      case 'dance': {
+        const b = t * 7;
+        m.body.position.y = Math.abs(s(b)) * 0.08;
+        m.body.rotation.y = s(b * 0.5) * 0.35;
+        m.armL.rotation.set(1.2 + s(b) * 0.9, 0, -0.6 - c(b) * 0.4);
+        m.armR.rotation.set(1.2 - s(b) * 0.9, 0, 0.6 + c(b) * 0.4);
+        m.legL.rotation.set(Math.max(0, s(b)) * 0.7, 0, -0.1);
+        m.legR.rotation.set(Math.max(0, -s(b)) * 0.7, 0, 0.1);
+        m.head.rotation.x = s(b * 2) * 0.12;
+        joints(-Math.max(0, s(b)) * 1.1, -Math.max(0, -s(b)) * 1.1, 1.2, 1.2);
+        break;
+      }
+      case 'clap': {
+        const k = Math.abs(s(t * 8));
+        m.armL.rotation.set(1.35, 0, -0.15 - k * 0.45);
+        m.armR.rotation.set(1.35, 0, 0.15 + k * 0.45);
+        m.body.position.y = Math.abs(s(t * 4)) * 0.03;
+        joints(0, 0, 0.8, 0.8);
+        if (t > 3) this.emote = null;
+        break;
+      }
+      case 'robot': {
+        const step = Math.floor(t * 4);
+        const a = (step % 4) / 3;
+        m.armL.rotation.set(step % 2 ? 1.5 : 0.2, 0, -0.1);
+        m.armR.rotation.set(step % 2 ? 0.2 : 1.5, 0, 0.1);
+        m.head.rotation.y = (step % 3 - 1) * 0.5;
+        m.body.rotation.y = (a - 0.5) * 0.4;
+        joints(step % 2 ? -0.3 : 0, step % 2 ? 0 : -0.3, 1.57, 1.57);
+        break;
+      }
+      case 'pushups': {
+        const k = (s(t * 4) + 1) / 2;
+        m.body.rotation.x = -1.42;
+        m.body.position.set(0, 0.22 + k * 0.22, 0.6);
+        m.armL.rotation.set(1.5, 0, -0.15);
+        m.armR.rotation.set(1.5, 0, 0.15);
+        m.legL.rotation.set(0, 0, 0);
+        m.legR.rotation.set(0, 0, 0);
+        joints(0, 0, 1.4 - k * 1.3, 1.4 - k * 1.3);
+        break;
+      }
+      case 'spin':
+        m.root.rotation.y += t * 10;
+        m.armL.rotation.set(0, 0, -1.5);
+        m.armR.rotation.set(0, 0, 1.5);
+        m.legL.rotation.set(0.4, 0, 0);
+        m.body.position.y = Math.abs(s(t * 10)) * 0.05;
+        joints(-1.2, 0, 0, 0);
+        if (t > 3) this.emote = null;
+        break;
+      case 'flex':
+      default: {
+        const k = Math.min(1, t * 3);
+        m.armL.rotation.set(0, 0, -1.6 * k);
+        m.armR.rotation.set(0, 0, 1.6 * k);
+        m.body.rotation.x = 0.08 * k;
+        m.head.rotation.x = -0.25 * k;
+        m.body.scale.setScalar(1 + s(t * 6) * 0.01);
+        joints(0, 0, 1.9 * k, 1.9 * k);
+        if (t > 3.5) {
+          m.body.scale.setScalar(1);
+          this.emote = null;
+        }
+      }
+    }
+    if (!this.emote) m.hand.visible = true;
+    return true;
+  }
+
 }

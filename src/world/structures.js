@@ -368,3 +368,113 @@ export function genFence(ctx, x0, z0, x1, z1, gaps = [], color = 0xd8d0c0) {
     else ctx.colliderOnly(c - 0.06, 0, p0, c + 0.06, 1.1, p1);
   }
 }
+
+// ------------------------------------------------------------ MOLINO
+// Torre de piedra con puerta, escalera de mano hasta el mirador y aspas.
+export function genWindmill(ctx, rng) {
+  const hw = 3.2, H = 11, t = 0.4, y0 = BASE;
+  const stone = 0xd8cfbd;
+  foundation(ctx, hw, hw, 0x9a958a);
+  ctx.wall('x', -hw, hw, hw - t, hw, y0, H, [{ a: -0.8, b: 0.8, bottom: y0, top: y0 + 2.4 }], stone);
+  ctx.wall('x', -hw, hw, -hw, -hw + t, y0, H, [{ a: -0.6, b: 0.6, bottom: 5, top: 6.2 }], stone);
+  ctx.wall('z', -hw + t, hw - t, -hw, -hw + t, y0, H, [{ a: -0.6, b: 0.6, bottom: 5, top: 6.2 }], stone);
+  ctx.wall('z', -hw + t, hw - t, hw - t, hw, y0, H, [], stone);
+  // planta intermedia con hueco y mirador arriba
+  ctx.slab(-hw + t, -hw + t, hw - t, hw - t, 5.3, 5.55, { x0: -hw + t, z0: -hw + t, x1: -hw + 1.6, z1: -hw + 1.6 }, WOOD);
+  ctx.box(-hw - 0.6, H, -hw - 0.6, hw + 0.6, H + 0.3, hw + 0.6, WOOD);
+  railing(ctx, hw + 0.6, hw + 0.6, H + 0.3, 0.7, WOOD);
+  ctx.geometry(new THREE.ConeGeometry(hw * 1.25, 3.2, 4, 1).rotateY(Math.PI / 4), 0x8a3b32, 0, H + 3.2, 0);
+  ctx.colliderOnly(-1.6, H + 1.6, -1.6, 1.6, H + 3.5, 1.6);
+  ctx.ladderVisual(-hw + 0.9, -hw + 0.9 + 0.1, y0, 5.55, 'x');
+  ctx.ladderVisual(-hw + 0.9, -hw + 0.9 + 0.1, 5.55, H + 0.3, 'x');
+  // aspas (decorativas) en la fachada trasera
+  const hub = ctx.sub(0, -hw - 0.5, 0, 0);
+  hub.geometry(new THREE.CylinderGeometry(0.45, 0.45, 0.8, 10).rotateX(Math.PI / 2), DARK, 0, 8.5, 0);
+  for (let k = 0; k < 4; k++) {
+    const a = (k * Math.PI) / 2 + 0.4;
+    const len = 6;
+    const geo = new THREE.BoxGeometry(0.9, len, 0.12).translate(0, len / 2 + 0.4, 0).rotateZ(a);
+    hub.geometry(geo, 0xf0eee8, 0, 8.5, -0.5);
+  }
+  ctx.spot(ctx.chestSpots, hw - t - 0.8, y0, -hw + t + 0.8, 0, 0);
+  ctx.spot(ctx.chestSpots, 1.2, 5.55, 1.2, 0, 0);
+  ctx.spot(ctx.chestSpots, hw - 0.4, H + 0.3, -hw + 0.4, 0, 0);
+  ctx.spot(ctx.lootSpots, 0.5, y0, 0.5);
+}
+
+// ----------------------------------------------------------- CASTILLO
+// Muralla con puerta, cuatro torres con escaleras, adarve y torre del
+// homenaje de dos plantas en el centro.
+export function genCastle(ctx, rng) {
+  const hw = 13, H = 6, t = 1.0, y0 = BASE;
+  const stone = 0x9e9a90, dark = 0x7d7a72;
+  ctx.box(-hw - 0.5, -3, -hw - 0.5, hw + 0.5, y0, hw + 0.5, dark);
+  // murallas (puerta en +Z)
+  ctx.wall('x', -hw, hw, hw - t, hw, y0, H, [{ a: -2, b: 2, bottom: y0, top: y0 + 4 }], stone);
+  ctx.wall('x', -hw, hw, -hw, -hw + t, y0, H, [], stone);
+  ctx.wall('z', -hw + t, hw - t, -hw, -hw + t, y0, H, [], stone);
+  ctx.wall('z', -hw + t, hw - t, hw - t, hw, y0, H, [], stone);
+  // almenas
+  for (let a = -hw; a < hw; a += 2) {
+    ctx.box(a, H, hw - t, a + 1, H + 0.8, hw - t + 0.3, stone);
+    ctx.box(a, H, -hw + t - 0.3, a + 1, H + 0.8, -hw + t, stone);
+    ctx.box(-hw + t - 0.3, H, a, -hw + t, H + 0.8, a + 1, stone);
+    ctx.box(hw - t, H, a, hw - t + 0.3, H + 0.8, a + 1, stone);
+  }
+  // adarve (pasarela interior sobre la muralla)
+  ctx.box(-hw + t, H - 0.3, -hw + t, hw - t, H, -hw + t + 1.6, WOOD);
+  ctx.box(-hw + t, H - 0.3, hw - t - 1.6, -2.2, H, hw - t, WOOD);
+  ctx.box(2.2, H - 0.3, hw - t - 1.6, hw - t, H, hw - t, WOOD);
+  ctx.box(-hw + t, H - 0.3, -hw + t, -hw + t + 1.6, H, hw - t, WOOD);
+  ctx.box(hw - t - 1.6, H - 0.3, -hw + t, hw - t, H, hw - t, WOOD);
+  // escaleras al adarve
+  ctx.stairs(-hw + t + 1.6, -hw + t + 3.2, hw - t - 1.6, -1, y0, H - 0.3 - y0, 14, dark);
+  ctx.stairs(hw - t - 3.2, hw - t - 1.6, -hw + t + 1.6, 1, y0, H - 0.3 - y0, 14, dark);
+  // torres en las esquinas
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const tw = ctx.sub(sx * (hw - 1.5), sz * (hw - 1.5));
+    tw.box(-2.5, y0, -2.5, 2.5, H + 3.5, 2.5, stone);
+    tw.box(-2.8, H + 3.5, -2.8, 2.8, H + 3.8, 2.8, dark);
+    railing(tw, 2.8, 2.8, H + 3.8, 0.01, stone);
+    tw.geometry(new THREE.ConeGeometry(2.4, 3, 8), 0x5a4a8a, 0, H + 7, 0);
+    tw.colliderOnly(-1.2, H + 5.5, -1.2, 1.2, H + 8.5, 1.2);
+    tw.box(-0.3, H + 8.4, -0.05, 0.3, H + 9.6, 0.05, 0xd63a2f, false);
+    tw.ladderVisual(sx > 0 ? -2.6 : 2.6, 0, H, H + 3.8, 'z');
+  }
+  // torre del homenaje
+  genHouse(ctx.sub(0, -4), rng, { W: 10, D: 9, floors: 2, roof: 'flat', roofAccess: true, wallColor: 0xb8b2a4 });
+  // patio: barriles y carro
+  for (let i = 0; i < 4; i++) ctx.geometry(new THREE.CylinderGeometry(0.45, 0.45, 1, 10), WOOD, -8 + i * 1.1, y0 + 0.5, 6.5);
+  ctx.colliderOnly(-8.5, y0, 6, -4.2, y0 + 1, 7);
+  ctx.box(5, y0, 5, 8, y0 + 1.1, 7, WOOD);
+  ctx.spot(ctx.chestSpots, -hw + t + 1.0, H, -hw + t + 0.8, 0, 0);
+  ctx.spot(ctx.chestSpots, hw - t - 1.0, H, hw - t - 0.8, 0, 0);
+  ctx.spot(ctx.chestSpots, 6.5, y0, -hw + t + 0.8, 0, 0);
+  ctx.spot(ctx.lootSpots, 0, y0, 6);
+  ctx.spot(ctx.lootSpots, -6, y0, 0);
+  ctx.spot(ctx.ammoSpots, 6.5, y0 + 1.1, 6, 0, 0);
+}
+
+// --------------------------------------------------------- MERCADILLO
+// Puestos con toldos de colores, cajas y mostradores.
+export function genMarket(ctx, rng) {
+  const colors = [0xd63a2f, 0x2f6fd6, 0x2fa84f, 0xe0a020, 0x8a3fd6, 0x1fb5b0];
+  ctx.box(-9, -0.5, -7, 9, 0.08, 7, 0xb9b09c, false);
+  const stalls = [[-6, -3.5], [0, -3.5], [6, -3.5], [-6, 3.5], [0, 3.5], [6, 3.5]];
+  stalls.forEach(([x, z], i) => {
+    const s = ctx.sub(x, z, z < 0 ? 0 : 2);
+    const c = colors[i % colors.length];
+    for (const px of [-2, 2]) for (const pz of [-1.2, 1.2]) s.box(px - 0.08, 0, pz - 0.08, px + 0.08, 2.6, pz + 0.08, WOOD);
+    s.box(-2.2, 2.6, -1.4, 2.2, 2.75, 1.4, c, false);
+    s.box(-2.2, 2.4, 1.3, 2.2, 2.6, 1.5, WHITE, false);
+    s.box(-1.8, 0, 0.3, 1.8, 1.0, 1.0, WOOD);
+    s.box(-1.8, 1.0, 0.3, 1.8, 1.08, 1.0, 0xe8e2d4, false);
+    if (rng.chance(0.6)) s.box(-1.5, 0, -1.0, -0.6, 0.8, -0.2, 0x8a6440);
+    if (rng.chance(0.6)) s.box(0.6, 0, -1.0, 1.5, 0.8, -0.2, 0x8a6440);
+  });
+  ctx.spot(ctx.chestSpots, -6, 0.1, 0, 0, 3);
+  ctx.spot(ctx.chestSpots, 6, 0.1, 0, 0, -3);
+  ctx.spot(ctx.lootSpots, 0, 0.1, 0);
+  ctx.spot(ctx.lootSpots, -3, 0.1, 0);
+  ctx.spot(ctx.ammoSpots, 3, 0.1, 0, 0, 3);
+}

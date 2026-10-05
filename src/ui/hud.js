@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { WEAPONS, CONSUMABLES, AMMO, RARITIES, MATERIALS, BUILD_COST, itemRarity } from '../game/items.js';
-import { PIECES, MAT_ORDER } from '../game/build.js';
-import { makeItemModel, makeWeaponModel } from '../game/models.js';
+import { WEAPONS, CONSUMABLES, THROWABLES, AMMO, RARITIES, MATERIALS, BUILD_COST, itemRarity } from '../game/items.js';
+import { PIECES, MAT_ORDER, WALL_PRESETS } from '../game/build.js';
+import { makeItemModel, makeWeaponModel, itemKey } from '../game/models.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,7 +25,7 @@ class IconRenderer {
     this.camera = new THREE.PerspectiveCamera(30, 160 / 96, 0.01, 10);
   }
   get(item) {
-    const key = item.kind === 'weapon' ? `${item.type}_${item.rarity}` : item.kind === 'consumable' ? item.type : item.kind === 'ammo' ? 'ammo_' + item.ammo : 'pickaxe';
+    const key = itemKey(item);
     if (this.cache.has(key)) return this.cache.get(key);
     try {
       if (!this.renderer) this._init();
@@ -95,6 +95,7 @@ export class HUD {
       tags: $('name-tags'),
       score: $('score-bar'),
       fps: $('fps'),
+      marks: $('compass-marks'),
     };
     this.tagEls = new Map();
     this.fpsAcc = 0;
@@ -103,6 +104,21 @@ export class HUD {
     this.fullCtx = this.el.fullmapCanvas.getContext('2d');
     this.buildSlots();
     this.buildCompass();
+    // Clic en el mapa grande: marcar destino (clic derecho: quitarlo)
+    const fc = this.el.fullmapCanvas;
+    const toWorld = (e) => {
+      const r = fc.getBoundingClientRect();
+      return [((e.clientX - r.left) / r.width) * 1600 - 800, ((e.clientY - r.top) / r.height) * 1600 - 800];
+    };
+    fc.addEventListener('click', (e) => {
+      const [x, z] = toWorld(e);
+      game.waypoint = { x, z };
+      game.audio.ping();
+    });
+    fc.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      game.waypoint = null;
+    });
     this.last = {};
     this.hitT = 0;
     this.toastT = 0;
@@ -113,6 +129,26 @@ export class HUD {
     addEventListener('resize', () => (this.compassHalf = 0));
     this.feed = [];
     this.dirs = [];
+  }
+
+  // Marcadores (pings y punto del mapa) en la brújula.
+  updateMarkers(p) {
+    const g = this.game;
+    const list = g.pings.map((pg) => ({ pos: pg.pos, cls: pg.mine ? 'mine' : 'mate' }));
+    if (g.waypoint) list.push({ pos: g.waypoint, cls: 'wp' });
+    if (this.soundMarks?.length) list.push(...this.soundMarks);
+    let html = '';
+    for (const m of list) {
+      const ang = Math.atan2(m.pos.x - p.pos.x, -(m.pos.z - p.pos.z)); // 0 = norte
+      let rel = ((ang * 180) / Math.PI - ((-p.yaw * 180) / Math.PI)) % 360;
+      if (rel > 180) rel -= 360;
+      if (rel < -180) rel += 360;
+      if (Math.abs(rel) > 50) continue;
+      const d = Math.round(Math.hypot(m.pos.x - p.pos.x, m.pos.z - p.pos.z));
+      if (m.icon) html += `<span class="cmark ${m.cls}" style="left:${200 + rel * 4}px">${m.icon}</span>`;
+      else html += `<span class="cmark ${m.cls}" style="left:${200 + rel * 4}px">▼<small>${d} m</small></span>`;
+    }
+    this.set('marks', this.el.marks, 'html', html);
   }
 
   fps(dt) {
@@ -241,6 +277,25 @@ export class HUD {
     this.toastT = 2.2;
   }
 
+  // Aviso fijo de conexión (online): texto y segundos de cuenta atrás.
+  netBanner(text, secs = 0) {
+    if (!this.netEl) {
+      this.netEl = document.createElement('div');
+      this.netEl.id = 'net-banner';
+      this.el.hud.appendChild(this.netEl);
+    }
+    this.netText = text;
+    this.netEnd = text && secs ? performance.now() / 1000 + secs : 0;
+    this.netEl.style.display = text ? '' : 'none';
+    this.paintNet();
+  }
+
+  paintNet() {
+    if (!this.netText || !this.netEl) return;
+    const left = this.netEnd ? Math.max(0, Math.ceil(this.netEnd - performance.now() / 1000)) : 0;
+    this.netEl.innerHTML = `<span class="spin"></span>${this.netText}${left ? ` <b>${left} s</b>` : ''}`;
+  }
+
   banner(msg, sub = '') {
     this.set('banner', this.el.banner, 'html', msg ? `<div class="big">${msg}</div>${sub ? `<div class="sub">${sub}</div>` : ''}` : '');
   }
@@ -274,6 +329,7 @@ export class HUD {
   }
 
   setScope(on) {
+    this.scoped = on;
     this.set('scope', this.el.scope, 'display', on ? 'block' : 'none');
   }
 
@@ -285,11 +341,17 @@ export class HUD {
   }
 
   toggleMap(force) {
+    const was = this.mapOpen;
     this.mapOpen = force ?? !this.mapOpen;
     this.el.fullmap.style.display = this.mapOpen ? 'flex' : 'none';
+    // Con el mapa abierto se libera el ratón para poder marcar un destino
+    const g = this.game;
+    if (this.mapOpen && !was && g.state === 'playing') g.input.unlock();
+    else if (!this.mapOpen && was && g.state === 'playing' && force === undefined && g.player.alive) g.input.lock();
   }
 
   update(dt) {
+    if (this.netText) this.paintNet();
     const g = this.game;
     const p = g.player;
     const e = this.el;
@@ -315,13 +377,15 @@ export class HUD {
           s.img.style.visibility = 'visible';
           s.root.style.setProperty('--rarity', it.kind === 'pickaxe' ? '#5a6270' : RARITIES[itemRarity(it)].color);
           s.root.classList.remove('empty');
+          s.root.classList.toggle('glow', it.kind !== 'pickaxe' && !!RARITIES[itemRarity(it)].glow);
         } else {
           s.img.style.visibility = 'hidden';
           s.root.style.setProperty('--rarity', 'transparent');
           s.root.classList.add('empty');
+          s.root.classList.remove('glow');
         }
       }
-      const cnt = it ? (it.kind === 'weapon' ? `${it.mag}` : it.kind === 'consumable' ? `${it.count}` : '') : '';
+      const cnt = it ? (it.kind === 'weapon' ? `${it.mag}` : it.kind === 'consumable' || it.kind === 'throwable' ? `${it.count}` : '') : '';
       if (s.count.textContent !== cnt) s.count.textContent = cnt;
       s.root.classList.toggle('selected', i === p.selected);
     }
@@ -333,17 +397,31 @@ export class HUD {
     if (it && it.kind === 'weapon') {
       const def = WEAPONS[it.type];
       const reloading = g.combat.reloading ? ' <span class="reloading">RECARGANDO</span>' : '';
-      ammoTxt = `<span class="mag">${it.mag}</span><span class="res"> / ${p.ammo[def.ammo]}</span>${reloading}`;
-      wname = `<span style="color:${RARITIES[it.rarity].color}">${def.name}</span> · ${RARITIES[it.rarity].name}`;
+      const low = !g.combat.reloading && it.mag <= Math.ceil(def.mag * 0.25) && def.mag > 2 ? ' low' : '';
+      const reserve = g.infiniteAmmo ? '∞' : p.ammo[def.ammo];
+      const out = !g.infiniteAmmo && p.ammo[def.ammo] <= 0 && it.mag <= 0 ? ' <span class="reloading">SIN MUNICIÓN</span>' : '';
+      ammoTxt = `<span class="mag${low}">${it.mag}</span><span class="res"> / ${reserve}</span>${reloading}${out}`;
+      const spin = def.spinUp && g.combat.spin > 0 && g.combat.spin < def.spinUp ? ' · girando…' : '';
+      wname = `<span style="color:${RARITIES[it.rarity].color}">${def.name}</span> · ${RARITIES[it.rarity].name}${spin}`;
     } else if (it && it.kind === 'consumable') {
-      wname = `<span style="color:${RARITIES[CONSUMABLES[it.type].rarity].color}">${CONSUMABLES[it.type].name}</span> · ${g.touch ? 'Dispara para usar' : 'Clic para usar'}`;
+      const cdef = CONSUMABLES[it.type];
+      const verb = cdef.deploy ? 'colocar' : 'usar';
+      wname = `<span style="color:${RARITIES[cdef.rarity].color}">${cdef.name}</span> · ${g.touch ? `Dispara para ${verb}` : `Clic para ${verb}`}`;
+    } else if (it && it.kind === 'throwable') {
+      const td = THROWABLES[it.type];
+      const col = RARITIES[td.rarity].color;
+      if (td.remote) {
+        const n = g.explosives.charges(p);
+        wname = `<span style="color:${col}">${it.count > 0 ? td.name : 'Detonador de C4'}</span> · ${it.count > 0 ? (g.touch ? 'Dispara: lanzar · ' : 'Clic izq.: lanzar · ') : ''}${g.touch ? 'Apuntar: detonar' : 'Clic der.: detonar'}${n ? ` (${n})` : ''}`;
+      } else wname = `<span style="color:${col}">${td.name}</span> · ${g.touch ? 'Dispara para lanzar' : 'Clic para lanzar'}`;
+      ammoTxt = `<span class="mag">${it.count}</span>`;
     } else {
       wname = 'Pico';
     }
     this.set('ammo', e.ammo, 'html', ammoTxt);
     this.set('wname', e.weaponName, 'html', p.mode === 'ground' ? wname : '');
     const al = Object.keys(AMMO).map((k) => `<span style="--c:#${AMMO[k].color.toString(16).padStart(6, '0')}">${AMMO[k].short} <b>${p.ammo[k]}</b></span>`).join('');
-    this.set('ammoList', e.ammoList, 'html', al);
+    this.set('ammoList', e.ammoList, 'html', g.infiniteAmmo ? '<span>Munición infinita</span>' : al);
 
     // Mira
     const def = it && it.kind === 'weapon' ? WEAPONS[it.type] : null;
@@ -353,7 +431,7 @@ export class HUD {
       const fovR = THREE.MathUtils.degToRad(g.camera.fov / 2);
       gap = Math.max(3, (Math.tan(spread) / Math.tan(fovR)) * (innerHeight / 2));
     }
-    const showCross = p.mode === 'ground' && !p.vehicle && !(def?.scope && g.combat.adsBlend > 0.9);
+    const showCross = p.mode === 'ground' && !p.vehicle && !(def?.scope && g.combat.adsBlend > 0.9) && !g.creativePanel?.open;
     this.set('cross', e.crosshair, 'display', showCross ? 'block' : 'none');
     e.crosshair.style.setProperty('--gap', `${gap.toFixed(1)}px`);
     e.crosshair.classList.toggle('shotgun', !!def?.pellets);
@@ -375,6 +453,7 @@ export class HUD {
     if (!this.compassHalf) this.compassHalf = e.compass.parentElement.clientWidth / 2 || 200;
     e.compass.style.transform = `translateX(${-(hd * 4) + this.compassHalf}px)`;
     this.set('heading', e.heading, 'text', `${Math.round(hd)}°`);
+    this.updateMarkers(p);
 
     // Minimapa (en calidad móvil se redibuja a ~20 Hz para ahorrar CPU)
     const mm = e.mini;
@@ -395,9 +474,14 @@ export class HUD {
     if (st.active) {
       const t = Math.max(0, Math.ceil(st.timer));
       const mmss = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-      if (st.state === 'wait') stTxt = `<span class="ico">🌀</span> La tormenta se cerrará en <b>${mmss}</b>`;
+      if (st.state === 'wait' && st.drift) stTxt = `<span class="ico">➡</span> ¡La zona se está moviendo! <b>${mmss}</b>`;
+      else if (st.state === 'wait') stTxt = `<span class="ico">🌀</span> La tormenta se cerrará en <b>${mmss}</b>`;
       else if (st.state === 'shrink') stTxt = `<span class="ico">⚠</span> ¡La tormenta se está cerrando! <b>${mmss}</b>`;
       else stTxt = '<span class="ico">🌀</span> Tormenta final';
+      if (g.weather?.label) stTxt += `<div class="wx">${g.weather.label}</div>`;
+      for (const q of g.npcs?.quests || []) {
+        if (q.state === 'active') stTxt += `<div class="qst">📜 ${g.npcs.questText(q)} · <b>${q.v}/${q.goal}</b></div>`;
+      }
       if (p.mode !== 'lobby') {
         const out = st.distanceOutside(p.pos.x, p.pos.z);
         if (out > 0) stTxt += `<div class="warn">Fuera de la zona segura · ${Math.round(out)} m</div>`;
@@ -430,7 +514,7 @@ export class HUD {
     }
 
     const teamsTxt = (g.mode.teamSize || 1) > 1 ? `<span title="Equipos vivos">🚩 ${g.teamsAlive().size}</span>` : '';
-    const aliveTxt = g.mode.respawn ? '' : `<span title="Jugadores vivos">👤 ${g.aliveCount}</span>`;
+    const aliveTxt = g.mode.respawn || g.mode.creative ? '' : `<span title="Jugadores vivos">👤 ${g.phase === 'lobby' ? `${g.lobbyCount}/${g.chars.length}` : g.aliveCount}</span>`;
     const pingTxt = g.net ? `<span class="ping" title="Ping con el servidor">📶 ${g.netClient.ping || '–'}</span>` : '';
     this.set('stats', e.stats, 'html', `${aliveTxt}${teamsTxt}<span title="Eliminaciones">💀 ${p.stats.kills}</span><span title="Cofres">📦 ${p.stats.chests}</span>${pingTxt}`);
 
@@ -441,16 +525,24 @@ export class HUD {
       const low = p.mats[m] < BUILD_COST ? ' low' : '';
       return `<span class="mat ${m}${sel}${low}"><i></i>${p.mats[m]}</span>`;
     }).join('');
-    this.set('mats', e.mats, 'html', mats);
+    const gold = g.npcs?.list.length && g.state === 'playing' && !g.mode.creative && !g.mode.noBots ? `<span class="mat gold" title="Oro (PNJ)">💰 ${p.gold || 0}</span>` : '';
+    this.set('mats', e.mats, 'html', gold + mats);
 
     // Barra de construcción
-    this.set('buildShow', e.buildBar, 'display', b.active ? 'flex' : 'none');
-    if (b.active) {
+    const showBar = b.active || !!b.editing;
+    this.set('buildShow', e.buildBar, 'display', showBar ? 'flex' : 'none');
+    if (b.editing) {
+      const pc = b.editing.piece;
+      const presets = pc.type === 'wall' ? WALL_PRESETS.map((w, i) => `<div class="piece"><span class="key">${i + 1}</span>${w.name}</div>`).join('') : '';
+      this.set('buildBar', e.buildBar, 'html', `<div class="piece sel">✏️ EDITANDO ${{ wall: 'MURO', floor: 'SUELO', ramp: 'RAMPA', cone: 'TECHO' }[pc.type]}</div>${presets}`);
+    } else if (b.active) {
       const html = PIECES.map((pc, i) => `<div class="piece ${i === b.piece ? 'sel' : ''}"><span class="key">${pc.key}</span><span class="ico ${pc.id}"></span>${pc.name}</div>`).join('') +
-        `<div class="piece-mat" style="color:${MATERIALS[b.matId].color}">${MATERIALS[b.matId].name}<small>${g.touch ? 'tocar: cambiar' : 'clic der.'}</small></div>`;
+        `<div class="piece-mat" style="color:${MATERIALS[b.matId].color}">${MATERIALS[b.matId].name}<small>${g.touch ? 'tocar: cambiar' : 'clic der.'}</small></div>` +
+        (b.rot ? `<div class="piece-mat">↻ ${b.rot * 90}°<small>${g.key('reload')}</small></div>` : '') +
+        (g.settings.turboBuild ? '<div class="piece-mat">TURBO<small>construcción</small></div>' : '');
       this.set('buildBar', e.buildBar, 'html', html);
     }
-    this.set('slotsShow', e.slots, 'display', b.active ? 'none' : 'flex');
+    this.set('slotsShow', e.slots, 'display', showBar ? 'none' : 'flex');
 
     // Edición y modo creativo
     let hint = '';
@@ -463,7 +555,13 @@ export class HUD {
 
     // Velocímetro
     this.set('speedShow', e.speed, 'display', p.vehicle ? 'block' : 'none');
-    if (p.vehicle) this.set('speed', e.speed, 'html', `${Math.round(Math.abs(p.vehicle.speed) * 3.6)}<small> km/h</small>`);
+    if (p.vehicle) {
+      const v = p.vehicle;
+      const fuel = Math.round(v.fuel ?? 100), hp = v.def ? Math.max(0, Math.round((v.hp / v.def.hp) * 100)) : 100;
+      this.set('speed', e.speed, 'html', `${Math.round(Math.abs(v.speed) * 3.6)}<small> km/h</small>
+        <div class="vbars"><span>⛽<i style="width:${fuel * 0.6}px" class="${fuel < 20 ? 'low' : ''}"></i></span><span>🔧<i style="width:${hp * 0.6}px" class="${hp < 30 ? 'low' : ''}"></i></span></div>
+        ${v.refueling ? '<div class="vref">Repostando…</div>' : fuel <= 0 ? '<div class="vref low">Sin gasolina · busca una gasolinera</div>' : ''}`);
+    }
 
     // Feed de eliminaciones
     for (let i = this.feed.length - 1; i >= 0; i--) {

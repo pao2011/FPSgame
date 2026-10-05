@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PICKAXE, CONSUMABLES, AMMO, MATERIALS } from './items.js';
+import { PICKAXE, AMMO, MATERIALS, stackDef } from './items.js';
 import { Character, R } from './character.js';
 import { clamp } from '../core/rng.js';
 
@@ -22,7 +22,9 @@ export class Player extends Character {
     this.pitch = -0.2;
     this.inventory = [PICKAXE, null, null, null, null, null];
     this.selected = 0;
-    this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0 };
+    this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
+    this.autorun = false;
+    this.crouchToggled = false;
     this.mats = { wood: 0, stone: 0, metal: 0 };
     this.stepTimer = 0;
     this.vehicle = null;
@@ -45,11 +47,11 @@ export class Player extends Character {
       this.mats[item.mat] = Math.min(MATERIALS[item.mat].max, this.mats[item.mat] + item.count);
       return true;
     }
-    if (item.kind === 'consumable') {
-      const def = CONSUMABLES[item.type];
+    const def = stackDef(item);
+    if (def) {
       for (let i = 1; i < 6 && item.count > 0; i++) {
         const s = this.inventory[i];
-        if (s && s.kind === 'consumable' && s.type === item.type && s.count < def.max) {
+        if (s && s.kind === item.kind && s.type === item.type && s.count < def.max) {
           const n = Math.min(def.max - s.count, item.count);
           s.count += n;
           item.count -= n;
@@ -57,7 +59,10 @@ export class Player extends Character {
       }
       if (item.count <= 0) return true;
     }
-    for (let i = 1; i < 6; i++) {
+    // Las curas se ordenan a la derecha y las armas a la izquierda (Opciones)
+    const right = (item.kind === 'consumable' || item.kind === 'throwable') && this.game.settings.autoSortConsumables !== false;
+    for (let k = 1; k < 6; k++) {
+      const i = right ? 6 - k : k;
       if (!this.inventory[i]) {
         this.inventory[i] = { ...item };
         if (this.selected === 0 && item.kind === 'weapon') this.game.combat.select(i);
@@ -69,6 +74,7 @@ export class Player extends Character {
 
   // -------------------------------------------------------------- UPDATE
   update(dt, input) {
+    this.tickCommon(dt);
     switch (this.mode) {
       case 'bus': this.updateBus(input); break;
       case 'freefall': this.updateFreefall(dt, input); break;
@@ -89,7 +95,7 @@ export class Player extends Character {
     const bus = this.game.bus;
     this.pos.copy(bus.pos);
     this.pos.y -= 2;
-    if ((bus.doorsOpen && input.wasPressed('Space')) || bus.mustEject || !bus.active) this.jumpFromBus();
+    if ((bus.doorsOpen && input.hit('jump')) || bus.mustEject || !bus.active) this.jumpFromBus();
   }
 
   jumpFromBus() {
@@ -116,19 +122,19 @@ export class Player extends Character {
       if (m > 0.001) wish.multiplyScalar(Math.min(1, Math.max(0.35, m / 0.8)) / m);
       return wish;
     }
-    if (input.down('KeyW')) wish.add(fwd);
-    if (input.down('KeyS')) wish.sub(fwd);
-    if (input.down('KeyD')) wish.add(right);
-    if (input.down('KeyA')) wish.sub(right);
+    if (input.held('forward') || this.autorun) wish.add(fwd);
+    if (input.held('back')) wish.sub(fwd);
+    if (input.held('right')) wish.add(right);
+    if (input.held('left')) wish.sub(right);
     if (wish.lengthSq() > 0) wish.normalize();
     return wish;
   }
 
   updateFreefall(dt, input) {
     const w = this.moveWish(input);
-    const dive = input.down('KeyW') ? clamp((-this.pitch - 0.25) / 0.9, 0, 1) : 0;
+    const dive = input.held('forward') ? clamp((-this.pitch - 0.25) / 0.9, 0, 1) : 0;
     this.freefallStep(dt, w, dive);
-    const manual = input.wasPressed('Space') && this.freefallTime > 1.0 && this.altitude > 20;
+    const manual = input.hit('jump') && this.freefallTime > 1.0 && this.altitude > 20;
     if (this.altitude < 90 || manual) {
       this.deployGlider();
       this.game.audio.glider();
@@ -142,7 +148,7 @@ export class Player extends Character {
       fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
       w.copy(fwd).multiplyScalar(0.35);
     }
-    const dive = input.down('KeyW') ? clamp((-this.pitch - 0.1) / 0.8, 0, 1) : 0;
+    const dive = input.held('forward') ? clamp((-this.pitch - 0.1) / 0.8, 0, 1) : 0;
     this.glideStep(dt, w, dive);
     if (this.onGround) this.land(true);
   }
@@ -152,7 +158,7 @@ export class Player extends Character {
     this.glider.visible = false;
     this.vel.set(0, 0, 0);
     this.game.audio.land();
-    if (!fromGlide) this.damage(30, 'fall');
+    if (!fromGlide && this.noFallT <= 0) this.damage(30, 'fall');
     this.game.onLanded();
   }
 
@@ -164,12 +170,26 @@ export class Player extends Character {
       this.groundStep(dt, w, 1.6, false);
       return;
     }
+    if (input.hit('autorun')) this.autorun = !this.autorun;
+    if (this.autorun && (input.hit('back') || input.hit('forward'))) this.autorun = false;
     // Modo creativo: volando no hay gravedad
     if (this.game.creative?.flying) {
       this.game.creative.flyStep(dt, this.moveWish(input), input);
       return;
     }
-    const wantCrouch = input.down('KeyC') || input.down('ControlLeft');
+    // Plataforma de salto: al llegar arriba se abre el planeador
+    if (this.padLaunch && this.launchT <= 0 && this.vel.y < 4 && !this.onGround) {
+      this.padLaunch = false;
+      this.deployGlider();
+      this.game.audio.glider();
+      return;
+    }
+    let wantCrouch = input.held('crouch');
+    if (this.game.settings.toggleCrouch) {
+      if (input.hit('crouch')) this.crouchToggled = !this.crouchToggled;
+      if (input.hit('jump') || this.sprinting) this.crouchToggled = false;
+      wantCrouch = this.crouchToggled;
+    }
     if (wantCrouch && !this.crouching) {
       this.crouching = true;
       this.eyeOffset += 0.5;
@@ -182,8 +202,9 @@ export class Player extends Character {
     }
     const combat = this.game.combat;
     const w = this.moveWish(input);
-    const forwardHeld = input.down('KeyW') && !input.down('KeyS');
-    this.sprinting = input.down('ShiftLeft') && forwardHeld && !this.crouching && combat.adsBlend < 0.2 && !combat.using;
+    const forwardHeld = (input.held('forward') || this.autorun) && !input.held('back');
+    const sprintKey = this.game.settings.sprintDefault ? !input.held('sprint') : input.held('sprint');
+    this.sprinting = sprintKey && forwardHeld && !this.crouching && combat.adsBlend < 0.2 && !combat.using;
     let speed = 5.4;
     if (this.crouching) speed = 2.8;
     else if (this.sprinting) speed = 8.0;
@@ -194,8 +215,8 @@ export class Player extends Character {
     // Escaleras de mano: W para subir; sin pulsar, se baja despacio
     const ladder = this.game.world.ladderAt(this.pos.x, this.pos.y, this.pos.z);
     if (ladder) {
-      if (input.down('KeyW')) this.vel.y = 4.5 + 24 * dt;
-      else if (input.down('KeyS')) this.vel.y = -3 + 24 * dt;
+      if (input.held('forward')) this.vel.y = 4.5 + 24 * dt;
+      else if (input.held('back')) this.vel.y = -3 + 24 * dt;
       else this.vel.y = Math.max(this.vel.y, -1.5);
       this.onGround = false;
     }
@@ -207,7 +228,8 @@ export class Player extends Character {
       this.vel.x = 0;
       this.vel.z = 0;
     }
-    const landSpeed = this.groundStep(dt, w, ladder && !atTop ? speed * 0.02 : speed, input.wasPressed('Space') && !ladder);
+    if (this.game.speedMult) speed *= this.game.speedMult;
+    const landSpeed = this.groundStep(dt, w, ladder && !atTop ? speed * 0.02 : speed, input.hit('jump') && !ladder);
     this.stats.distance += Math.hypot(this.pos.x - before.x, this.pos.z - before.z);
     if (landSpeed > 17) {
       this.fallDamage(landSpeed);
@@ -218,7 +240,7 @@ export class Player extends Character {
       this.stepTimer -= dt * hs;
       if (this.stepTimer <= 0) {
         this.stepTimer = 2.4;
-        this.game.audio.step();
+        this.game.audio.step(this.game.groundMaterial(this), 1);
       }
     }
   }

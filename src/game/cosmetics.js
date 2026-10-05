@@ -41,11 +41,75 @@ export const CAMOS = {
   oro: { name: 'Oro', rarity: 'mitico', colors: [0xffd23f, 0xe0a800, 0xfff0a0, 0xc99200], shiny: true },
 };
 
+// Picos (herramienta de recolección): colores y forma de la cabeza.
+export const PICKAXES = {
+  piolet: { name: 'Piolet Ártico', rarity: 'comun', desc: 'Frío al tacto, rompe el hielo… y las paredes.', head: 0xd8f0ff, handle: 0x3a5f8a, accent: 0xffffff, shape: 'pick' },
+  hacha: { name: 'Hacha Leñadora', rarity: 'raro', desc: 'La favorita de los que talan medio bosque.', head: 0x9aa5b1, handle: 0x8a5a32, accent: 0xc0302a, shape: 'axe' },
+  piruleta: { name: 'Piruleta Gigante', rarity: 'raro', desc: 'Dulce por fuera, dura por dentro.', head: 0xff5aa8, handle: 0xffffff, accent: 0x5ad1ff, shape: 'lolly' },
+  martillo: { name: 'Martillo Pesado', rarity: 'epico', desc: 'Cada golpe retumba en toda la isla.', head: 0x4b4f57, handle: 0x2b2f36, accent: 0xff9a3c, shape: 'hammer' },
+  dorado: { name: 'Pico Dorado', rarity: 'legendario', desc: 'Brilla tanto que los bots se distraen.', head: 0xffd23f, handle: 0x5a3a1a, accent: 0xfff0a0, shape: 'pick', shiny: true },
+  guadana: { name: 'Guadaña Lunar', rarity: 'mitico', desc: 'Forjada con polvo de luna.', head: 0xb8e0ff, handle: 0x1d1f2a, accent: 0x7a5cff, shape: 'scythe', glow: true },
+};
+
+// Planeadores: colores de los gajos y forma (cometa o ala).
+export const GLIDERS = {
+  nube: { name: 'Nube', rarity: 'comun', desc: 'Suave y esponjoso.', colors: [0xffffff, 0xdfefff] },
+  arcoiris_p: { name: 'Arco Iris', rarity: 'raro', desc: 'Siete colores para aterrizar con estilo.', colors: [0xff4040, 0xffa040, 0xffff40, 0x40ff60, 0x40a0ff, 0xa040ff] },
+  noche: { name: 'Noche Estrellada', rarity: 'epico', desc: 'Para los saltos nocturnos.', colors: [0x1a2050, 0x3a3f8a, 0xffd34d, 0x1a2050] },
+  tiburon: { name: 'Tiburón Volador', rarity: 'epico', desc: 'Aletas incluidas.', colors: [0x5a7a9a, 0xe8eef2], shape: 'wing' },
+  dragon: { name: 'Ala de Dragón', rarity: 'legendario', desc: 'Escamas rojas y mucho fuego.', colors: [0xc0302a, 0x5a1208], shape: 'wing' },
+};
+
+// Mochilas (sustituyen a la mochila de serie).
+export const BAGS = {
+  tanque: { name: 'Tanque de Oxígeno', rarity: 'comun', desc: 'Por si la tormenta te deja sin aire.', color: 0x3fa9ff, accent: 0x2a2c30, style: 'tank' },
+  osito: { name: 'Osito Viajero', rarity: 'raro', desc: 'Siempre a tu espalda.', color: 0xa0703a, accent: 0x6a4520, style: 'bear' },
+  escudo: { name: 'Escudo Vikingo', rarity: 'raro', desc: 'De madera y hierro.', color: 0x8a5a32, accent: 0xc0c6ce, style: 'shield' },
+  cohete: { name: 'Mochila Cohete', rarity: 'epico', desc: 'No vuela, pero hace ruido.', color: 0xd0d6de, accent: 0xff6a2a, style: 'rocket' },
+  mecanica: { name: 'Alas Mecánicas', rarity: 'legendario', desc: 'Tecnología de otra temporada.', color: 0x2a2c30, accent: 0x3ff0e0, style: 'wings' },
+};
+
+// Estelas al caer y planear.
+export const TRAILS = {
+  chispas: { name: 'Chispas', rarity: 'comun', desc: 'Una lluvia de chispas doradas.', color: 0xffd34d },
+  corazones: { name: 'Corazones', rarity: 'raro', desc: 'Lleno de amor desde el cielo.', color: 0xff5a8a },
+  humo: { name: 'Humo de Colores', rarity: 'raro', desc: 'Como en las exhibiciones aéreas.', color: 0x9b5cff, smoke: true },
+  arcoiris_e: { name: 'Estela Arco Iris', rarity: 'epico', desc: 'Todos los colores a la vez.', rainbow: true },
+  fuego: { name: 'Fuego', rarity: 'legendario', desc: 'Entra en la isla como un meteorito.', color: 0xff7a1a },
+};
+
+// Gestos (bailes). Los marcados como `free` los tiene todo el mundo.
+export const EMOTES = {
+  saludo: { name: 'Saludo', rarity: 'comun', desc: '¡Hola!', anim: 'wave', free: true },
+  baile: { name: 'Baile Isleño', rarity: 'comun', desc: 'El baile de la Isla de Inicio.', anim: 'dance', free: true },
+  aplauso: { name: 'Aplausos', rarity: 'comun', desc: 'Buen tiro.', anim: 'clap' },
+  robot: { name: 'El Robot', rarity: 'raro', desc: 'Bip, bup.', anim: 'robot' },
+  flexiones: { name: 'Flexiones', rarity: 'raro', desc: 'Entrena entre partida y partida.', anim: 'pushups' },
+  giro: { name: 'Giro Loco', rarity: 'epico', desc: 'Da vueltas hasta marearte.', anim: 'spin' },
+  victoria: { name: 'Pose de Campeón', rarity: 'legendario', desc: 'Para después de la Victoria Magistral.', anim: 'flex' },
+};
+
+// Pantallas de carga (fondo de la espera de las partidas).
+export const SCREENS = {
+  atardecer: { name: 'Atardecer en la Isla', rarity: 'comun', desc: 'El sol se pone sobre la costa.', icon: '🌅', bg: 'linear-gradient(160deg,#ff9a3c,#d6455e 45%,#3a1d5c)', free: true },
+  autobus: { name: 'El Autobús', rarity: 'raro', desc: '¿Le has dado las gracias al conductor?', icon: '🚌', bg: 'linear-gradient(160deg,#5ad1ff,#2d6fd6 55%,#152a5c)' },
+  tormenta: { name: 'Ojo de la Tormenta', rarity: 'epico', desc: 'Morada y llena de rayos.', icon: '🌀', bg: 'radial-gradient(circle at 40% 40%,#c25bff,#4a1a7a 50%,#120724)' },
+  castillo: { name: 'Castillo Corona', rarity: 'epico', desc: 'El lugar más disputado del mapa.', icon: '🏰', bg: 'linear-gradient(160deg,#ffe28a,#c99200 50%,#4a3200)' },
+  neon: { name: 'Noche de Neón', rarity: 'legendario', desc: 'La isla nunca duerme.', icon: '🌃', bg: 'linear-gradient(160deg,#ff2bd6,#8a2bff 45%,#0d0730)' },
+};
+
 export const COSMETIC_TYPES = {
   suit: { list: SUITS, name: 'Skin', plural: 'Skins' },
   acc: { list: ACCESSORIES, name: 'Accesorio', plural: 'Accesorios' },
   camo: { list: CAMOS, name: 'Camuflaje', plural: 'Camuflajes' },
+  pick: { list: PICKAXES, name: 'Pico', plural: 'Picos' },
+  glider: { list: GLIDERS, name: 'Planeador', plural: 'Planeadores' },
+  bag: { list: BAGS, name: 'Mochila', plural: 'Mochilas' },
+  trail: { list: TRAILS, name: 'Estela', plural: 'Estelas' },
+  emote: { list: EMOTES, name: 'Gesto', plural: 'Gestos' },
+  screen: { list: SCREENS, name: 'Pantalla de carga', plural: 'Pantallas de carga' },
 };
+export const COSMETIC_KEYS = Object.keys(COSMETIC_TYPES);
 
 export function cosmetic(type, id) {
   return COSMETIC_TYPES[type]?.list[id] || null;
@@ -92,6 +156,19 @@ const PREMIUM = {
   40: { type: 'suit', id: 'robot' },
 };
 FREE[40] = { type: 'acc', id: 'corona' };
+// Taquilla ampliada (picos, planeadores, mochilas, estelas, gestos, pantallas)
+Object.assign(FREE, {
+  2: { type: 'emote', id: 'aplauso' }, 4: { type: 'pick', id: 'piolet' }, 6: { type: 'glider', id: 'nube' },
+  8: { type: 'trail', id: 'chispas' }, 12: { type: 'bag', id: 'tanque' }, 16: { type: 'screen', id: 'autobus' },
+  18: { type: 'emote', id: 'robot' }, 24: { type: 'pick', id: 'hacha' }, 28: { type: 'trail', id: 'corazones' },
+  33: { type: 'bag', id: 'escudo' }, 36: { type: 'glider', id: 'arcoiris_p' },
+});
+Object.assign(PREMIUM, {
+  4: { type: 'pick', id: 'martillo' }, 6: { type: 'trail', id: 'humo' }, 10: { type: 'glider', id: 'noche' },
+  12: { type: 'emote', id: 'flexiones' }, 16: { type: 'bag', id: 'cohete' }, 18: { type: 'screen', id: 'tormenta' },
+  24: { type: 'emote', id: 'giro' }, 28: { type: 'glider', id: 'tiburon' }, 30: { type: 'trail', id: 'arcoiris_e' },
+  34: { type: 'pick', id: 'dorado' }, 36: { type: 'bag', id: 'mecanica' }, 37: { type: 'screen', id: 'neon' },
+});
 
 export const PASS_REWARDS = [];
 for (let t = 1; t <= PASS.tiers; t++) {
@@ -114,6 +191,14 @@ export const SHOP = [
   { type: 'acc', id: 'auriculares', price: 300 },
   { type: 'acc', id: 'gorra', price: 200 },
   { type: 'acc', id: 'gafas', price: 200 },
+  { type: 'pick', id: 'guadana', price: 1000 },
+  { type: 'pick', id: 'piruleta', price: 500 },
+  { type: 'glider', id: 'dragon', price: 900 },
+  { type: 'bag', id: 'osito', price: 400 },
+  { type: 'trail', id: 'fuego', price: 700 },
+  { type: 'emote', id: 'victoria', price: 800 },
+  { type: 'emote', id: 'robot', price: 400 },
+  { type: 'screen', id: 'castillo', price: 300 },
 ];
 
 export const WELCOME_TOKENS = 200;
@@ -141,8 +226,11 @@ export const ACHIEVEMENTS = [
 // Valida un aspecto recibido por red (lo usa también el servidor).
 export function cleanCosmetics(o = {}) {
   const out = {};
-  if (typeof o.suit === 'string' && SUITS[o.suit]) out.suit = o.suit;
-  if (typeof o.acc === 'string' && ACCESSORIES[o.acc]) out.acc = o.acc;
-  if (typeof o.camo === 'string' && CAMOS[o.camo]) out.camo = o.camo;
+  for (const k of COSMETIC_KEYS) if (typeof o[k] === 'string' && Object.hasOwn(COSMETIC_TYPES[k].list, o[k])) out[k] = o[k];
   return out;
+}
+
+// ¿Lo tiene todo el mundo sin conseguirlo? (gestos y pantalla de serie)
+export function isFreeCosmetic(type, id) {
+  return !!cosmetic(type, id)?.free;
 }

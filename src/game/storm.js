@@ -7,8 +7,9 @@ const PHASES = [
   { wait: 60, shrink: 50, radius: 190, dps: 2 },
   { wait: 50, shrink: 40, radius: 100, dps: 5 },
   { wait: 40, shrink: 35, radius: 48, dps: 8 },
-  { wait: 30, shrink: 30, radius: 18, dps: 10 },
-  { wait: 20, shrink: 25, radius: 0, dps: 10 },
+  // Zona móvil: durante la espera el círculo entero se desplaza
+  { wait: 30, shrink: 30, radius: 18, dps: 10, move: true },
+  { wait: 20, shrink: 25, radius: 0, dps: 10, move: true },
 ];
 
 function stormTexture() {
@@ -64,7 +65,10 @@ export class Storm {
   // rng: en online, la misma semilla para todos para que la zona coincida.
   reset(kind = 'br', rng = random) {
     this.rng = rng;
-    this.phases = kind === 'rumble' ? RUMBLE : kind === 'duel' ? DUEL : PHASES;
+    // Fases variables: tiempos distintos en cada partida (misma semilla online)
+    this.phases = kind === 'rumble' ? RUMBLE : kind === 'duel' ? DUEL
+      : PHASES.map((p) => ({ ...p, wait: Math.round(p.wait * rng.float(0.8, 1.25)), shrink: Math.round(p.shrink * rng.float(0.85, 1.2)) }));
+    this.drift = null;
     this.phase = 0;
     this.radius = 1300;
     this.center.set(0, 0);
@@ -112,10 +116,25 @@ export class Storm {
     const target = p.radius;
     const curR = Math.min(this.radius, 640);
     const maxOff = Math.max(0, curR - target) * 0.8;
+    // Zona móvil: primero se elige hacia dónde se desplaza el círculo
+    let cx = this.center.x, cz = this.center.y;
+    this.drift = null;
+    if (p.move && curR > 1) {
+      for (let i = 0; i < 30; i++) {
+        const a = rng.float(0, Math.PI * 2), d = curR * rng.float(1.0, 1.8);
+        const x = this.center.x + Math.cos(a) * d, z = this.center.y + Math.sin(a) * d;
+        if ((this.world.terrain.heightAt(x, z) > 1.5 && Math.hypot(x, z) < 600) || i === 29) {
+          this.drift = { from: this.center.clone(), to: new THREE.Vector2(x, z) };
+          cx = x;
+          cz = z;
+          break;
+        }
+      }
+    }
     for (let i = 0; i < 40; i++) {
       const a = rng.float(0, Math.PI * 2);
       const r = Math.sqrt(rng.next()) * maxOff;
-      const x = this.center.x + Math.cos(a) * r, z = this.center.y + Math.sin(a) * r;
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
       if (this.world.terrain.heightAt(x, z) > 1.5 || i === 39) {
         this.next.set(x, z);
         break;
@@ -143,6 +162,11 @@ export class Storm {
     if (this.state === 'done') return;
     this.timer -= dt;
     if (this.state === 'wait') {
+      if (this.drift) {
+        const k = 1 - Math.max(0, this.timer) / this.phases[this.phase].wait;
+        const e = k * k * (3 - 2 * k);
+        this.center.lerpVectors(this.drift.from, this.drift.to, e);
+      }
       if (this.timer <= 0) {
         this.state = 'shrink';
         this.timer = this.phases[this.phase].shrink;

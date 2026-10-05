@@ -3,6 +3,11 @@ import { RemotePlayer, heldCode, modeCode, F_CROUCH, F_KNOCKED, F_ALIVE, F_SPRIN
 import { MODES } from '../game/modes.js';
 import { PICKAXE } from '../game/items.js';
 import { clamp } from '../core/rng.js';
+import { ISLAND_RADIUS } from '../world/constants.js';
+import { VoiceChat } from './voice.js';
+
+// Lo de la Isla de Inicio (fuera del mapa) se borra al salir el autobús.
+const offMap = (x, z) => Math.hypot(x, z) > ISLAND_RADIUS + 120;
 
 const ST_RATE = 1 / 15; // estado del jugador: 15 veces por segundo
 const BOT_RATE = 1 / 10;
@@ -31,6 +36,8 @@ export class OnlineMatch {
     this.started = false;
     this.ended = false;
     this.offs = [];
+    this.offline = false; // conexión perdida, esperando volver a la partida
+    this.seenBuilds = new Set();
     const me = info.ents.find((e) => e.id === info.you);
     this.myTeam = me?.team ?? 0;
     this.myName = me?.name ?? 'Tú';
@@ -39,6 +46,7 @@ export class OnlineMatch {
       'm.st': (m) => this.ents.get(m.from)?.isRemote && this.ents.get(m.from).applyState(m, this.now),
       'm.bots': (m) => this.onBots(m),
       'm.fx': (m) => this.onFx(m),
+      'm.ex': (m) => this.game.explosives.onNet(this.ents.get(m.s), m),
       'm.hit': (m) => this.onHit(m),
       'm.revive': (m) => this.onRevive(m),
       'm.down': (m) => this.onDown(m),
@@ -51,11 +59,21 @@ export class OnlineMatch {
         if (pk) pk.pending = false;
       },
       'm.drop': (m) => this.onDrop(m),
-      'm.build': (m) => this.game.build.netPlace(m),
+      'm.build': (m) => {
+        this.seenBuilds.add(m.key);
+        this.game.build.netPlace(m);
+      },
       'm.bedit': (m) => this.game.build.netEdit(m),
       'm.bdmg': (m) => {
         const piece = this.game.build.pieces.get(m.key);
         if (piece) this.game.build.damage(piece, m.d, true);
+      },
+      'm.ping': (m) => {
+        if (Array.isArray(m.p) && m.team === this.myTeam) this.game.addPing(new THREE.Vector3(m.p[0], m.p[1], m.p[2]), this.name(m.from), false);
+      },
+      'm.bdoor': (m) => {
+        const piece = this.game.build.pieces.get(m.key);
+        if (piece) this.game.build.setDoor(piece, !!m.open, true);
       },
       'm.brm': (m) => {
         const piece = this.game.build.pieces.get(m.key);
@@ -73,6 +91,28 @@ export class OnlineMatch {
         if (v && v.remoteDriver) v.netTarget = m;
       },
       'm.gone': (m) => this.onGone(m),
+      'm.emote': (m) => {
+        const e = this.ents.get(m.s);
+        if (!e?.isRemote) return;
+        if (m.e) e.startEmote(m.e);
+        else e.stopEmote();
+      },
+      'm.wdoor': (m) => {
+        const d = this.game.mapDoors.list[m.i];
+        if (d) this.game.mapDoors.setOpen(d, !!m.open, true);
+      },
+      'm.vboom': (m) => this.game.vehicles.list[m.i]?.destroy(true),
+      'm.pad': (m) => Array.isArray(m.p) && this.game.combat.addPad(m.p[0], m.p[1], m.p[2], m.y || 0),
+      'm.away': (m) => this.onAway(m, true),
+      'm.back': (m) => this.onAway(m, false),
+      'm.rejoin': (m) => this.onRejoin(m),
+      auth_ok: () => {
+        // Reconectado: si la partida aún nos guarda el sitio llega m.rejoin;
+        // si no llega enseguida, la partida ya no existe.
+        if (!this.offline || this.ended) return;
+        clearTimeout(this.rejoinWait);
+        this.rejoinWait = setTimeout(() => this.offline && this.giveUp(), 4000);
+      },
       'm.end': (m) => this.onEnd(m),
     };
     for (const [t, fn] of Object.entries(this.handlers)) this.offs.push(net.on(t, fn));
@@ -105,9 +145,18 @@ export class OnlineMatch {
     if (this.started) return;
     this.started = true;
     this.game.onOnlineGo();
+    if (this.game.settings.voice && this.remotes.some((r) => r.isHuman)) {
+      this.voice = new VoiceChat(this.game, this);
+      this.voice.start();
+    }
   }
 
   dispose() {
+    this.voice?.stop();
+    this.voice = null;
+    clearTimeout(this.rejoinTimer);
+    clearTimeout(this.rejoinWait);
+    this.game.hud.netBanner?.(null);
     for (const off of this.offs) off();
     this.offs.length = 0;
     for (const r of this.remotes) r.remove();
@@ -133,7 +182,7 @@ export class OnlineMatch {
   update(dt) {
     const now = this.now;
     for (const r of this.remotes) r.update(dt, now);
-    if (!this.started || this.ended) return;
+    if (!this.started || this.ended || this.offline) return;
     this.stT -= dt;
     if (this.stT <= 0) {
       this.stT = ST_RATE;
@@ -210,11 +259,23 @@ export class OnlineMatch {
     const o = tmp.set(m.o[0], m.o[1], m.o[2]);
     const from = shooter?.isRemote && shooter.model.root.visible ? shooter.muzzleWorld(new THREE.Vector3()) : o.clone();
     const d = from.distanceTo(g.camera.position);
-    if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), 0xffe0a0, 0.02);
+    const beam = m.w === 'plasma';
+    if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), beam ? 0x3ff0e0 : 0xffe0a0, beam ? 0.045 : 0.02, beam ? 0.14 : 0.07);
     const vol = clamp(1 - d / 260, 0, 1);
-    if (vol > 0.03) g.audio.shot(m.w, vol * vol * 0.9);
-    if (d < 150) g.effects.muzzleFlash(null, from);
-    if (shooter) g.noise(shooter.pos, m.w === 'sniper' ? 160 : 90, shooter);
+    if (vol > 0.03) g.audio.shot(m.w, vol * vol * 0.9, from);
+    if (d < 150 && m.w !== 'bow') g.effects.muzzleFlash(null, from);
+    if (shooter) g.noise(shooter.pos, m.w === 'sniper' || m.w === 'dmr' ? 160 : 90, shooter);
+  }
+
+  // Lanzamiento de un explosivo (granada, C4, cohete…) o detonación de C4.
+  sendEx(owner, data) {
+    if (!this.started || !this.isLocal(owner)) return;
+    const msg = { t: 'm.ex', s: owner.netId, a: data.a };
+    if (data.k) msg.k = data.k;
+    if (data.r !== undefined) msg.r = data.r;
+    if (data.o) msg.o = [r2(data.o.x), r2(data.o.y), r2(data.o.z)];
+    if (data.v) msg.v = [r2(data.v.x), r2(data.v.y), r2(data.v.z)];
+    this.net.sendRaw(JSON.stringify(msg));
   }
 
   // ------------------------------------------------------------ COMBATE
@@ -285,10 +346,92 @@ export class OnlineMatch {
     this.game.onOnlineEnd(m);
   }
 
+  // Corte de conexión: la partida sigue en local mientras el cliente intenta
+  // reconectar; el servidor nos guarda el sitio REJOIN_MS (45 s).
   onDisconnected() {
+    if (this.ended || this.offline) return;
+    if (!this.started) return this.giveUp();
+    this.offline = true;
+    this.offlineAt = this.now;
+    this.game.hud.netBanner?.('Conexión perdida. Reconectando…', 45);
+    this.rejoinTimer = setTimeout(() => this.giveUp(), 46000);
+  }
+
+  giveUp() {
     if (this.ended) return;
     this.ended = true;
+    this.offline = false;
+    clearTimeout(this.rejoinTimer);
+    clearTimeout(this.rejoinWait);
+    this.game.hud.netBanner?.(null);
     this.game.onOnlineEnd({ winner: -2, reason: 'desconexión' });
+  }
+
+  // Otro jugador pierde la conexión (true) o vuelve (false).
+  onAway(m, away) {
+    const e = this.ents.get(m.id);
+    if (!e?.isRemote) return;
+    e.away = away;
+    const tag = `<b class="${this.game.teamTag(e)}">${e.name}</b>`;
+    this.game.hud.killFeed(away ? `${tag} ha perdido la conexión (reconectando…)` : `${tag} ha vuelto a la partida`, false);
+    // Si era el anfitrión, sus bots se quedan quietos hasta que vuelva.
+  }
+
+  // De vuelta en la partida: se aplica lo que cambió mientras no estábamos.
+  onRejoin(m) {
+    if (m.id !== this.id || this.ended) return;
+    const g = this.game;
+    this.offline = false;
+    clearTimeout(this.rejoinTimer);
+    clearTimeout(this.rejoinWait);
+    g.hud.netBanner?.(null);
+    g.hud.toast('¡Conexión recuperada! Has vuelto a la partida');
+    if (m.score) g.score = m.score;
+    // Construcciones: añadir las nuevas, poner al día ediciones y puertas y
+    // quitar las que se rompieron.
+    const keys = new Set();
+    const lobbyGone = g.phase !== 'lobby';
+    for (const b of m.builds || []) {
+      if (lobbyGone && offMap(b.cx * 4 + 2, b.cz * 4 + 2)) continue;
+      keys.add(b.key);
+      this.seenBuilds.add(b.key);
+      let piece = g.build.pieces.get(b.key);
+      if (!piece) {
+        g.build.netPlace(b);
+        piece = g.build.pieces.get(b.key);
+      } else if ((piece.edit | 0) !== (b.edit | 0)) g.build.netEdit({ key: b.key, mask: b.edit | 0, dir: b.dir });
+      if (piece && !!piece.doorOpen !== !!b.open) g.build.setDoor(piece, !!b.open, true);
+    }
+    for (const piece of [...g.build.pieces.values()]) {
+      if (this.seenBuilds.has(piece.key) && !keys.has(piece.key)) g.build.remove(piece, false);
+    }
+    // Cofres abiertos (con el botín que aún queda en el suelo) y objetos cogidos
+    const taken = new Set(m.taken || []);
+    for (const [i, items] of m.chests || []) {
+      const c = g.containers.list[i];
+      if (c && !c.opened) g.containers.openNet(c, items.filter((x) => !taken.has(x[0])), {});
+    }
+    for (const id of taken) {
+      const pk = g.pickups.byNid.get(id);
+      if (pk) g.pickups.remove(pk);
+    }
+    this.onDrop({ items: (m.drops || []).filter((d) => !taken.has(d[0]) && !(lobbyGone && offMap(d[2], d[4]))) });
+    const padKey = (x, z) => `${Math.round(x * 2)},${Math.round(z * 2)}`;
+    const have = new Set(g.combat.pads.map((p) => padKey(p.pos.x, p.pos.z)));
+    for (const p of m.pads || []) if (!(lobbyGone && offMap(p.p[0], p.p[2])) && !have.has(padKey(p.p[0], p.p[2]))) g.combat.addPad(p.p[0], p.p[1], p.p[2], p.y || 0);
+    // Quién cayó mientras tanto
+    for (const id of m.dead || []) {
+      const e = this.ents.get(id);
+      if (e?.isRemote && !e.dead && !this.mode.respawn) {
+        e.netEliminate(true);
+        g.chars = g.chars.filter((c) => c !== e);
+      }
+    }
+    for (const id of m.away || []) {
+      const e = this.ents.get(id);
+      if (e?.isRemote) e.away = true;
+    }
+    g.checkEnd?.();
   }
 
   // ------------------------------------------------------------ MUNDO
@@ -339,12 +482,38 @@ export class OnlineMatch {
     if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by));
   }
 
+  sendEmote(c, id) {
+    if (this.isLocal(c)) this.net.send('m.emote', { s: c.netId, e: id || '' });
+  }
+
+  sendMapDoor(door) {
+    this.net.send('m.wdoor', { i: door.i, open: door.open });
+  }
+
+  sendVehicleBoom(v) {
+    this.net.send('m.vboom', { i: v.index });
+  }
+
+  sendPad(x, y, z, yaw) {
+    this.net.send('m.pad', { p: [r2(x), r2(y), r2(z)], y: r3(yaw) });
+  }
+
   sendBuild(piece) {
-    this.net.send('m.build', { key: piece.key, type: piece.type, cx: piece.cx, cz: piece.cz, base: piece.base, dir: piece.dir, mat: piece.mat });
+    this.seenBuilds.add(piece.key);
+    this.net.send('m.build', { key: piece.key, type: piece.type, cx: piece.cx, cz: piece.cz, base: piece.base, dir: piece.dir, mat: piece.mat, edit: piece.edit, team: piece.team });
+  }
+
+  sendPing(pos) {
+    this.net.send('m.ping', { p: [r2(pos.x), r2(pos.y), r2(pos.z)], team: this.myTeam });
+  }
+
+  sendBuildDoor(piece) {
+    this.net.send('m.bdoor', { key: piece.key, open: piece.doorOpen });
   }
 
   sendBuildEdit(piece) {
-    this.net.send('m.bedit', { key: piece.key, mask: piece.mask, dir: piece.dir });
+    // mask = casillas quitadas (src/game/build.js)
+    this.net.send('m.bedit', { key: piece.key, mask: piece.edit | 0, dir: piece.dir });
   }
 
   sendBuildDamage(piece, d) {

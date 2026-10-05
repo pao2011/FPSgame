@@ -2,6 +2,24 @@ import * as THREE from 'three';
 import { World } from '../world/world.js';
 import { NavGrid } from '../world/navgrid.js';
 import { createSky, SKY } from '../world/sky.js';
+import { Grass } from '../world/grass.js';
+import { InventoryPanel } from '../ui/inventory.js';
+import { Accessibility } from '../ui/accessibility.js';
+import { GamepadInput } from '../core/gamepad.js';
+import { MatchLoader } from '../ui/tips.js';
+import { Trails } from './trails.js';
+import { Weather } from '../world/weather.js';
+import { NPCs } from './npcs.js';
+import { RebootVans } from './reboot.js';
+import { Replay, Viewer } from './replay.js';
+import { EditCourse } from './editcourse.js';
+import { Music } from '../core/music.js';
+import { MapDoors } from './mapdoors.js';
+import { i18n } from '../ui/i18n.js';
+import { NpcDialog } from '../ui/npcdialog.js';
+import { makeEnvironment } from '../world/envmap.js';
+import { setModelQuality } from './models.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -9,6 +27,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Input } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { Effects } from './effects.js';
+import { Explosives } from './explosives.js';
 import { PickupManager, ContainerManager, spawnFloorLoot } from './loot.js';
 import { Dummies } from './dummies.js';
 import { BattleBus } from './bus.js';
@@ -25,17 +44,20 @@ import { TouchControls, isTouchDevice } from '../ui/touch.js';
 import { Progress } from './progress.js';
 import { Creative } from './creative.js';
 import { MapRenderer } from '../ui/minimap.js';
-import { itemName, itemRarity, RARITIES, MATERIALS, CONSUMABLES, PICKAXE, makeWeapon } from './items.js';
+import { itemName, itemRarity, RARITIES, MATERIALS, AMMO, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon, stackDef, setLootPool } from './items.js';
+import { mergeBinds, keyName } from '../core/binds.js';
+import { CreativePanel } from '../ui/creative.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
 import { clamp, random, RNG } from '../core/rng.js';
-import { NetClient, savedToken, savedOnlineSeed } from '../net/client.js';
+import { NetClient } from '../net/client.js';
 import { OnlineMatch } from '../net/match.js';
-import { ISLAND_RADIUS } from '../world/constants.js';
+import { ISLAND_RADIUS, MAP_SEED } from '../world/constants.js';
 
 const SKY_COLOR = SKY.horizon;
 const tmpV = new THREE.Vector3();
 const tmpF = new THREE.Vector3();
 const tmpR = new THREE.Vector3();
+const tmpCol = new THREE.Color();
 
 export class Game {
   constructor(container) {
@@ -47,6 +69,7 @@ export class Game {
     const low = this.settings.quality === 'baja' || mobile;
     const high = this.settings.quality === 'alta';
     this.quality = mobile ? 'movil' : low ? 'baja' : high ? 'alta' : 'normal';
+    setModelQuality(this.quality);
     const tc = this.settings.touchControls;
     this.isTouch = tc === 'on' || (tc !== 'off' && isTouchDevice());
 
@@ -58,7 +81,7 @@ export class Game {
     renderer.setPixelRatio(this.pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = !low;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = high ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.autoClear = false;
@@ -78,8 +101,22 @@ export class Game {
     this.viewScene.add(vd);
 
     this.sunDir = new THREE.Vector3(0.45, 0.8, 0.35).normalize();
+    vd.position.copy(this.sunDir);
     this.sky = createSky(this.scene, this.sunDir);
-    this.scene.add(new THREE.HemisphereLight(0xd6ecff, 0x5f6e44, 1.5));
+    this.hemi = new THREE.HemisphereLight(0xd6ecff, 0x5f6e44, low ? 1.5 : 0.75);
+    this.scene.add(this.hemi);
+    // Iluminación de entorno para los materiales PBR (calidad normal/alta)
+    if (!low) {
+      try {
+        const env = makeEnvironment(renderer, this.sunDir);
+        this.scene.environment = env;
+        this.scene.environmentIntensity = 0.75;
+        this.viewScene.environment = env;
+        this.viewScene.environmentIntensity = 0.9;
+      } catch (err) {
+        console.warn('Sin mapa de entorno:', err);
+      }
+    }
     const sun = (this.sun = new THREE.DirectionalLight(0xffefd2, 3.0));
     sun.castShadow = !low;
     sun.shadow.mapSize.set(high ? 4096 : 2048, high ? 4096 : 2048);
@@ -92,16 +129,22 @@ export class Game {
     this.setupPost();
 
     // ------------------------------------------------------------ MUNDO
-    // Si hay sesión online guardada se usa la isla del servidor (así no hay
-    // que recargar al entrar en una partida online).
-    const onlineSeed = savedToken() ? savedOnlineSeed() : 0;
-    this.seed = Number(params.get('seed')) || onlineSeed || Math.floor(Math.random() * 1e9);
+    // Mapa único: siempre la misma isla (también en online). El modo
+    // creativo usa su propia isla plana (sandbox, no es un mapa de partida).
+    this.seed = MAP_SEED;
     this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
+    this.grass = new Grass(this.scene, this.world, this.quality);
+    this.grass.onAutoOff = () => this.hud?.toast('Rendimiento: se ha quitado el césped para ganar FPS');
+    this.weather = new Weather(this);
 
     this.input = new Input(this.canvas);
+    this.gamepad = new GamepadInput(this);
     this.touch = null;
     this.audio = audio;
     this.effects = new Effects(this);
+    this.explosives = new Explosives(this);
+    this.trails = new Trails(this);
+    this.camShake = 0;
     this.pickups = new PickupManager(this);
     this.containers = new ContainerManager(this, this.world.chestSpots, this.world.ammoSpots);
     this.dummies = new Dummies(this, this.world.dummySpots);
@@ -140,12 +183,36 @@ export class Game {
     this.spectating = null;
     this.respawnT = 0;
     this.infiniteMats = false;
+    this.infiniteAmmo = false;
+    this.godMode = false;
+    this.speedMult = 1;
+    this.phase = 'menu'; // 'lobby' (isla de inicio) | 'bus' | 'match'
+    this.lobbyT = 0;
+    this.lobbyJoin = [];
+    this.lobbyCount = 0;
+    this.pings = [];
+    this.waypoint = null;
     this.net = null; // partida online en curso (OnlineMatch)
     this.waiting = false; // esperando a que empiece la partida online
     this.netClient = new NetClient();
     if (this.settings.outfit) this.player.setOutfit(this.settings.outfit);
 
     this.menu = new Menu(this);
+    this.creativePanel = new CreativePanel(this);
+    this.inventory = new InventoryPanel(this);
+    this.a11y = new Accessibility(this);
+    this.loader = new MatchLoader(this);
+    this.npcs = new NPCs(this);
+    this.reboot = new RebootVans(this);
+    this.mapDoors = new MapDoors(this);
+    this.replay = new Replay(this);
+    this.viewer = new Viewer(this);
+    this.editCourse = new EditCourse(this);
+    this.music = new Music(this.audio);
+    // El audio necesita un gesto del usuario: el primer clic activa la música del menú
+    addEventListener('pointerdown', () => this.audio.init(), { once: true });
+    this.music.setVolume((this.settings.music ?? 40) / 100);
+    this.npcDialog = new NpcDialog(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
@@ -162,6 +229,7 @@ export class Game {
     this.hud.show(false);
     this.applySettings();
     window.game = this;
+    this.lastFrame = 0;
     // Con la pestaña en segundo plano el navegador frena requestAnimationFrame:
     // en online se sigue simulando (sin dibujar) para no congelar al jugador
     // ni a los bots del anfitrión.
@@ -227,6 +295,17 @@ export class Game {
       this.viewPass.clearDepth = true;
       this.bloomPass = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.5, 1.2);
       composer.addPass(this.mainPass);
+      // Oclusión ambiental (rincones y bases de muros más oscuros) en calidad alta
+      if (this.quality === 'alta') {
+        try {
+          this.aoPass = new GTAOPass(this.scene, this.camera, size.x, size.y);
+          this.aoPass.updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.5, thickness: 1.5, scale: 1.2 });
+          this.aoPass.blendIntensity = 0.85;
+          composer.addPass(this.aoPass);
+        } catch (err) {
+          console.warn('Sin oclusión ambiental:', err);
+        }
+      }
       composer.addPass(this.viewPass);
       composer.addPass(this.bloomPass);
       composer.addPass(new OutputPass());
@@ -243,10 +322,19 @@ export class Game {
 
   applySettings() {
     const s = this.settings;
+    s.binds = mergeBinds(s.binds);
     saveSettings(s);
+    this.input.binds = s.binds;
     if (this.audio.master) this.audio.master.gain.value = (s.volume / 100) * 0.6;
     document.getElementById('fps').style.display = s.showFps ? 'block' : 'none';
+    const root = document.documentElement.style;
+    root.setProperty('--hud-scale', String(s.hudScale || 1));
+    root.setProperty('--cross', s.crosshairColor || '#ffffff');
     this.touch?.applySettings();
+    this.a11y?.apply();
+    i18n.set(s.lang || 'es');
+    this.music?.setVolume((s.music ?? 40) / 100 * (s.volume / 100));
+    if (this.audio) this.audio.spatial = s.spatialAudio !== false;
     if (this.renderer && this.quality === 'movil') {
       const pr = this.pixelRatio();
       if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.01) {
@@ -254,6 +342,11 @@ export class Game {
         this.renderer.setSize(innerWidth, innerHeight);
       }
     }
+  }
+
+  // Nombre de la tecla asignada a una acción (para los avisos del HUD).
+  key(action) {
+    return keyName(this.settings.binds?.[action]?.[0]);
   }
 
   // Mantiene la pantalla encendida durante la partida (móviles).
@@ -290,7 +383,7 @@ export class Game {
       this.hadLock = true;
       this.keepAwake(true);
       this.setPaused(false);
-    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen && !this.uiOpen) {
+    } else if (this.state === 'playing' && this.hadLock && !this.spectating && this.player.alive && !this.chatOpen && !this.uiOpen && !this.hud.mapOpen) {
       this.setPaused(true);
     }
   }
@@ -330,7 +423,7 @@ export class Game {
     this.prepareMatch(mode, { rng: random, stormRng: random, team: 0 });
 
     // Equipos (el jugador siempre en el equipo 0)
-    const total = mode.noBots ? 1 : mode.id === 'duel' ? 2 : clamp(this.settings.players | 0, 2, 60);
+    const total = mode.noBots ? 1 : mode.id === 'duel' ? 2 : mode.id === 'team20' ? 40 : clamp(this.settings.players | 0, 2, 60);
     const nb = total - 1;
     const teams = [];
     if (mode.teams) {
@@ -340,8 +433,10 @@ export class Game {
       const k = mode.teamSize || 1;
       for (let i = 0; i < nb; i++) teams.push(i < k - 1 ? 0 : 1 + Math.floor((i - (k - 1)) / k));
     }
+    this.botDiff = this.settings.difficulty;
     this.bots.reset(nb, teams, this.settings.difficulty);
     this.chars = [this.player, ...this.bots.list];
+    this.npcs.startBoss(mode);
     this.beginMatch({});
     if (mode.creative) {
       const p = this.player;
@@ -352,24 +447,30 @@ export class Game {
       p.model.root.visible = this.camMode !== 'fp';
       this.creative.start();
     }
+    if (mode.editCourse) this.editCourse.start();
     this.touch?.fullscreen();
     this.input.lock();
   }
 
   // Partida online (info = mensaje m.start del servidor).
   startOnline(info) {
-    if (info.seed !== this.seed || this.world.creative) {
-      // Isla distinta: recargar con la isla del servidor.
+    if (info.seed !== this.seed) {
+      // El mapa es único y fijo: un servidor con otra isla es de otra versión.
+      this.hud.toast('El servidor usa otra versión del mapa: actualiza el servidor y el juego');
+      this.netClient.send?.('leave_match');
+      return;
+    }
+    if (this.world.creative) {
+      // Desde la isla creativa: recargar con la isla principal
       const q = new URLSearchParams(location.search);
       q.delete('creativo');
-      q.set('seed', info.seed);
       q.set('online', '1');
       location.search = q.toString();
       return;
     }
     if (this.net) this.leaveOnline();
     const base = MODES[info.mode] || MODES.solo;
-    const mode = { ...base, scoreLimit: info.scoreLimit || base.scoreLimit, online: true };
+    const mode = { ...base, scoreLimit: info.scoreLimit || base.scoreLimit, online: true, onlineMatch: true };
     const net = new OnlineMatch(this, this.netClient, info);
     this.net = net;
     this.prepareMatch(mode, { rng: new RNG(info.lootSeed), stormRng: new RNG(info.stormSeed), team: net.myTeam, online: true });
@@ -378,6 +479,7 @@ export class Game {
     if (this.netClient.user?.outfit) this.player.setOutfit(this.netClient.user.outfit);
     // El anfitrión simula a los bots de la partida.
     const botEnts = net.isHost ? info.ents.filter((e) => e.bot) : [];
+    this.botDiff = info.difficulty;
     this.bots.reset(botEnts.length, botEnts.map((e) => e.team), info.difficulty);
     this.bots.list.forEach((b, i) => {
       b.netId = botEnts[i].id;
@@ -389,18 +491,21 @@ export class Game {
     this.waiting = true;
     this.combat.modelKey = null;
     this.hud.toast('Conectando con el resto de jugadores…');
+    this.loader.show(info, mode.name);
     net.ready();
   }
 
   onOnlineGo() {
     this.waiting = false;
+    this.loader.hide();
     this.audio.busHorn?.();
-    this.hud.toast(this.mode.noBus ? '¡A luchar!' : '¡La partida ha empezado! Salta cuando quieras');
+    this.hud.toast(this.mode.noBus ? '¡A luchar!' : '¡Todos los jugadores están listos! El autobús sale en 10 segundos');
     this.input.lock();
   }
 
   // Fin de la partida online decidido por el servidor.
   onOnlineEnd(m) {
+    this.loader.hide();
     if (this.state !== 'playing') return;
     if (m.winner === -2) {
       this.deathInfo = { type: 'net' };
@@ -412,6 +517,7 @@ export class Game {
   }
 
   leaveOnline() {
+    this.loader.hide();
     if (!this.net) return;
     const net = this.net;
     this.net = null;
@@ -428,6 +534,17 @@ export class Game {
     this.menu.hideAll();
     this.paused = false;
     this.infiniteMats = !!mode.infinite;
+    this.infiniteAmmo = !!mode.creative;
+    this.godMode = false;
+    this.speedMult = 1;
+    this.phase = 'match';
+    this.lobbyT = null;
+    this.lobbyJoin.length = 0;
+    this.thanksQueue = [];
+    this.clearPings();
+    this.waypoint = null;
+    this.creativePanel.hide();
+    this.creative.reset();
     if (this.player.vehicle) this.vehicles.exit(this.player);
     this.player.reset();
     this.player.name = 'Tú';
@@ -435,12 +552,18 @@ export class Game {
     this.harvest.reset();
     this.vehicles.reset();
     this.combat.reset();
+    this.explosives.reset();
     this.effects.clear();
     this.pickups.clear();
+    setLootPool(mode.lootPool);
     spawnFloorLoot(this, this.world.lootSpots, o.rng, !!o.online);
     this.containers.reset(o.rng);
     this.dummies.reset();
     this.player.team = o.team;
+    this.weather.start(o.stormRng, mode);
+    this.npcs.reset(mode, !!o.online);
+    this.reboot.reset();
+    this.mapDoors.reset();
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
     this.storm.mesh.visible = true;
     this.arenaAngle = o.stormRng.float(0, Math.PI * 2);
@@ -460,11 +583,24 @@ export class Game {
     this.hud.lastZone = null;
   }
 
-  // Coloca a todos: en el autobús o (modos con reaparición) directamente en el aire.
+  // Coloca a todos: en la isla de inicio (y luego el autobús), en el modo
+  // creativo o (modos con reaparición) directamente en el aire.
   beginMatch(o) {
+    this.heat = { land: [], elim: [] };
+    for (const c of this.chars) c.landedHeat = false;
+    this.viewer.hide();
+    this.editCourse.stop();
+    this.replay.start();
     const mode = this.mode;
     const p = this.player;
-    if (mode.noBus) {
+    this.busOpts = o;
+    if (mode.creative) {
+      this.storm.active = false;
+      this.storm.mesh.visible = false;
+    } else if (!mode.noBus) {
+      if ((this.settings.skipLobby || mode.noBots) && !this.net) this.launchBus();
+      else this.enterLobby();
+    } else {
       this.bus.active = false;
       this.bus.model.visible = false;
       this.spawnAir(p, this.spawnPoint(p.team));
@@ -473,14 +609,131 @@ export class Game {
         const [x, z] = this.spawnPoint(b.team);
         b.respawnAt(x, z, this.botLoadout(), mode.arena ? this.world.terrain.heightAt(x, z) + 30 : 140);
       }
-    } else {
-      this.bus.launch(o.busAng, o.busOff);
-      p.mode = 'bus';
-      p.yaw = Math.atan2(-this.bus.dir.x, -this.bus.dir.z) + 0.6;
-      p.pitch = -0.35;
-      if (!this.net) this.audio.busHorn?.();
     }
     if (this.infiniteMats) p.mats = { wood: 999, stone: 999, metal: 999 };
+  }
+
+  // ------------------------------------------------------ ISLA DE INICIO
+  // Todos aparecen en la isla de inicio; cuando están todos los jugadores
+  // empieza una cuenta atrás de 10 s y se sube al autobús de batalla.
+  enterLobby() {
+    const p = this.player;
+    const L = this.world.lobby;
+    this.phase = 'lobby';
+    this.storm.active = false;
+    this.storm.mesh.visible = false;
+    this.bus.active = false;
+    this.bus.model.visible = false;
+    const sp = L.spawns[random.int(0, L.spawns.length - 1)];
+    p.resetBody();
+    p.mode = 'ground';
+    p.pos.set(sp.x, this.world.terrain.heightAt(sp.x, sp.z) + 0.6, sp.z);
+    p.yaw = sp.yaw;
+    p.pitch = -0.1;
+    p.model.root.visible = this.camMode !== 'fp';
+    this.infiniteMats = true;
+    this.infiniteAmmo = true;
+    p.mats = { wood: 999, stone: 999, metal: 999 };
+    // Armas de práctica en las mesas (en online, compartidas: quien llega
+    // primero se la lleva, arbitrado por el servidor como el resto del botín)
+    this.lobbyPickups = [];
+    const types = ['ar', 'burst', 'heavyar', 'smg', 'shotgun', 'tactical', 'sniper', 'pistol', 'revolver', 'rocket', 'glauncher', 'minigun'];
+    L.loot.forEach((s, i) => {
+      const type = types[i % types.length];
+      const it = makeWeapon(type, 3); // makeWeapon ajusta la rareza a las del arma
+      this.lobbyPickups.push(this.pickups.spawn(it, new THREE.Vector3(s.x, s.y, s.z), null, this.net ? `lob${i}` : null));
+    });
+    // Los bots van llegando poco a poco (en online todos están ya)
+    const bots = this.bots.list;
+    bots.forEach((b, i) => {
+      const s = L.spawns[(i + 1) % L.spawns.length];
+      const a = random.float(0, Math.PI * 2);
+      b.enterLobby(s.x + Math.cos(a) * random.float(0, 3), s.z + Math.sin(a) * random.float(0, 3), s.yaw);
+      b.lobbyShown = !!this.net;
+      if (!this.net) this.lobbyJoin.push({ b, t: random.float(0.4, Math.min(9, 2.5 + bots.length * 0.18)) });
+    });
+    this.lobbyJoin.sort((a, b) => a.t - b.t);
+    this.lobbyElapsed = 0;
+    this.lobbyCount = this.net ? this.chars.length : 1;
+    this.lobbyT = null;
+    this.lobbyEndAt = 0;
+    this.hud.toast(`Bienvenido a la Isla de Inicio · ${this.key('build')} para construir · coge armas de las mesas para practicar`);
+  }
+
+  updateLobby(dt) {
+    this.lobbyElapsed += dt;
+    while (this.lobbyJoin.length && this.lobbyJoin[0].t <= this.lobbyElapsed) {
+      const { b } = this.lobbyJoin.shift();
+      b.lobbyShown = true;
+      this.lobbyCount++;
+    }
+    if (this.net) this.lobbyCount = this.chars.length;
+    if (this.lobbyT === null) {
+      if (!this.lobbyJoin.length && !this.waiting) {
+        this.lobbyT = 10;
+        // en online, con el reloj real para que todos salgan a la vez
+        this.lobbyEndAt = this.net ? performance.now() / 1000 + 10 : 0;
+        this.audio.busHorn?.();
+        this.hud.toast('¡Ya estáis todos! El autobús de batalla sale en 10 segundos');
+      }
+      return;
+    }
+    const before = Math.ceil(this.lobbyT);
+    this.lobbyT = this.lobbyEndAt ? this.lobbyEndAt - performance.now() / 1000 : this.lobbyT - dt;
+    const now = Math.ceil(this.lobbyT);
+    if (now !== before && now >= 0) this.audio.beep(now === 0);
+    if (this.lobbyT <= 0) this.launchBus();
+  }
+
+  // Sube a todos al autobús (desde la isla de inicio o directamente).
+  launchBus() {
+    const p = this.player;
+    const fromLobby = this.phase === 'lobby';
+    this.phase = 'match';
+    if (fromLobby) {
+      // Todo lo de la isla de inicio se reinicia
+      for (const pk of this.lobbyPickups || []) this.pickups.remove(pk);
+      for (const pk of this.pickups.items.slice()) if (Math.hypot(pk.pos.x, pk.pos.z) > ISLAND_RADIUS + 120) this.pickups.remove(pk);
+      this.lobbyPickups = [];
+      this.build.reset();
+      this.combat.reset();
+      this.explosives.reset();
+      p.inventory = [PICKAXE, null, null, null, null, null];
+      p.selected = 0;
+      p.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
+      p.mats = { wood: 0, stone: 0, metal: 0 };
+      p.health = 100;
+      p.shield = 0;
+      p.flying = false;
+      p.regen = null;
+      p.setHeld(PICKAXE);
+      this.hud.setProgress(null);
+      this.infiniteMats = !!this.mode.infinite;
+      this.infiniteAmmo = false;
+      for (const b of this.bots.list) b.reset(this.botDiff || 'normal');
+      if (this.infiniteMats) p.mats = { wood: 999, stone: 999, metal: 999 };
+    }
+    this.storm.active = true;
+    this.storm.mesh.visible = true;
+    const o = this.busOpts || {};
+    this.bus.launch(o.busAng, o.busOff);
+    p.mode = 'bus';
+    p.vel.set(0, 0, 0);
+    p.yaw = Math.atan2(-this.bus.dir.x, -this.bus.dir.z) + 0.6;
+    p.pitch = -0.35;
+    this.matchTime = 0;
+    this.audio.busHorn?.();
+    // Algunos bots dan las gracias al conductor
+    this.thanksQueue = this.bots.list.filter(() => random.chance(0.25)).map((b) => ({ b, t: random.float(1, 9) }));
+    this.thanksT = 0;
+  }
+
+  thankDriver() {
+    if (this.bus.thanked) return;
+    this.bus.thanked = true;
+    this.audio.thanks();
+    this.hud.killFeed('<b class="me">Tú</b> ha dado las gracias al conductor del autobús 🚌', true);
+    this.hud.toast('¡Gracias, conductor!');
   }
 
   spawnAir(c, [x, z]) {
@@ -514,7 +767,7 @@ export class Game {
         { kind: 'consumable', type: 'shieldpot', count: 2 }, { kind: 'consumable', type: 'medkit', count: 1 }];
       p.selected = 1;
     }
-    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60 };
+    p.ammo = { light: 300, medium: 300, heavy: 18, shells: 60, rockets: 6 };
     p.shield = this.mode.arena ? 100 : 50;
     this.combat.modelKey = null;
   }
@@ -523,16 +776,27 @@ export class Game {
     return {
       weapons: [makeWeapon('ar', random.int(1, 3)), makeWeapon('shotgun', random.int(1, 3)), makeWeapon(random.pick(['smg', 'pistol']), random.int(0, 2))],
       heals: { bandage: 5, medkit: 1, smallshield: 2, shieldpot: 1 },
+      nades: { grenade: random.int(0, 2), molotov: random.int(0, 1) },
     };
   }
 
   quitToMenu() {
-    const wasOnline = !!this.net || this.mode.online;
+    this.inventory?.hide();
+    this.editCourse.stop();
+    setLootPool(null);
+    this.viewer.hide();
+    this.weather.reset();
+    const wasOnline = !!this.net || !!this.mode.onlineMatch;
     if (this.mode.creative) this.creative.stop();
     // Abandonar a mitad de partida también da XP (sin bonus de puesto)
     const abandon = this.state === 'playing' && !this.matchAwarded && this.matchTime > 30 ? this.awardMatch(false, null) : null;
     this.leaveOnline();
     this.state = 'menu';
+    this.phase = 'menu';
+    this.lobbyJoin.length = 0;
+    this.creativePanel.hide();
+    this.combat.reset();
+    this.clearPings();
     this.paused = false;
     this.waiting = false;
     this.spectating = null;
@@ -544,6 +808,7 @@ export class Game {
     this.bus.active = false;
     this.bus.model.visible = false;
     this.bots.reset(0, [], 'normal');
+    this.explosives.reset();
     this.chars = [this.player];
     this.player.model.root.visible = false;
     this.menu.showMain(wasOnline && this.netClient.authed ? 'online' : null);
@@ -558,6 +823,7 @@ export class Game {
     const res = this.progress.matchEnd({
       kills: p.stats.kills, damage: p.stats.damage, chests: p.stats.chests, built: p.stats.built, edits: p.stats.edits,
       heads: p.stats.heads, time: this.matchTime, place, win, online: !!this.net, respawn: !!this.mode.respawn,
+      distance: Math.round(p.stats.distance || 0), emotes: p.stats.emotes || 0, mode: this.mode.id, quests: p.stats.quests || 0,
     });
     return res;
   }
@@ -603,6 +869,8 @@ export class Game {
 
   noise(pos, r, src) {
     this.noises.push({ pos: pos.clone(), r, src, t: this.time });
+    // Música de combate si hay disparos cerca del jugador
+    if (src === this.player || pos.distanceToSquared(this.player.pos) < 70 * 70) this.lastCombat = this.time;
   }
 
   requestPath(bot, goal) {
@@ -664,7 +932,17 @@ export class Game {
 
   onElimination(victim, killer, type) {
     if (this.net?.isLocal(victim)) this.net.sendElim(victim, killer, type);
-    const how = type === 'storm' ? 'la tormenta' : type === 'fall' ? 'una caída' : type === 'quit' ? 'abandono' : null;
+    this.npcs.onElim(victim, killer);
+    if (this.heat && this.phase !== 'lobby') this.heat.elim.push([victim.pos.x, victim.pos.z]);
+    this.reboot.onElim(victim);
+    // Los bots a veces celebran la eliminación con un gesto
+    if (killer?.isBot && killer !== victim && Math.random() < 0.3) {
+      const id = ['baile', 'saludo', 'victoria', 'aplauso'][Math.floor(Math.random() * 4)];
+      setTimeout(() => {
+        if (killer.alive && killer.startEmote(id)) this.net?.sendEmote(killer, id);
+      }, 700);
+    }
+    const how = { storm: 'la tormenta', fall: 'una caída', quit: 'abandono', explosion: 'una explosión', fire: 'el fuego' }[type] || null;
     const v = `<b class="${this.teamTag(victim)}">${this.name(victim)}</b>`;
     let text;
     if (killer && killer !== victim) text = `<b class="${this.teamTag(killer)}">${this.name(killer)}</b> eliminó a ${v}`;
@@ -698,13 +976,13 @@ export class Game {
 
   get aliveCount() {
     let n = 0;
-    for (const c of this.chars) if (c.alive) n++;
+    for (const c of this.chars) if (c.alive && !c.boss) n++;
     return n;
   }
 
   teamsAlive() {
     const s = new Set();
-    for (const c of this.chars) if (c.alive) s.add(c.team);
+    for (const c of this.chars) if (c.alive && !c.boss) s.add(c.team);
     return s;
   }
 
@@ -740,7 +1018,7 @@ export class Game {
     }
     // Soltar el inventario
     const drops = [];
-    for (const it of p.inventory.slice(1)) if (it) drops.push({ ...it });
+    for (const it of p.inventory.slice(1)) if (it && !(it.count <= 0)) drops.push({ ...it });
     for (const a in p.ammo) if (p.ammo[a] > 0) drops.push({ kind: 'ammo', ammo: a, count: p.ammo[a] });
     if (!this.infiniteMats) for (const m in p.mats) if (p.mats[m] > 0) drops.push({ kind: 'material', mat: m, count: p.mats[m] });
     this.pickups.burst(drops.slice(0, 10), p.pos.clone().setY(p.pos.y + 0.8));
@@ -831,6 +1109,7 @@ export class Game {
   }
 
   endMatch(win, customCause = '') {
+    this.inventory?.hide();
     if (this.state !== 'playing') return;
     this.state = win ? 'won' : 'dead';
     this.spectating = null;
@@ -850,7 +1129,7 @@ export class Game {
       if (customCause) cause = customCause;
     }
     const xp = this.awardMatch(win, this.mode.respawn ? null : place);
-    this.menu.showEnd(win, cause, this.statsHTML(), !!this.mode.online, xp);
+    this.menu.showEnd(win, cause, this.statsHTML(), !!this.net, xp);
   }
 
   statsHTML() {
@@ -881,11 +1160,13 @@ export class Game {
   }
 
   onJumpFromBus() {
-    this.hud.toast(this.touch ? '¡Has saltado! Mira hacia abajo y empuja el joystick para caer más rápido' : '¡Has saltado! Mira hacia abajo y pulsa W para caer más rápido');
+    if (!this.settings.showHints) return;
+    this.hud.toast(this.touch ? '¡Has saltado! Mira hacia abajo y empuja el joystick para caer más rápido' : `¡Has saltado! Mira hacia abajo y pulsa ${this.key('forward')} para caer más rápido`);
   }
 
   onLanded() {
-    const build = this.touch ? 'el botón de ladrillos para construir' : 'Q para construir';
+    if (!this.settings.showHints) return;
+    const build = this.touch ? 'el botón de ladrillos para construir' : `${this.key('build')} para construir`;
     this.hud.toast(this.mode.build ? `¡Has aterrizado! Busca cofres y armas · ${build}` : '¡Has aterrizado! Busca cofres y armas');
   }
 
@@ -923,6 +1204,10 @@ export class Game {
   // ---------------------------------------------------------- LOOP
   loop = (ts) => {
     requestAnimationFrame(this.loop);
+    // Límite de FPS (Opciones)
+    const lim = this.settings.fpsLimit | 0;
+    if (lim > 0 && ts - this.lastFrame < 1000 / lim - 1) return;
+    this.lastFrame = ts;
     this.timer.update(ts);
     let raw = this.timer.getDelta();
     // Límite de 30 FPS (ahorro de batería): se salta un fotograma de cada dos
@@ -940,6 +1225,15 @@ export class Game {
 
   step(dt) {
     const input = this.input;
+    this.frameDt = dt;
+    this.gamepad.update(dt);
+    if (this.state === 'replay') {
+      this.time += dt;
+      this.world.water.material.uniforms.time.value = this.time;
+      this.viewer.updateReplay(dt);
+      input.endFrame();
+      return;
+    }
     this.time += dt;
     const t = this.time;
 
@@ -947,6 +1241,7 @@ export class Game {
     this.sky.material.uniforms.time.value = t;
     if (this.state === 'menu') {
       this.updateMenuCamera(t);
+      this.music?.update(this);
       this.world.clouds.rotation.y = t * 0.003;
       this.containers.update(dt, t);
       this.touch?.update();
@@ -959,7 +1254,7 @@ export class Game {
       input.endFrame();
       return;
     }
-    if (this.waiting) {
+    if (this.waiting && this.phase !== 'lobby') {
       this.net?.update(dt);
       this.updateCamera(dt);
       this.updateBanner();
@@ -971,13 +1266,28 @@ export class Game {
 
     const p = this.player;
     if (this.infiniteMats) p.mats.wood = p.mats.stone = p.mats.metal = 999;
-    if (this.state === 'playing' && p.alive) {
-      this.matchTime += dt;
+    if (this.phase === 'lobby' && this.state === 'playing') this.updateLobby(dt);
+    if (this.thanksQueue?.length && p.mode !== 'lobby') {
+      this.thanksT += dt;
+      while (this.thanksQueue.length && this.thanksQueue[0].t <= this.thanksT) {
+        const { b } = this.thanksQueue.shift();
+        if (b.mode === 'bus') this.hud.killFeed(`<b>${b.name}</b> ha dado las gracias al conductor del autobús 🚌`);
+      }
+    }
+    if (this.state === 'playing' && p.alive && !(this.viewer.active && this.viewer.kind === 'photo')) {
+      if (this.phase !== 'lobby') this.matchTime += dt;
       if (!this.paused) this.handleGlobalKeys(input);
       const zoom = this.camera.fov / this.baseFov;
-      const sens = 0.0022 * zoom * this.settings.sensitivity;
-      const tsens = 0.0048 * zoom * (this.settings.touchSens || 1);
-      const inv = this.settings.invertY ? -1 : 1;
+      const st = this.settings;
+      // Sensibilidad según el contexto (apuntando, con mira, construyendo, editando)
+      let mult = 1;
+      if (this.build.editing) mult = st.editSensitivity ?? 1;
+      else if (this.build.active) mult = st.buildSensitivity ?? 1;
+      else if (this.combat.adsBlend > 0.5) mult = this.hud.scoped ? st.scopeSensitivity ?? 0.6 : st.adsSensitivity ?? 0.8;
+      if (this.creativePanel.open) mult = 0;
+      const sens = 0.0022 * zoom * st.sensitivity * mult;
+      const tsens = 0.0048 * zoom * (st.touchSens || 1) * mult;
+      const inv = st.invertY ? -1 : 1;
       p.yaw -= input.mouseDX * sens + input.lookDX * tsens;
       p.pitch -= (input.mouseDY * sens + input.lookDY * tsens) * inv;
       p.pitch = clamp(p.pitch, -1.5, 1.5);
@@ -992,7 +1302,7 @@ export class Game {
     } else {
       if (this.state === 'playing') {
         this.matchTime += dt;
-        if (input.wasPressed('KeyM')) this.hud.toggleMap();
+        if (input.hit('map')) this.hud.toggleMap();
       }
       this.combat.update(dt, input);
       this.vehicles.update(dt, null);
@@ -1003,6 +1313,7 @@ export class Game {
     this.processPaths();
     this.bots.update(dt);
     this.net?.update(dt);
+    this.net?.voice?.update(dt, input);
     this.updateRespawns(dt);
     this.harvest.update(dt);
     this.bus.update(dt, t);
@@ -1010,7 +1321,31 @@ export class Game {
     this.pickups.update(dt, t);
     this.containers.update(dt, t);
     this.dummies.update(dt);
+    this.explosives.update(dt);
     this.effects.update(dt);
+    this.grass.update(dt, this.camera.position);
+    this.trails.update(dt);
+    this.replay.record(dt);
+    this.mapDoors.update(dt);
+    // Mapa de calor: dónde aterriza cada uno (la primera vez)
+    if (this.heat && this.state === 'playing' && this.phase !== 'lobby') {
+      for (const c of this.chars) {
+        if (!c.landedHeat && c.mode === 'ground' && c.alive && (c.prevHeatMode === 'glide' || c.prevHeatMode === 'freefall')) {
+          c.landedHeat = true;
+          this.heat.land.push([c.pos.x, c.pos.z]);
+        }
+        c.prevHeatMode = c.mode;
+      }
+    }
+    if (this.state === 'playing') this.editCourse.update(dt);
+    if (this.state === 'playing') {
+      this.npcs.update(dt);
+      this.reboot.update(dt);
+    }
+    if (this.state === 'playing') this.weather.update(dt);
+    this.inventory.update();
+    this.a11y.update(dt);
+    this.updatePings(dt);
     this.updateAudio();
     if (this.noises.length && t - this.noises[0].t > 1.5) this.noises = this.noises.filter((n) => t - n.t < 1.5);
     this.world.clouds.rotation.y = t * 0.003;
@@ -1021,37 +1356,143 @@ export class Game {
 
   handleGlobalKeys(input) {
     const p = this.player;
-    if (input.wasPressed('KeyM')) this.hud.toggleMap();
-    if (input.wasPressed('KeyV')) {
+    if (input.hit('map')) this.hud.toggleMap();
+    if (input.hit('inventory')) this.inventory.toggle();
+    if (input.hit('emote') && !p.emote && !this.build.active) {
+      const id = p.outfit?.emote || 'baile';
+      if (p.startEmote(id)) {
+        p.stats.emotes = (p.stats.emotes || 0) + 1;
+        this.net?.sendEmote(p, id);
+      }
+    } else if (p.emote && (input.held('forward') || input.held('back') || input.held('left') || input.held('right') || input.hit('jump') || input.held('fire') || input.held('ads') || input.axis.active || this.build.active)) {
+      p.stopEmote();
+      this.net?.sendEmote(p, '');
+    }
+    if (input.hit('camera')) {
       this.camMode = this.camMode === 'fp' ? 'tp' : 'fp';
       this.hud.toast(this.camMode === 'fp' ? 'Cámara: primera persona' : 'Cámara: tercera persona');
     }
-    if (p.mode !== 'ground' || p.vehicle || p.knocked) return;
+    if (input.hit('catalog')) {
+      if (p.mode === 'bus') this.thankDriver();
+      else if (this.mode.creative) this.creativePanel.toggle();
+    }
+    if (input.hit('ping')) this.pingAim();
+    if (p.mode !== 'ground' || p.vehicle || p.knocked || this.build.editing) return;
     if (this.build.active) {
       for (let i = 4; i < 6; i++) {
-        if (input.wasPressed('Digit' + (i + 1))) {
+        if (input.hit('slot' + (i + 1))) {
           this.build.setActive(false);
           this.combat.select(i);
         }
       }
       return;
     }
-    for (let i = 0; i < 6; i++) if (input.wasPressed('Digit' + (i + 1))) this.combat.select(i);
+    for (let i = 0; i < 6; i++) if (input.hit('slot' + (i + 1))) this.combat.select(i);
     if (input.wheel) this.combat.cycle(input.wheel > 0 ? 1 : -1);
-    if (input.wasPressed('KeyG')) this.dropSelected();
+    if (input.hit('drop')) this.dropSelected();
+  }
+
+  // ------------------------------------------------------------ MARCADORES
+  // Marca el punto al que apuntas (lo ven tus compañeros en partidas online).
+  pingAim() {
+    const hit = this.raycast(this.aimOrigin, this.aimDir, 600, this.aimSkip, this.player);
+    if (!hit) return;
+    this.addPing(hit.point, 'Tú', true);
+    this.net?.sendPing(hit.point);
+  }
+
+  addPing(pos, who, mine) {
+    while (this.pings.length >= 4) this.removePing(this.pings[0]);
+    const g = new THREE.Group();
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 40, 8, 1, true).translate(0, 20, 0),
+      new THREE.MeshBasicMaterial({ color: mine ? 0xffd34d : 0x3fa9ff, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.6, 0.9, 24).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: mine ? 0xffd34d : 0x3fa9ff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    ring.position.y = 0.05;
+    g.add(beam, ring);
+    g.position.copy(pos);
+    this.scene.add(g);
+    this.pings.push({ pos: pos.clone(), mesh: g, t: 25, who, mine });
+    if (mine && !this.net && (this.mode.teamSize || 1) > 1 && this.bots.onPing(pos, this.player.team)) this.hud.toast('Tus compañeros van hacia el marcador');
+    this.audio.ping();
+    if (!mine) this.hud.toast(`${who} ha marcado una ubicación`);
+  }
+
+  removePing(pg) {
+    this.scene.remove(pg.mesh);
+    const i = this.pings.indexOf(pg);
+    if (i >= 0) this.pings.splice(i, 1);
+  }
+
+  clearPings() {
+    for (const pg of this.pings.slice()) this.removePing(pg);
+  }
+
+  updatePings(dt) {
+    for (const pg of this.pings.slice()) {
+      pg.t -= dt;
+      pg.mesh.children[1].scale.setScalar(1 + Math.sin(this.time * 4) * 0.15);
+      if (pg.t <= 0 || pg.pos.distanceTo(this.player.pos) < 3) this.removePing(pg);
+    }
   }
 
   dropSelected() {
+    this.dropSlot(this.player.selected);
+  }
+
+  // Suelta el objeto de un hueco (o sólo `count` unidades de una pila).
+  dropSlot(i, count = null) {
     const p = this.player;
-    const item = p.inventory[p.selected];
-    if (p.selected === 0 || !item) return;
-    p.inventory[p.selected] = null;
-    this.combat.reloading = false;
-    this.combat.cancelUse();
+    const item = p.inventory[i];
+    if (i === 0 || !item) return;
+    if (stackDef(item) && item.count <= 0) return; // detonador del C4 sin cargas
+    let out = item;
+    if (stackDef(item) && count !== null && count < item.count) {
+      if (count <= 0) return;
+      out = { ...item, count };
+      item.count -= count;
+    } else p.inventory[i] = null;
+    if (i === p.selected) {
+      this.combat.reloading = false;
+      this.combat.cancelUse();
+    }
+    this.tossPickup(out);
+    this.combat.modelKey = null;
+  }
+
+  // Suelta munición o materiales (inventario con cantidades).
+  dropResource(kind, key, n) {
+    const p = this.player;
+    const store = kind === 'ammo' ? p.ammo : p.mats;
+    n = Math.min(n, store[key] || 0);
+    if (n <= 0) return;
+    if (!(kind === 'ammo' ? this.infiniteAmmo : this.infiniteMats)) store[key] -= n;
+    this.tossPickup(kind === 'ammo' ? { kind: 'ammo', ammo: key, count: n } : { kind: 'material', mat: key, count: n });
+  }
+
+  tossPickup(item) {
+    const p = this.player;
     const f = tmpF.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
     const pos = p.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
-    this.pickups.spawn(item, pos, f.clone().multiplyScalar(3).setY(3));
-    this.combat.modelKey = null;
+    const pk = this.pickups.spawn(item, pos, f.clone().multiplyScalar(3).setY(3));
+    pk.noAuto = true;
+    pk.dropAt = this.time; // la munición y los materiales tirados no se recogen solos al momento
+    return pk;
+  }
+
+  // ¿Hay un hueco libre (o una pila sin llenar) para el objeto?
+  hasFreeSlot(item, strict = false) {
+    const p = this.player;
+    for (let i = 1; i < 6; i++) {
+      const s = p.inventory[i];
+      if (!s) return true;
+      if (!strict && item.kind === 'consumable' && s.kind === 'consumable' && s.type === item.type && s.count < CONSUMABLES[item.type].max) return true;
+    }
+    return false;
   }
 
   // ¿Cabe el objeto en el inventario (directamente o intercambiándolo)?
@@ -1061,14 +1502,15 @@ export class Game {
     for (let i = 1; i < 6; i++) {
       const s = p.inventory[i];
       if (!s) return true;
-      if (item.kind === 'consumable' && s.kind === 'consumable' && s.type === item.type && s.count < CONSUMABLES[item.type].max) return true;
+      const def = stackDef(item);
+      if (def && s.kind === item.kind && s.type === item.type && s.count < def.max) return true;
     }
     return p.selected > 0 && !!p.inventory[p.selected];
   }
 
   // En online el servidor confirma antes quién se queda el objeto.
   tryPickup(pk) {
-    if (this.net) {
+    if (this.net && pk.nid) {
       if (!this.canTake(pk.item)) this.hud.toast('Inventario lleno: selecciona un objeto para intercambiarlo');
       else this.net.requestPickup(pk);
       return;
@@ -1083,8 +1525,7 @@ export class Game {
       p.addItem(item);
       this.pickups.remove(pk);
       this.audio.pickup();
-      const what = item.kind === 'material' ? MATERIALS[item.mat].name.toLowerCase()
-        : item.ammo === 'shells' ? 'cartuchos' : 'munición ' + { light: 'ligera', medium: 'media', heavy: 'pesada' }[item.ammo];
+      const what = item.kind === 'material' ? MATERIALS[item.mat].name : AMMO[item.ammo].name;
       this.hud.toast(`+${item.count} ${what}`);
       return;
     }
@@ -1098,7 +1539,7 @@ export class Game {
       const cur = p.inventory[p.selected];
       p.inventory[p.selected] = { ...item };
       this.pickups.remove(pk);
-      this.pickups.spawn(cur, pk.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), new THREE.Vector3(0, 2.5, 0));
+      this.pickups.spawn(cur, pk.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), new THREE.Vector3(0, 2.5, 0)).noAuto = true;
       this.combat.reloading = false;
       this.combat.cancelUse();
       this.combat.modelKey = null;
@@ -1120,15 +1561,22 @@ export class Game {
       this.hud.setPrompt(null);
       return;
     }
+    const E = `<kbd>${this.key('interact')}</kbd>`;
     if (p.vehicle) {
-      this.hud.setPrompt('<kbd>E</kbd> Salir del coche');
-      if (input.wasPressed('KeyE')) this.vehicles.exit(p);
+      this.hud.setPrompt(`${E} Bajar ${p.vehicle.kindName === 'lancha' ? 'de la lancha' : 'del ' + p.vehicle.kindName}`);
+      if (input.hit('interact')) this.vehicles.exit(p);
+      return;
+    }
+    if (this.build.editing) {
+      const pc = this.build.editing.piece;
+      const presets = pc.type === 'wall' ? ' · 1 puerta · 2 ventana · 3 arco · 4 arco grande · 5 media pared · 6 valla · 7 puerta lateral' : pc.type === 'ramp' ? ' · elige 2 casillas de un lado para girarla' : '';
+      this.hud.setPrompt(`EDITANDO · clic: quitar/poner casillas (arrastra) · ${keyName(this.settings.binds.editReset[0])}: restablecer · <kbd>${this.key('edit')}</kbd> confirmar${presets}`);
       return;
     }
     // Reanimar a un compañero derribado (mantener E)
     const downed = this.chars.find((c) => c !== p && c.team === p.team && c.alive && c.knocked && c.pos.distanceTo(p.pos) < 2.2);
     if (downed) {
-      if (input.down('KeyE')) {
+      if (input.held('interact')) {
         downed.reviveT += dt;
         this.hud.setProgress(downed.reviveT / 5, `Reanimando a ${downed.name}`);
         if (downed.reviveT >= 5) {
@@ -1137,7 +1585,7 @@ export class Game {
           this.hud.setProgress(null);
         }
       } else if (!this.combat.using) this.hud.setProgress(null);
-      this.hud.setPrompt(`Mantén <kbd>E</kbd> para reanimar a ${downed.name}`);
+      this.hud.setPrompt(`Mantén ${E} para reanimar a ${downed.name}`);
       return;
     }
     const eye = p.eye;
@@ -1148,16 +1596,44 @@ export class Game {
     if (c && (!k || c.score >= k.score)) target = c;
     else if (k) target = k;
 
+    const autoW = this.settings.autoPickupWeapons !== false;
     for (const pk of this.pickups.items.slice()) {
       const kind = pk.item.kind;
-      if ((kind === 'ammo' || kind === 'material') && pk.settled && pk.pos.distanceTo(p.pos) < 1.4) this.tryPickup(pk);
+      if (!pk.settled || pk.pending || pk.pos.distanceTo(p.pos) >= 1.4) continue;
+      if (kind === 'ammo' || kind === 'material') {
+        if (!(pk.dropAt && this.time - pk.dropAt < 2.5)) this.tryPickup(pk);
+      }
+      // Recogida automática de armas y curas si hay un hueco libre
+      else if (autoW && !pk.noAuto && (kind === 'weapon' || kind === 'consumable') && this.hasFreeSlot(pk.item, true)) this.tryPickup(pk);
     }
 
+    // Puertas de las construcciones editadas
+    const door = !target || target.score < 1.2 ? this.build.findDoor(eye, dir) : null;
+    if (door) {
+      this.hud.setPrompt(`${E} ${door.doorOpen ? 'Cerrar' : 'Abrir'} puerta`);
+      if (input.hit('interact')) this.build.setDoor(door, !door.doorOpen);
+      return;
+    }
+    const mdoor = !target || target.score < 1.2 ? this.mapDoors.findDoor(eye, dir) : null;
+    if (mdoor) {
+      this.hud.setPrompt(`${E} ${mdoor.open ? 'Cerrar' : 'Abrir'} puerta`);
+      if (input.hit('interact')) this.mapDoors.setOpen(mdoor, !mdoor.open);
+      return;
+    }
+
+    if (this.reboot.interact(input, dt, E)) return;
+    const npc = !target || target.score < 1.2 ? this.npcs.findNear(p.pos) : null;
+    if (npc) {
+      const what = npc.role === 'merchant' ? 'Comerciar con' : npc.quest?.state === 'new' ? 'Misión de' : 'Hablar con';
+      this.hud.setPrompt(`${E} ${what} ${npc.name}`);
+      if (input.hit('interact')) this.npcDialog.open(npc);
+      return;
+    }
     if (!target) {
       const car = this.vehicles.findNear(p.pos);
       if (car) {
-        this.hud.setPrompt('<kbd>E</kbd> Conducir coche');
-        if (input.wasPressed('KeyE')) {
+        this.hud.setPrompt(`${E} ${car.kindName === 'lancha' ? 'Pilotar la lancha' : 'Conducir ' + car.kindName}${car.fuel <= 0 ? ' (sin gasolina)' : ''}`);
+        if (input.hit('interact')) {
           this.build.setActive(false);
           this.vehicles.enter(p, car);
         }
@@ -1166,23 +1642,26 @@ export class Game {
     }
     if (target.container) {
       const ct = target.container;
-      this.hud.setPrompt(`<kbd>E</kbd> ${ct.kind === 'chest' ? 'Abrir cofre' : 'Abrir caja de munición'}`);
-      if (input.wasPressed('KeyE')) {
+      this.hud.setPrompt(`${E} ${ct.kind === 'chest' ? 'Abrir cofre' : 'Abrir caja de munición'}`);
+      if (input.hit('interact')) {
         this.containers.open(ct, p);
-        if (ct.kind === 'chest') p.stats.chests++;
+        if (ct.kind === 'chest') {
+          p.stats.chests++;
+          this.npcs.onChest();
+        }
       }
     } else {
       const it = target.pickup.item;
       const col = RARITIES[itemRarity(it)].color;
       const extra = it.kind === 'weapon' ? ` <small>${RARITIES[it.rarity].name}</small>` : it.count ? ` <small>x${it.count}</small>` : '';
-      this.hud.setPrompt(`<kbd>E</kbd> Recoger <span style="color:${col}">${itemName(it)}</span>${extra}`);
-      if (input.wasPressed('KeyE')) this.tryPickup(target.pickup);
+      this.hud.setPrompt(`${E} Recoger <span style="color:${col}">${itemName(it)}</span>${extra}`);
+      if (input.hit('interact')) this.tryPickup(target.pickup);
     }
   }
 
   updateStorm(dt) {
     const p = this.player;
-    if (!p.alive || p.mode === 'bus' || !this.storm.active) return;
+    if (!p.alive || p.mode === 'bus' || !this.storm.active || this.phase === 'lobby') return;
     if (this.storm.isOutside(p.pos.x, p.pos.z)) {
       this.stormTick += dt;
       if (this.stormTick >= 1) {
@@ -1196,6 +1675,11 @@ export class Game {
     const p = this.player;
     const hud = this.hud;
     if (this.state !== 'playing') return hud.banner('');
+    if (this.phase === 'lobby') {
+      if (this.waiting) return hud.banner('ISLA DE INICIO', 'Esperando a que estén listos todos los jugadores…');
+      if (this.lobbyT === null) return hud.banner('ISLA DE INICIO', `Reuniendo jugadores… <b>${this.lobbyCount}/${this.chars.length}</b>`);
+      return hud.banner(`EL AUTOBÚS SALE EN ${Math.max(0, Math.ceil(this.lobbyT))}`, `Jugadores <b>${this.chars.length}/${this.chars.length}</b> · todo lo de la isla de inicio se reinicia al subir`);
+    }
     if (this.waiting) return hud.banner('PARTIDA ONLINE', 'Esperando a que estén listos todos los jugadores…');
     const touch = !!this.touch;
     if (this.net && !this.input.locked && !this.paused && p.alive && !this.spectating) return hud.banner('', touch ? '<b>Toca</b> la pantalla para jugar' : 'Haz <b>clic</b> en la pantalla para jugar');
@@ -1203,17 +1687,51 @@ export class Game {
     if (this.spectating) return hud.banner('', `Espectando a <b>${this.spectating.name}</b> · ${touch ? 'Toca para cambiar · ⏸: menú' : 'Clic para cambiar · Esc: menú'}`);
     if (p.knocked) return hud.banner('¡DERRIBADO!', 'Arrástrate hacia un compañero para que te reanime');
     if (p.mode === 'bus') {
-      if (this.bus.doorsTime > 0) hud.banner('AUTOBÚS DE BATALLA', `Las puertas se abren en ${Math.ceil(this.bus.doorsTime)}…`);
-      else if (!this.bus.doorsOpen) hud.banner('AUTOBÚS DE BATALLA', 'Esperando a sobrevolar la isla…');
-      else if (touch) hud.banner('PULSA <kbd>SALTAR</kbd>', 'Arrastra para mirar · toca el minimapa para ver el mapa');
-      else hud.banner('PULSA <kbd>ESPACIO</kbd> PARA SALTAR', 'Mueve el ratón para mirar · M: mapa');
+      const thank = this.bus.thanked ? '' : touch ? ' · 🏠: dar las gracias al conductor' : ` · ${this.key('catalog')}: dar las gracias al conductor`;
+      if (this.bus.doorsTime > 0) hud.banner('AUTOBÚS DE BATALLA', `Las puertas se abren en ${Math.ceil(this.bus.doorsTime)}…${thank}`);
+      else if (!this.bus.doorsOpen) hud.banner('AUTOBÚS DE BATALLA', `Esperando a sobrevolar la isla…${thank}`);
+      else if (touch) hud.banner('PULSA <kbd>SALTAR</kbd>', `Arrastra para mirar · toca el minimapa para ver el mapa${thank}`);
+      else hud.banner(`PULSA <kbd>${this.key('jump').toUpperCase()}</kbd> PARA SALTAR`, `Mueve el ratón para mirar · ${this.key('map')}: mapa${thank}`);
     } else hud.banner('');
+  }
+
+  // Material del suelo bajo un personaje (para el sonido de los pasos).
+  groundMaterial(c) {
+    const q = this.world.collision.query(c.pos.x - 0.2, c.pos.y - 0.25, c.pos.z - 0.2, c.pos.x + 0.2, c.pos.y + 0.05, c.pos.z + 0.2, this._gq || (this._gq = []));
+    for (const b of q) {
+      if (b.data?.type === 'build') return b.data.piece.mat;
+      if (b.data?.type === 'car') return 'metal';
+    }
+    if (q.length) return 'stone';
+    const t = this.world.terrain;
+    const h = t.heightAt(c.pos.x, c.pos.z);
+    if (c.pos.y - h > 0.6) return 'wood';
+    if (h < 2.4) return 'sand';
+    t.colorAt(c.pos.x, c.pos.z, h, t.slopeAt(c.pos.x, c.pos.z), tmpCol);
+    if (tmpCol.g > tmpCol.r + 0.1) return 'grass';
+    return tmpCol.r > 0.5 ? 'sand' : 'stone';
   }
 
   updateAudio() {
     const p = this.player;
     const a = this.audio;
-    if (!a.ctx || this.state !== 'playing') return;
+    if (!a.ctx) return;
+    a.setListener(this.camera);
+    this.music?.update(this);
+    if (this.state !== 'playing') return;
+    // Pasos de los demás (posicionales): se oyen a unos 30 m
+    for (const c of this.chars) {
+      if (c === p || !c.alive || c.mode !== 'ground' || c.crouching || c.vehicle) continue;
+      const hs = c.hSpeed;
+      if (hs < 2.5) continue;
+      const d = c.pos.distanceTo(this.camera.position);
+      if (d > 30) continue;
+      c.stepSnd = (c.stepSnd ?? Math.random() * 2) - hs * (this.frameDt || 0.016);
+      if (c.stepSnd <= 0) {
+        c.stepSnd = 2.4;
+        a.step(this.groundMaterial(c), Math.pow(1 - d / 30, 2) * 1.4, c.pos);
+      }
+    }
     if (p.mode === 'freefall') a.setWind(Math.min(1, p.vel.length() / 55));
     else if (p.mode === 'glide') a.setWind(0.3);
     else if (p.mode === 'bus') a.setWind(0.12);
@@ -1239,6 +1757,7 @@ export class Game {
   }
 
   updateCamera(dt) {
+    if (this.viewer?.active && this.viewer.camera(dt)) return;
     const p = this.player;
     const cam = this.camera;
     const base = this.baseFov;
@@ -1299,7 +1818,7 @@ export class Game {
       if (p.sprinting) fov += 6;
       this.scene.fog.near = 200;
       this.scene.fog.far = 1250;
-      if (this.camMode === 'fp' && !this.build.active) {
+      if (this.camMode === 'fp' && !this.build.active && !p.emote) {
         cam.position.copy(p.eye);
         this.aimOrigin.copy(cam.position);
         p.model.root.visible = false;
@@ -1307,7 +1826,7 @@ export class Game {
         const pivot = p.eye.clone();
         pivot.y += 0.15;
         const right = tmpR.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
-        const back = this.build.active ? 4.2 : 3.0 - ads * 1.5;
+        const back = this.build.active ? 4.2 : p.emote ? 4.2 : 3.0 - ads * 1.5;
         const desired = pivot.clone().addScaledVector(right, 0.7 - ads * 0.15).addScaledVector(f, -back);
         const dir = desired.clone().sub(pivot);
         const dist = dir.length();
@@ -1325,6 +1844,12 @@ export class Game {
       }
     }
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 12);
+    if (this.camShake > 0) {
+      // Temblor de cámara por explosiones cercanas
+      const k = this.camShake * this.camShake * 0.05;
+      cam.rotation.x += (Math.random() - 0.5) * k;
+      cam.rotation.y += (Math.random() - 0.5) * k;
+    }
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     this.storm.updateVisual(cam.position);
@@ -1340,7 +1865,7 @@ export class Game {
 
   render() {
     const r = this.renderer;
-    const view = this.state === 'playing' && this.camMode === 'fp' && this.player.mode === 'ground' && this.combat.viewmodel.visible && !this.spectating;
+    const view = this.state === 'playing' && this.camMode === 'fp' && this.player.mode === 'ground' && this.combat.viewmodel.visible && !this.spectating && !this.player.emote;
     if (this.composer) {
       this.viewPass.enabled = view;
       this.composer.render();

@@ -1,18 +1,75 @@
-// Modo creativo: isla plana, todas las armas, materiales infinitos, vuelo y
-// un catálogo con todos los edificios de la isla para colocarlos donde quieras.
-// La isla creativa se guarda sola en el navegador.
+// Modo creativo: isla plana, todas las armas, materiales infinitos, vuelo,
+// un catálogo con todos los edificios de la isla para colocarlos donde
+// quieras y herramientas (catálogo de objetos, bots, dianas, cofres,
+// prefabricados de construcción, ranuras de guardado, teletransporte, hora
+// del día y tormenta). La isla creativa se guarda sola en el navegador. El
+// panel con pestañas está en src/ui/creative.js.
 import * as THREE from 'three';
 import { GeoBuilder } from '../world/geobuilder.js';
 import { BuildingCtx, genHouse, genWarehouse, genSilo, genHay, genContainer, PALETTES } from '../world/buildings.js';
 import {
   genShop, genGasStation, genChurch, genWaterTower, genRadioTower, genLighthouse, genBunker, genWatchtower,
   genTent, genFactory, genStadium, genCrane, genRuins, genFountain, genLamp, genBench, genSandbags,
+  genCastle, genWindmill, genMarket,
 } from '../world/structures.js';
-import { RNG } from '../core/rng.js';
+import { RNG, random } from '../core/rng.js';
 import { PICKAXE, makeWeapon, AMMO } from './items.js';
-import { yawToDir } from './build.js';
+import { yawToDir, G, WALL_PRESETS } from './build.js';
+import { SKY } from '../world/sky.js';
 
 const SAVE_KEY = 'islaRoyale.creative.v1';
+const SLOT_KEY = 'islaRoyale.creative.slot';
+const NIGHT = { top: new THREE.Color(0x0a1230), horizon: new THREE.Color(0x2a3560), fog: new THREE.Color(0x1a2240) };
+const DAY = { top: new THREE.Color(SKY.top), horizon: new THREE.Color(SKY.horizon), fog: new THREE.Color(SKY.horizon) };
+
+// Prefabricados: piezas relativas a la casilla de delante (norte = hacia
+// donde miras). y = plantas hacia arriba.
+const P = (type, x, z, dir = 0, y = 0, edit = 0) => ({ type, x, z, dir, y, edit });
+const DOOR = WALL_PRESETS[0].mask;
+const WINDOW = WALL_PRESETS[1].mask;
+export const PIECE_PREFABS = {
+  box: {
+    name: 'Caja 1×1 (encerrarse)', here: true,
+    pieces: [P('wall', 0, 0, 0), P('wall', 0, 0, 1), P('wall', 0, 0, 2), P('wall', 0, 0, 3), P('cone', 0, 0, 0, 1)],
+  },
+  rampRush: {
+    name: 'Subida de rampas',
+    pieces: [0, 1, 2, 3, 4, 5].flatMap((k) => [P('ramp', 0, -1 - k, 0, k), P('wall', 0, -1 - k, 1, k), P('wall', 0, -1 - k, 3, k)]),
+  },
+  tower: {
+    name: 'Torre de rampas (90s)',
+    pieces: [0, 1, 2, 3, 4, 5].flatMap((k) => [P('wall', 0, -1, 0, k), P('wall', 0, -1, 1, k), P('wall', 0, -1, 2, k, k === 0 ? DOOR : 0), P('wall', 0, -1, 3, k), P('ramp', 0, -1, k % 4, k)]),
+  },
+  fort: {
+    name: 'Fuerte 2×2 (3 plantas)',
+    pieces: (() => {
+      const out = [];
+      for (let y = 0; y < 3; y++) {
+        for (const [x, z] of [[0, -1], [1, -1], [0, -2], [1, -2]]) {
+          // huecos para las rampas interiores
+          if (y > 0 && !(y === 1 && x === 1 && z === -1) && !(y === 2 && x === 0 && z === -2)) out.push(P('floor', x, z, 0, y));
+        }
+        out.push(P('wall', 0, -2, 0, y, y === 1 ? WINDOW : 0), P('wall', 1, -2, 0, y, y === 1 ? WINDOW : 0));
+        out.push(P('wall', 0, -1, 2, y, y === 0 ? DOOR : 0), P('wall', 1, -1, 2, y));
+        out.push(P('wall', 0, -1, 3, y), P('wall', 0, -2, 3, y), P('wall', 1, -1, 1, y), P('wall', 1, -2, 1, y));
+      }
+      out.push(P('ramp', 1, -1, 0, 0), P('ramp', 0, -2, 2, 1));
+      for (const [x, z] of [[0, -1], [1, -1], [0, -2], [1, -2]]) out.push(P('cone', x, z, 0, 3));
+      return out;
+    })(),
+  },
+  wallLine: { name: 'Muro de 5', pieces: [-2, -1, 0, 1, 2].map((x) => P('wall', x, -1, 0)) },
+  bridge: { name: 'Puente (8 suelos)', pieces: [1, 2, 3, 4, 5, 6, 7, 8].map((k) => P('floor', 0, -k, 0, 0)) },
+  arena: {
+    name: 'Plataforma de combate 5×5',
+    pieces: (() => {
+      const out = [];
+      for (let x = -2; x <= 2; x++) for (let z = -6; z <= -2; z++) out.push(P('floor', x, z, 0, 0));
+      return out;
+    })(),
+  },
+};
+
 
 // Catálogo. W×D = huella en metros; h = altura aproximada (para la silueta).
 export const PREFABS = [
@@ -32,6 +89,9 @@ export const PREFABS = [
   { id: 'lighthouse', name: 'Faro', icon: '🚨', W: 22, D: 12, h: 26, gen: (c, r) => genLighthouse(c, r) },
   { id: 'crane', name: 'Grúa', icon: '🏗', W: 3, D: 3, h: 22, gen: (c) => genCrane(c) },
   { id: 'silo', name: 'Silo', icon: '🌾', W: 5, D: 5, h: 12, gen: (c, r) => genSilo(c, r) },
+  { id: 'castle', name: 'Castillo', icon: '🏰', W: 28, D: 28, h: 16, gen: (c, r) => genCastle(c, r) },
+  { id: 'windmill', name: 'Molino', icon: '🌬️', W: 9, D: 9, h: 15, gen: (c, r) => genWindmill(c, r) },
+  { id: 'market', name: 'Mercadillo', icon: '🛍️', W: 19, D: 15, h: 3, gen: (c, r) => genMarket(c, r) },
   { id: 'ruins', name: 'Ruinas', icon: '🏚️', W: 13, D: 10, h: 3, gen: (c, r) => genRuins(c, r) },
   { id: 'tent', name: 'Tienda de campaña', icon: '⛺', W: 3.4, D: 4.8, h: 2, gen: (c, r) => genTent(c, r) },
   { id: 'container', name: 'Contenedor', icon: '📦', W: 2.6, D: 6.2, h: 3, gen: (c, r) => genContainer(c, r, 1) },
@@ -51,7 +111,6 @@ export class Creative {
     this.selected = null; // prefab elegido para colocar
     this.erase = false;
     this.rot = 0;
-    this.panelOpen = false;
     this.flying = false;
     this.lastJump = -1;
     this.saveT = 0;
@@ -63,7 +122,13 @@ export class Creative {
     this.ghost.visible = false;
     game.scene.add(this.ghost);
     this.highlight = null;
-    this.buildPanel();
+    this.night = 0;
+    this.stormOn = false;
+  }
+
+  // El catálogo de edificios es una pestaña del panel creativo.
+  get panelOpen() {
+    return !!this.game.creativePanel?.open;
   }
 
   get on() {
@@ -81,6 +146,8 @@ export class Creative {
     const p = g.player;
     g.storm.active = false;
     g.storm.mesh.visible = false;
+    g.godMode = true;
+    g.infiniteAmmo = true;
     p.inventory = [PICKAXE, makeWeapon('ar', 4), makeWeapon('shotgun', 4), makeWeapon('sniper', 4), makeWeapon('smg', 4), makeWeapon('pistol', 4)];
     p.selected = 1;
     g.combat.modelKey = null;
@@ -88,7 +155,7 @@ export class Creative {
     this.load();
     g.hud.toast(g.touch
       ? 'Modo creativo: 🏠 catálogo de edificios · doble SALTAR para volar'
-      : 'Modo creativo: B catálogo de edificios · doble Espacio para volar · F editar');
+      : `Modo creativo: ${g.key('catalog')} catálogo y herramientas · doble ${g.key('jump')} para volar · ${g.key('edit')} editar`);
   }
 
   stop() {
@@ -98,57 +165,25 @@ export class Creative {
     this.flying = false;
   }
 
-  // Munición infinita e invulnerable.
+  // Munición infinita y modo dios (se pueden quitar en Herramientas).
   tick() {
-    const p = this.game.player;
-    for (const a in AMMO) p.ammo[a] = AMMO[a].max;
-    p.invuln = 1;
-    p.health = 100;
-    p.shield = 100;
+    const g = this.game;
+    const p = g.player;
+    if (g.infiniteAmmo) for (const a in AMMO) p.ammo[a] = AMMO[a].max;
+    if (g.godMode) {
+      p.invuln = 1;
+      p.health = 100;
+      p.shield = 100;
+    }
   }
 
   // ------------------------------------------------------------ CATÁLOGO
-  buildPanel() {
-    const el = (this.panel = document.createElement('div'));
-    el.id = 'creative-panel';
-    el.innerHTML = `
-      <div class="cp-card">
-        <div class="cp-head"><b>Catálogo de la isla</b><span>Elige un edificio para colocarlo</span><button class="cp-x" data-cp="close">✕</button></div>
-        <div class="cp-grid">${PREFABS.map((p) => `<button data-prefab="${p.id}"><i>${p.icon}</i><span>${p.name}</span><small>${p.W}×${p.D} m</small></button>`).join('')}</div>
-        <div class="cp-actions">
-          <button data-cp="erase" class="danger">🧽 Borrar edificios</button>
-          <button data-cp="clear" class="secondary">Vaciar la isla</button>
-        </div>
-      </div>`;
-    el.addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (!b) return;
-      e.stopPropagation();
-      if (b.dataset.prefab) this.select(BY_ID[b.dataset.prefab]);
-      else if (b.dataset.cp === 'erase') this.setErase(true);
-      else if (b.dataset.cp === 'clear') {
-        if (confirm('¿Borrar todos los edificios y construcciones de tu isla creativa?')) this.clearAll();
-      }
-      this.closePanel();
-    });
-    document.body.appendChild(el);
-  }
-
   openPanel() {
-    const g = this.game;
-    this.panelOpen = true;
-    this.panel.classList.add('open');
-    g.uiOpen = true;
-    g.input.unlock();
+    this.game.creativePanel?.show('buildings');
   }
 
   closePanel() {
-    if (!this.panelOpen) return;
-    const g = this.game;
-    this.panelOpen = false;
-    this.panel.classList.remove('open');
-    if (g.state === 'playing' && !g.paused) g.input.lock();
-    setTimeout(() => (g.uiOpen = false), 200);
+    if (this.panelOpen) this.game.creativePanel.toggle();
   }
 
   togglePanel() {
@@ -271,15 +306,14 @@ export class Creative {
     this.tick();
     this.saveT += dt;
     if (this.dirty && this.saveT > 3) this.save();
-    if (input.wasPressed('KeyB')) this.togglePanel();
     this.updateFlight(dt, input);
     if (p.mode !== 'ground' || p.vehicle) {
       this.ghost.visible = false;
       return;
     }
     if (this.selected) {
-      if (input.mouseClicked(2) || input.wasPressed('Escape')) return this.select(null);
-      if (input.wasPressed('KeyR')) this.rot = (this.rot + 1) % 4;
+      if (input.hit('ads') || input.wasPressed('Escape')) return this.select(null);
+      if (input.hit('reload')) this.rot = (this.rot + 1) % 4;
       const t = this.target();
       const ok = this.fits(t);
       const def = this.selected;
@@ -289,7 +323,7 @@ export class Creative {
       this.ghost.position.set(t.x, y + def.h / 2, t.z);
       this.ghost.material.color.setHex(ok ? 0x5ab4ff : 0xff5050);
       this.ghostEdges.material.color.setHex(ok ? 0xaee0ff : 0xff9090);
-      if (input.mouseClicked(0)) {
+      if (input.hit('fire')) {
         if (!ok) g.hud.toast('No cabe ahí: hay algo en medio o está fuera de la isla');
         else {
           this.spawn(def.id, t.x, t.z, t.rot, Math.floor(Math.random() * 1e6));
@@ -302,13 +336,13 @@ export class Creative {
     }
     this.ghost.visible = false;
     if (this.erase) {
-      if (input.mouseClicked(2)) return this.setErase(false);
+      if (input.hit('ads')) return this.setErase(false);
       const o = g.aimOrigin, d = g.aimDir;
       const hit = g.world.collision.raycast(o.x, o.y, o.z, d.x, d.y, d.z, 120);
       const data = hit?.box?.data;
       const rec = data?.type === 'prefab' ? data.prefab : null;
       this.setHighlight(rec);
-      if (input.mouseClicked(0)) {
+      if (input.hit('fire')) {
         if (rec) {
           this.setHighlight(null);
           this.removePrefab(rec);
@@ -325,7 +359,7 @@ export class Creative {
       this.flying = false;
       return;
     }
-    if (input.wasPressed('Space')) {
+    if (input.hit('jump')) {
       if (g.time - this.lastJump < 0.35) {
         this.flying = !this.flying;
         this.lastJump = -1;
@@ -337,11 +371,11 @@ export class Creative {
   // Lo llama el jugador en vez de la física normal mientras vuela.
   flyStep(dt, wish, input) {
     const p = this.game.player;
-    const speed = input.down('ShiftLeft') ? 26 : 14;
+    const speed = (input.held('sprint') ? 26 : 14) * (this.game.speedMult || 1);
     const k = Math.min(1, dt * 6);
     p.vel.x += (wish.x * speed - p.vel.x) * k;
     p.vel.z += (wish.z * speed - p.vel.z) * k;
-    const vy = input.down('Space') ? 10 : input.down('KeyC') || input.down('ControlLeft') ? -10 : 0;
+    const vy = input.held('jump') ? 10 : input.held('crouch') ? -10 : 0;
     p.vel.y += (vy - p.vel.y) * k;
     p.onGround = false;
     p.move(dt);
@@ -360,7 +394,7 @@ export class Creative {
     this.dirty = false;
     const data = {
       prefabs: this.placed.map((r) => [r.id, r.x, r.z, r.rot, r.seed]),
-      pieces: [...this.game.build.pieces.values()].map((q) => [q.type, q.cx, q.cz, q.base, q.dir, q.mat, q.mask ?? -1]),
+      pieces: [...this.game.build.pieces.values()].map((q) => [q.type, q.cx, q.cz, q.base, q.dir, q.mat, q.edit | 0]),
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -381,8 +415,8 @@ export class Creative {
     for (const [id, x, z, rot, seed] of data.prefabs || []) this.spawn(id, x, z, rot, seed);
     const b = this.game.build;
     const owner = { mats: { wood: 999, stone: 999, metal: 999 }, isPlayer: false, isNet: false };
-    for (const [type, cx, cz, base, dir, mat, mask] of data.pieces || []) {
-      const t = { type, cx, cz, base, dir };
+    for (const [type, cx, cz, base, dir, mat, edit] of data.pieces || []) {
+      const t = { type, cx, cz, base, dir, edit: edit > 0 ? edit : 0 };
       t.key = b.key(type, cx, cz, base, dir);
       if (b.pieces.has(t.key) || !b.geos[type]) continue;
       const piece = b.place(t, owner, mat, true);
@@ -391,8 +425,235 @@ export class Creative {
       piece.mesh.scale.setScalar(1);
       piece.hp = piece.maxHp;
       piece.buildT = piece.buildTime;
-      if (mask >= 0 && mask !== piece.mask) b.applyEdit(piece, mask, dir, true);
+      piece.team = this.game.player.team;
     }
     this.dirty = false;
   }
+  // ------------------------------------------------------------ HERRAMIENTAS
+  // Se reinicia al empezar cualquier partida.
+  reset() {
+    const g = this.game;
+    g.dummies.clearExtra();
+    g.containers.clearExtra();
+    this.setNight(0);
+    this.stormOn = false;
+  }
+
+  // ------------------------------------------------------------ OBJETOS
+  give(item) {
+    const g = this.game;
+    const p = g.player;
+    const it = { ...item };
+    if (it.kind === 'weapon') it.mag = makeWeapon(it.type, it.rarity).mag;
+    if (it.kind === 'ammo' || it.kind === 'material') {
+      p.addItem(it);
+      g.audio.pickup();
+      return;
+    }
+    if (!p.addItem(it)) {
+      // inventario lleno: sustituye el objeto en la mano
+      const slot = p.selected > 0 ? p.selected : 1;
+      p.inventory[slot] = it;
+      g.combat.modelKey = null;
+    }
+    g.combat.modelKey = null;
+    g.audio.pickup();
+  }
+
+  front(dist = 3) {
+    const p = this.game.player;
+    return new THREE.Vector3(p.pos.x - Math.sin(p.yaw) * dist, p.pos.y + 1, p.pos.z - Math.cos(p.yaw) * dist);
+  }
+
+  drop(item) {
+    const it = { ...item };
+    if (it.kind === 'weapon') it.mag = makeWeapon(it.type, it.rarity).mag;
+    const pk = this.game.pickups.spawn(it, this.front(2.5), new THREE.Vector3(0, 3, 0));
+    pk.noAuto = true;
+  }
+
+  clearInventory() {
+    const p = this.game.player;
+    p.inventory = [PICKAXE, null, null, null, null, null];
+    p.selected = 0;
+    this.game.combat.modelKey = null;
+  }
+
+  heal() {
+    const p = this.game.player;
+    p.health = 100;
+    p.shield = 100;
+  }
+
+  // ------------------------------------------------------------ MUNDO
+  groundAt(v) {
+    return this.game.world.groundBelow(v.x, v.z, v.y + 4);
+  }
+
+  spawnBot(diff = 'normal') {
+    const g = this.game;
+    const f = this.front(18);
+    const team = 1 + g.bots.list.length;
+    const b = g.bots.spawnExtra(team, diff, f.x, f.z, g.botLoadout());
+    if (!g.chars.includes(b)) g.chars.push(b);
+    g.hud.toast(`Bot enemigo (${diff}) generado delante de ti`);
+  }
+
+  removeBots() {
+    const g = this.game;
+    g.bots.removeAll();
+    g.chars = g.chars.filter((c) => !c.isBot);
+  }
+
+  spawnDummy() {
+    const g = this.game;
+    const f = this.front(6);
+    const p = g.player;
+    g.dummies.add({ x: f.x, y: this.groundAt(f), z: f.z, yaw: p.yaw }, true);
+  }
+
+  spawnContainer(kind) {
+    const g = this.game;
+    const f = this.front(3);
+    const p = g.player;
+    g.containers.add(kind, { x: f.x, y: this.groundAt(f), z: f.z, rotY: p.yaw + Math.PI });
+  }
+
+  prefab(id) {
+    const g = this.game;
+    const p = g.player;
+    const pf = PIECE_PREFABS[id];
+    if (!pf) return;
+    const cx = Math.floor(p.pos.x / G), cz = Math.floor(p.pos.z / G);
+    const base = g.build.levelBase(p.pos.y, p.pos.x, p.pos.z);
+    const n = g.build.placeRelative(pf.pieces, cx, cz, base, pf.here ? 0 : yawToDir(p.yaw));
+    g.hud.toast(`${pf.name}: ${n} piezas`);
+  }
+
+  clearBuilds() {
+    this.game.build.reset();
+    this.game.hud.toast('Construcciones borradas');
+  }
+
+  // ------------------------------------------------------------ COMPARTIR
+  // Código de isla: edificios del mapa colocados, construcciones y punto de
+  // aparición, comprimido (deflate) y en base64. Prefijo ISLA1-.
+  async exportCode() {
+    const g = this.game;
+    const data = {
+      v: 1,
+      prefabs: this.placed.map((r) => [r.id, Math.round(r.x * 10) / 10, Math.round(r.z * 10) / 10, r.rot, r.seed]),
+      pieces: [...g.build.pieces.values()].map((q) => [q.type[0], q.cx, q.cz, Math.round(q.base * 100) / 100, q.dir, q.mat[0], q.edit | 0]),
+      spawn: this.spawnPoint ? [Math.round(this.spawnPoint.x * 10) / 10, Math.round(this.spawnPoint.z * 10) / 10] : null,
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(data));
+    let out = bytes, z = 'j';
+    if (typeof CompressionStream !== 'undefined') {
+      const cs = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      out = new Uint8Array(await new Response(cs).arrayBuffer());
+      z = 'z';
+    }
+    let bin = '';
+    for (let i = 0; i < out.length; i++) bin += String.fromCharCode(out[i]);
+    return `ISLA1-${z}${btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+  }
+
+  async importCode(code) {
+    const g = this.game;
+    const m = /^ISLA1-([zj])([A-Za-z0-9_-]+)$/.exec(String(code || '').trim());
+    if (!m) throw new Error('Código no válido');
+    const b64 = m[2].replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '==='.slice((b64.length + 3) % 4));
+    let bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    if (m[1] === 'z') {
+      const ds = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      bytes = new Uint8Array(await new Response(ds).arrayBuffer());
+    }
+    const data = JSON.parse(new TextDecoder().decode(bytes));
+    const TYPES = { w: 'wall', f: 'floor', r: 'ramp', c: 'cone' }, MATS = { w: 'wood', s: 'stone', m: 'metal' };
+    for (const r of [...this.placed]) this.removePrefab(r);
+    g.build.reset();
+    let n = 0;
+    for (const [id, x, z, rot, seed] of (data.prefabs || []).slice(0, 300)) {
+      if (Number.isFinite(x) && Number.isFinite(z)) {
+        this.spawn(id, x, z, rot | 0, seed);
+        n++;
+      }
+    }
+    const pieces = (data.pieces || []).slice(0, 5000).map(([t, cx, cz, base, dir, mat, edit]) => ({ type: TYPES[t], cx, cz, base, dir, mat: MATS[mat], edit }));
+    const np = g.build.load(pieces.filter((q) => q.type && q.mat));
+    if (Array.isArray(data.spawn)) {
+      this.spawnPoint = { x: data.spawn[0], z: data.spawn[1] };
+      this.teleport(data.spawn[0], data.spawn[1]);
+    }
+    this.changed();
+    return { prefabs: n, pieces: np };
+  }
+
+  setSpawn() {
+    const p = this.game.player;
+    this.spawnPoint = { x: p.pos.x, z: p.pos.z };
+    this.game.hud.toast('Punto de aparición guardado (se incluye en el código de la isla)');
+  }
+
+  saveSlot(i) {
+    try {
+      const data = this.game.build.serialize();
+      localStorage.setItem(SAVE_KEY + i, JSON.stringify(data));
+      this.game.hud.toast(`Guardado en la ranura ${i} (${data.length} piezas)`);
+    } catch {
+      this.game.hud.toast('No se ha podido guardar (almacenamiento no disponible)');
+    }
+  }
+
+  loadSlot(i) {
+    try {
+      const data = JSON.parse(localStorage.getItem(SAVE_KEY + i) || 'null');
+      if (!data) return this.game.hud.toast(`La ranura ${i} está vacía`);
+      const n = this.game.build.load(data);
+      this.game.hud.toast(`Cargadas ${n} piezas de la ranura ${i}`);
+    } catch {
+      this.game.hud.toast('No se ha podido cargar');
+    }
+  }
+
+  slotInfo(i) {
+    try {
+      const data = JSON.parse(localStorage.getItem(SAVE_KEY + i) || 'null');
+      return data ? `${data.length} piezas` : 'vacía';
+    } catch {
+      return '—';
+    }
+  }
+
+  teleport(x, z) {
+    const g = this.game;
+    const p = g.player;
+    this.flying = false;
+    p.vel.set(0, 0, 0);
+    p.pos.set(x, g.world.groundBelow(x, z, 400) + 1, z);
+    g.hud.toast('Teletransportado');
+  }
+
+  setStorm(on) {
+    const g = this.game;
+    this.stormOn = on;
+    if (on) g.storm.reset('br', random);
+    g.storm.active = on;
+    g.storm.mesh.visible = on;
+  }
+
+  // 0 = día, 1 = noche
+  setNight(v) {
+    const g = this.game;
+    this.night = v;
+    const sky = g.sky.material.uniforms;
+    sky.top.value.copy(DAY.top).lerp(NIGHT.top, v);
+    sky.horizon.value.copy(DAY.horizon).lerp(NIGHT.horizon, v);
+    g.scene.fog.color.copy(DAY.fog).lerp(NIGHT.fog, v);
+    g.sun.intensity = 3.0 * (1 - v * 0.85);
+    g.hemi.intensity = 1.5 * (1 - v * 0.6);
+    g.sun.color.setHex(v > 0.5 ? 0xaabbff : 0xffefd2);
+  }
+
 }

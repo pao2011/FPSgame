@@ -219,16 +219,6 @@ export class OnlineUI {
       <div class="note-btns"><button class="ok">Unirme</button><button class="no">✕</button></div>`;
     el.querySelector('.ok').addEventListener('click', () => {
       el.remove();
-      if (this.net.seed && this.net.seed !== this.game.seed) {
-        // Hay que estar en la isla online: recargar y unirse al volver
-        const q = new URLSearchParams(location.search);
-        q.delete('creativo');
-        q.set('seed', this.net.seed);
-        q.set('online', '1');
-        q.set('join', m.id);
-        location.search = q.toString();
-        return;
-      }
       this.net.send('party_join', { id: m.id });
       if (this.game.state === 'menu') this.menu.show('online');
     });
@@ -447,8 +437,7 @@ export class OnlineUI {
     const t = p?.queuedFor || 0;
     let action;
     if (wrongIsland) {
-      action = `<div class="island-warn">Estás en otra isla (#${this.game.seed}). La isla online es la <b>#${this.net.seed}</b>.
-        <button class="small-btn" id="ol-load-island">Cargar la isla online</button></div>`;
+      action = `<div class="island-warn">El servidor usa otra versión del mapa. El mapa es único: actualiza el servidor (o el juego) a la misma versión para poder jugar.</div>`;
     } else if (p?.inMatch) {
       action = '<button class="big-play" disabled>TU GRUPO ESTÁ EN PARTIDA</button>';
     } else if (queued) {
@@ -549,13 +538,6 @@ export class OnlineUI {
       n.send('queue', { on: true });
     });
     on('#ol-cancel', () => n.send('queue', { on: false }));
-    on('#ol-load-island', () => {
-      const q = new URLSearchParams(location.search);
-      q.delete('creativo');
-      q.set('seed', n.seed);
-      q.set('online', '1');
-      location.search = q.toString();
-    });
     el.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
       this.game.settings.online.mode = b.dataset.mode;
       this.game.applySettings();
