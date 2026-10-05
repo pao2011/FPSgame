@@ -90,6 +90,12 @@ export class OnlineMatch {
         if (v && v.remoteDriver) v.netTarget = m;
       },
       'm.gone': (m) => this.onGone(m),
+      'm.emote': (m) => {
+        const e = this.ents.get(m.s);
+        if (!e?.isRemote) return;
+        if (m.e) e.startEmote(m.e);
+        else e.stopEmote();
+      },
       'm.pad': (m) => Array.isArray(m.p) && this.game.combat.addPad(m.p[0], m.p[1], m.p[2], m.y || 0),
       'm.away': (m) => this.onAway(m, true),
       'm.back': (m) => this.onAway(m, false),
@@ -462,6 +468,10 @@ export class OnlineMatch {
   onChest(m) {
     const c = this.game.containers.list[m.i];
     if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by));
+  }
+
+  sendEmote(c, id) {
+    if (this.isLocal(c)) this.net.send('m.emote', { s: c.netId, e: id || '' });
   }
 
   sendPad(x, y, z, yaw) {

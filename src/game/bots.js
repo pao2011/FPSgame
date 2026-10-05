@@ -3,6 +3,19 @@ import { Character } from './character.js';
 import { WEAPONS, CONSUMABLES, PICKAXE, MATERIALS, THROWABLES } from './items.js';
 import { random, clamp } from '../core/rng.js';
 import { ISLAND_RADIUS } from '../world/constants.js';
+import { randomOutfit } from './character.js';
+import { PICKAXES, GLIDERS, BAGS, TRAILS } from './cosmetics.js';
+
+// Los bots llevan a veces cosméticos de la taquilla (para dar variedad).
+function botOutfit() {
+  const o = randomOutfit();
+  const any = (list, p) => (Math.random() < p ? Object.keys(list)[Math.floor(Math.random() * Object.keys(list).length)] : undefined);
+  o.pick = any(PICKAXES, 0.4);
+  o.glider = any(GLIDERS, 0.5);
+  o.bag = any(BAGS, 0.3);
+  o.trail = any(TRAILS, 0.35);
+  return o;
+}
 import { yawToDir } from './build.js';
 
 const NAMES = [
@@ -75,7 +88,7 @@ function weaponScore(item, d) {
 
 class Bot extends Character {
   constructor(game, i) {
-    super(game);
+    super(game, botOutfit());
     this.isBot = true;
     this.id = i;
     this.name = NAMES[i % NAMES.length];

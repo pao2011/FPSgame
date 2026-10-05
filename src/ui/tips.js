@@ -1,5 +1,11 @@
 // Consejos de la pantalla de carga y de la espera de la partida online, y
 // la pantalla de emparejamiento (mapa + jugadores + consejos).
+import { SCREENS } from '../game/cosmetics.js';
+
+// Fondo de la pantalla de carga elegida en la taquilla.
+export function screenBg(id) {
+  return (SCREENS[id] || SCREENS.atardecer).bg;
+}
 export const TIPS = [
   'Construye una rampa y un muro a la vez («90s») para ganar altura rápido en un tiroteo.',
   'Los cofres brillan y suenan: actívalo en Accesibilidad para verlos también como iconos.',
@@ -61,6 +67,7 @@ export class MatchLoader {
     tipEl.textContent = randomTip();
     clearInterval(this.timer);
     this.timer = setInterval(() => (tipEl.textContent = randomTip(tipEl.textContent)), 6000);
+    this.el.style.background = screenBg(g.settings.outfit?.screen);
     this.el.style.display = 'flex';
   }
 

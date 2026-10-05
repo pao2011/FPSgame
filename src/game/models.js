@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RARITIES, AMMO } from './items.js';
-import { CAMOS } from './cosmetics.js';
+import { CAMOS, PICKAXES, GLIDERS, BAGS } from './cosmetics.js';
 
 // Modelos low-poly construidos con primitivas. En calidad normal/alta se usan
 // materiales PBR (MeshStandardMaterial) con iluminación de entorno y piezas
@@ -99,7 +99,7 @@ const METAL = { phong: true, shininess: 60, specular: 0x444444 };
 
 // ---------------------------------------------------------------- ARMAS ---
 // El cañón apunta hacia -Z. El origen está aproximadamente en la empuñadura.
-export function makeWeaponModel(type, rarity = 0, camo = null) {
+export function makeWeaponModel(type, rarity = 0, camo = null, pick = null) {
   const g = new THREE.Group();
   const accent = RARITIES[rarity]?.hex ?? 0xaaaaaa;
   // Mítico y exótico: el color de la rareza brilla un poco
@@ -339,31 +339,60 @@ export function makeWeaponModel(type, rarity = 0, camo = null) {
       break;
     }
     case 'pickaxe': {
-      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.7, 10), mat(0x6b4a2b));
+      const P = PICKAXES[pick] || null;
+      const headC = P?.head ?? 0x9aa5b1, handleC = P?.handle ?? 0x6b4a2b, accC = P?.accent ?? 0x3fa9ff;
+      const HM = P?.glow ? { ...METAL, emissive: new THREE.Color(accC).multiplyScalar(0.5).getHex() } : P?.shiny ? { phong: true, shininess: 120, metalness: 0.9, roughness: 0.2 } : METAL;
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.7, 10), mat(handleC));
       handle.position.set(0, 0.2, 0);
       g.add(handle);
       // Empuñadura con cinta y pomo
       for (let i = 0; i < 5; i++) {
-        const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.03, 10), mat(i % 2 ? 0x2b2f36 : 0x3fa9ff));
+        const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.03, 10), mat(i % 2 ? 0x2b2f36 : accC));
         wrap.position.set(0, -0.08 + i * 0.032, 0);
         wrap.rotation.z = 0.08;
         g.add(wrap);
       }
       sphere(g, 0.032, 0x2b2f36, 0, -0.15, 0, METAL);
-      // Cabeza curvada: dos tramos que se afilan hacia las puntas
       const headG = new THREE.Group();
       headG.position.set(0, 0.52, 0);
       g.add(headG);
-      box(headG, 0.07, 0.09, 0.12, 0x5d6670, 0, 0, 0, METAL);
-      const front = box(headG, 0.05, 0.055, 0.24, 0xb8c2cc, 0, -0.02, -0.16, METAL);
-      front.rotation.x = 0.22;
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 4).rotateX(-Math.PI / 2), mat(0xe4ebf2, METAL));
-      tip.position.set(0, -0.06, -0.32);
-      tip.rotation.x = 0.4;
-      headG.add(tip);
-      const back = box(headG, 0.055, 0.05, 0.12, 0x3fa9ff, 0, -0.01, 0.11, METAL);
-      back.rotation.x = -0.25;
-      box(headG, 0.075, 0.02, 0.13, 0x2b2f36, 0, 0.05, 0, METAL);
+      const shape = P?.shape || 'pick';
+      if (shape === 'axe') {
+        box(headG, 0.06, 0.1, 0.1, 0x3a3f46, 0, 0, 0, METAL);
+        const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.025, 16, 1, false, Math.PI * 0.15, Math.PI * 0.7).rotateZ(Math.PI / 2), mat(headC, HM));
+        blade.position.set(0, -0.02, -0.1);
+        headG.add(blade);
+        box(headG, 0.03, 0.05, 0.08, accC, 0, 0, 0.08, METAL);
+      } else if (shape === 'hammer') {
+        box(headG, 0.16, 0.16, 0.3, headC, 0, 0, -0.02, HM);
+        for (const z of [-0.17, 0.13]) box(headG, 0.18, 0.18, 0.03, accC, 0, 0, z, METAL);
+      } else if (shape === 'scythe') {
+        box(headG, 0.05, 0.08, 0.08, handleC, 0, 0, 0, METAL);
+        const blade = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.022, 6, 20, Math.PI * 0.75).rotateY(Math.PI / 2), mat(headC, HM));
+        blade.position.set(0, -0.28, 0.02);
+        blade.rotation.x = Math.PI * 0.55;
+        headG.add(blade);
+        sphere(headG, 0.035, accC, 0, 0.05, 0, { emissive: accC });
+      } else if (shape === 'lolly') {
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 24).rotateZ(Math.PI / 2), mat(headC, { roughness: 0.3 }));
+        headG.add(disc);
+        for (let k = 0; k < 3; k++) {
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05 + k * 0.045, 0.012, 6, 24).rotateY(Math.PI / 2), mat(k % 2 ? accC : 0xffffff));
+          ring.position.x = 0.026;
+          headG.add(ring);
+        }
+      } else {
+        box(headG, 0.07, 0.09, 0.12, 0x5d6670, 0, 0, 0, METAL);
+        const front = box(headG, 0.05, 0.055, 0.24, headC, 0, -0.02, -0.16, HM);
+        front.rotation.x = 0.22;
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 4).rotateX(-Math.PI / 2), mat(P ? headC : 0xe4ebf2, HM));
+        tip.position.set(0, -0.06, -0.32);
+        tip.rotation.x = 0.4;
+        headG.add(tip);
+        const back = box(headG, 0.055, 0.05, 0.12, accC, 0, -0.01, 0.11, METAL);
+        back.rotation.x = -0.25;
+        box(headG, 0.075, 0.02, 0.13, 0x2b2f36, 0, 0.05, 0, METAL);
+      }
       muzzle.position.set(0, 0.52, -0.28);
       sightY = 0.1;
       break;
@@ -679,13 +708,13 @@ export function makeProjectileModel(kind) {
   return g;
 }
 
-export function makeItemModel(item, camo = null) {
+export function makeItemModel(item, camo = null, pick = null) {
   if (item.kind === 'weapon') return makeWeaponModel(item.type, item.rarity, camo);
   if (item.kind === 'consumable') return makeConsumableModel(item.type);
   if (item.kind === 'throwable') return makeThrowableModel(item.type);
   if (item.kind === 'ammo') return makeAmmoModel(item.ammo);
   if (item.kind === 'material') return makeMaterialModel(item.mat);
-  return makeWeaponModel('pickaxe');
+  return makeWeaponModel('pickaxe', 0, null, pick);
 }
 
 // ------------------------------------------------------------------ COFRE ---
@@ -819,7 +848,8 @@ export function makeCharacter(c = {}) {
   };
   const armL = mkArm(-0.32);
   const armR = mkArm(0.32);
-  if (!look || look.pack) {
+  if (c.bag && BAGS[c.bag]) addBag(body, c.bag);
+  else if (!look || look.pack) {
     box(body, 0.34, 0.4, 0.15, 0x6b4a2b, 0, 1.27, 0.21).castShadow = true; // mochila
     box(body, 0.3, 0.12, 0.17, 0x5a3d22, 0, 1.43, 0.215);
     box(body, 0.2, 0.12, 0.05, 0x7a5a38, 0, 1.15, 0.3);
@@ -966,10 +996,12 @@ function addAccessory({ body, head }, acc) {
 }
 
 // --------------------------------------------------------------- PLANEADOR ---
-export function makeGlider() {
+export function makeGlider(skin = null) {
+  const G = GLIDERS[skin] || null;
+  if (G?.shape === 'wing') return makeWingGlider(G);
   const g = new THREE.Group();
-  const colors = [0xff5a3c, 0xffffff, 0xffc23c, 0x3cb6ff];
-  const segs = 8;
+  const colors = G?.colors || [0xff5a3c, 0xffffff, 0xffc23c, 0x3cb6ff];
+  const segs = colors.length > 4 ? colors.length * 2 : 8;
   for (let i = 0; i < segs; i++) {
     const geo = new THREE.SphereGeometry(2.2, 4, 6, (i / segs) * Math.PI * 2, (Math.PI * 2) / segs, 0, Math.PI / 2.6);
     const m = new THREE.Mesh(geo, mat(colors[i % colors.length], { side: THREE.DoubleSide }));
@@ -991,6 +1023,84 @@ export function makeGlider() {
   const wrap = new THREE.Group();
   wrap.add(g);
   return wrap;
+}
+
+// Planeador en forma de ala (tiburón, dragón): ala delta con costillas.
+function makeWingGlider(G) {
+  const g = new THREE.Group();
+  const [c1, c2] = G.colors;
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.6);
+  shape.lineTo(2.6, -0.5);
+  shape.quadraticCurveTo(1.3, -0.1, 0, -0.7);
+  shape.quadraticCurveTo(-1.3, -0.1, -2.6, -0.5);
+  shape.lineTo(0, 0.6);
+  const wing = new THREE.Mesh(new THREE.ShapeGeometry(shape, 8).rotateX(-Math.PI / 2), mat(c1, { side: THREE.DoubleSide }));
+  wing.castShadow = true;
+  g.add(wing);
+  for (const x of [-1.7, -0.9, 0, 0.9, 1.7]) {
+    const rib = box(g, 0.05, 0.05, 1.1 - Math.abs(x) * 0.3, c2, x, 0.03, 0.05 + Math.abs(x) * 0.2);
+    rib.rotation.y = -x * 0.12;
+  }
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 3).rotateX(Math.PI / 2), mat(c2));
+  fin.scale.set(0.3, 1, 1);
+  fin.position.set(0, 0.3, 0.3);
+  g.add(fin);
+  g.position.y = 2.6;
+  const lines = [];
+  for (const x of [-2, -1, 1, 2]) {
+    lines.push(new THREE.Vector3(x, 2.6, -0.1));
+    lines.push(new THREE.Vector3(0, 1.6, 0));
+  }
+  const wrap = new THREE.Group();
+  wrap.add(g);
+  wrap.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines), new THREE.LineBasicMaterial({ color: 0x333333 })));
+  return wrap;
+}
+
+// Mochilas de la taquilla (sustituyen a la de serie).
+function addBag(body, id) {
+  const B = BAGS[id];
+  const { color: c, accent: a } = B;
+  for (const x of [-0.13, 0.13]) box(body, 0.045, 0.36, 0.02, 0x2b2b2b, x, 1.34, -0.14); // correas
+  if (B.style === 'tank') {
+    for (const x of [-0.08, 0.08]) {
+      capsule(body, 0.075, 0.46, c, x, 1.3, 0.23, METAL);
+      capsule(body, 0.03, 0.08, a, x, 1.56, 0.23, METAL);
+    }
+    box(body, 0.3, 0.05, 0.05, a, 0, 1.2, 0.2);
+  } else if (B.style === 'bear') {
+    sphere(body, 0.17, c, 0, 1.26, 0.25, null, 1, 1.1, 0.8);
+    sphere(body, 0.13, c, 0, 1.5, 0.25);
+    for (const x of [-0.09, 0.09]) sphere(body, 0.05, a, x, 1.62, 0.25);
+    sphere(body, 0.05, 0xe8d0b0, 0, 1.48, 0.36);
+    for (const x of [-0.045, 0.045]) sphere(body, 0.018, 0x111111, x, 1.53, 0.355);
+  } else if (B.style === 'shield') {
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.05, 20).rotateX(Math.PI / 2), mat(c));
+    sh.position.set(0, 1.3, 0.24);
+    body.add(sh);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.025, 6, 20), mat(a, METAL));
+    rim.position.set(0, 1.3, 0.265);
+    body.add(rim);
+    sphere(body, 0.06, a, 0, 1.3, 0.28, METAL);
+  } else if (B.style === 'rocket') {
+    capsule(body, 0.13, 0.5, c, 0, 1.32, 0.25, METAL);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.18, 12), mat(a));
+    nose.position.set(0, 1.66, 0.25);
+    body.add(nose);
+    for (const x of [-1, 1]) box(body, 0.1, 0.16, 0.03, a, x * 0.15, 1.1, 0.25).rotation.z = x * 0.4;
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 10).rotateX(Math.PI), mat(0xffb03a, { emissive: 0xff6a00 }));
+    flame.position.set(0, 1.0, 0.25);
+    body.add(flame);
+  } else if (B.style === 'wings') {
+    box(body, 0.22, 0.3, 0.1, c, 0, 1.32, 0.22, METAL);
+    for (const x of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const f = box(body, 0.36 - k * 0.07, 0.05, 0.03, k === 0 ? a : c, x * (0.25 + k * 0.02), 1.42 - k * 0.1, 0.25, k === 0 ? { emissive: a } : METAL);
+        f.rotation.z = x * (0.35 + k * 0.25);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------- AUTOBÚS ---

@@ -3,6 +3,7 @@ import { GRAVITY, HALF, WATER_LEVEL } from '../world/constants.js';
 import { makeCharacter, makeGlider, makeItemModel, optimizeCharacter, mergedMesh, itemKey } from './models.js';
 import { rayAABB } from './dummies.js';
 import { clamp } from '../core/rng.js';
+import { EMOTES } from './cosmetics.js';
 
 export const R = 0.35; // medio ancho de la caja de colisión
 const STEP = 0.55; // altura máxima de escalón
@@ -39,11 +40,18 @@ export class Character {
   // (Re)construye el modelo con los colores indicados.
   setOutfit(outfit) {
     const o = { ...randomOutfit(), ...outfit };
-    const sig = `${o.skin}|${o.shirt}|${o.pants}|${o.hair}|${o.suit || ''}|${o.acc || ''}|${o.camo || ''}`;
+    const sig = `${o.skin}|${o.shirt}|${o.pants}|${o.hair}|${o.suit || ''}|${o.acc || ''}|${o.camo || ''}|${o.pick || ''}|${o.glider || ''}|${o.bag || ''}`;
     if (sig === this.outfitSig) return;
     this.outfitSig = sig;
     this.outfit = o;
     const old = this.model;
+    if ((o.glider || '') !== (this.gliderSkin ?? '')) {
+      const vis = this.glider.visible;
+      this.glider.parent?.remove(this.glider);
+      this.glider = makeGlider(o.glider);
+      this.glider.visible = vis;
+      this.gliderSkin = o.glider || '';
+    }
     this.model = optimizeCharacter(makeCharacter(o));
     if (old) {
       this.game.scene.remove(old.root);
@@ -405,7 +413,7 @@ export class Character {
 
   // ------------------------------------------------------------ MODELO
   setHeld(item) {
-    const key = item ? itemKey(item) : 'none';
+    const key = item ? itemKey(item) + (item.kind === 'pickaxe' ? this.outfit?.pick || '' : '') : 'none';
     if (key === this.heldKey) return;
     this.heldKey = key;
     const hand = this.model.hand;
@@ -413,10 +421,11 @@ export class Character {
     if (!item) return;
     // Malla fusionada (1 draw call) + punto de boca de cañón para trazadoras.
     const camo = item.kind === 'weapon' ? this.outfit?.camo || null : null;
-    const mk = itemKey(item) + (camo ? '_' + camo : '');
+    const pick = item.kind === 'pickaxe' ? this.outfit?.pick || null : null;
+    const mk = itemKey(item) + (camo ? '_' + camo : '') + (pick ? '_' + pick : '');
     if (!MUZZLES.has(mk)) MUZZLES.set(mk, makeItemModel(item).userData.muzzle?.position.clone() ?? new THREE.Vector3());
     const m = new THREE.Group();
-    m.add(mergedMesh(mk, () => makeItemModel(item, camo)));
+    m.add(mergedMesh(mk, () => makeItemModel(item, camo, pick)));
     const muzzle = new THREE.Object3D();
     muzzle.position.copy(MUZZLES.get(mk));
     m.add(muzzle);
@@ -437,6 +446,8 @@ export class Character {
     root.rotation.set(0, this.yaw, 0);
     m.body.rotation.set(0, 0, 0);
     m.body.position.set(0, 0, 0);
+    if (m.body.scale.x !== 1) m.body.scale.setScalar(1);
+    m.hand.visible = true;
     m.head.rotation.set(0, 0, 0);
     const joints = (kl, kr, el, er) => {
       if (m.kneeL) {
@@ -533,4 +544,112 @@ export class Character {
     }
     joints(kl, kr, el, er);
   }
+
+  // ------------------------------------------------------------ GESTOS
+  startEmote(id) {
+    const def = EMOTES[id];
+    if (!def || !this.alive || this.mode !== 'ground' || this.vehicle || this.knocked) return false;
+    this.emote = { id, anim: def.anim, t: 0 };
+    return true;
+  }
+
+  stopEmote() {
+    this.emote = null;
+  }
+
+  // Anima el gesto en curso; devuelve true si se ha encargado de la pose.
+  updateEmote(dt, m, joints) {
+    const e = this.emote;
+    if (!e) return false;
+    if (!this.alive || this.mode !== 'ground' || this.knocked || this.vehicle) {
+      this.emote = null;
+      return false;
+    }
+    e.t += dt;
+    const t = e.t;
+    // Moverse cancela el gesto (también el de los jugadores remotos y bots)
+    if (t > 0.3 && this.hSpeed > 1.5) {
+      this.emote = null;
+      return false;
+    }
+    const s = Math.sin, c = Math.cos;
+    if (m.hand.children[0]) m.hand.visible = false;
+    switch (e.anim) {
+      case 'wave':
+        m.armR.rotation.set(0.2, 0, 2.5 + s(t * 9) * 0.25);
+        m.armL.rotation.set(0, 0, 0.1);
+        m.head.rotation.z = s(t * 4.5) * 0.08;
+        joints(0, 0, 0.1, 0.9 + s(t * 9) * 0.3);
+        if (t > 2.4) this.emote = null;
+        break;
+      case 'dance': {
+        const b = t * 7;
+        m.body.position.y = Math.abs(s(b)) * 0.08;
+        m.body.rotation.y = s(b * 0.5) * 0.35;
+        m.armL.rotation.set(1.2 + s(b) * 0.9, 0, -0.6 - c(b) * 0.4);
+        m.armR.rotation.set(1.2 - s(b) * 0.9, 0, 0.6 + c(b) * 0.4);
+        m.legL.rotation.set(Math.max(0, s(b)) * 0.7, 0, -0.1);
+        m.legR.rotation.set(Math.max(0, -s(b)) * 0.7, 0, 0.1);
+        m.head.rotation.x = s(b * 2) * 0.12;
+        joints(-Math.max(0, s(b)) * 1.1, -Math.max(0, -s(b)) * 1.1, 1.2, 1.2);
+        break;
+      }
+      case 'clap': {
+        const k = Math.abs(s(t * 8));
+        m.armL.rotation.set(1.35, 0, -0.15 - k * 0.45);
+        m.armR.rotation.set(1.35, 0, 0.15 + k * 0.45);
+        m.body.position.y = Math.abs(s(t * 4)) * 0.03;
+        joints(0, 0, 0.8, 0.8);
+        if (t > 3) this.emote = null;
+        break;
+      }
+      case 'robot': {
+        const step = Math.floor(t * 4);
+        const a = (step % 4) / 3;
+        m.armL.rotation.set(step % 2 ? 1.5 : 0.2, 0, -0.1);
+        m.armR.rotation.set(step % 2 ? 0.2 : 1.5, 0, 0.1);
+        m.head.rotation.y = (step % 3 - 1) * 0.5;
+        m.body.rotation.y = (a - 0.5) * 0.4;
+        joints(step % 2 ? -0.3 : 0, step % 2 ? 0 : -0.3, 1.57, 1.57);
+        break;
+      }
+      case 'pushups': {
+        const k = (s(t * 4) + 1) / 2;
+        m.body.rotation.x = -1.42;
+        m.body.position.set(0, 0.22 + k * 0.22, 0.6);
+        m.armL.rotation.set(1.5, 0, -0.15);
+        m.armR.rotation.set(1.5, 0, 0.15);
+        m.legL.rotation.set(0, 0, 0);
+        m.legR.rotation.set(0, 0, 0);
+        joints(0, 0, 1.4 - k * 1.3, 1.4 - k * 1.3);
+        break;
+      }
+      case 'spin':
+        m.root.rotation.y += t * 10;
+        m.armL.rotation.set(0, 0, -1.5);
+        m.armR.rotation.set(0, 0, 1.5);
+        m.legL.rotation.set(0.4, 0, 0);
+        m.body.position.y = Math.abs(s(t * 10)) * 0.05;
+        joints(-1.2, 0, 0, 0);
+        if (t > 3) this.emote = null;
+        break;
+      case 'flex':
+      default: {
+        const k = Math.min(1, t * 3);
+        m.armL.rotation.set(0, 0, -1.6 * k);
+        m.armR.rotation.set(0, 0, 1.6 * k);
+        m.body.rotation.x = 0.08 * k;
+        m.head.rotation.x = -0.25 * k;
+        m.body.scale.setScalar(1 + s(t * 6) * 0.01);
+        joints(0, 0, 1.9 * k, 1.9 * k);
+        if (t > 3.5) {
+          m.body.scale.setScalar(1);
+          this.emote = null;
+        }
+      }
+    }
+    if (!this.emote) m.hand.visible = true;
+    return true;
+  }
+
 }

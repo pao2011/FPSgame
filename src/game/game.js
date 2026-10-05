@@ -7,6 +7,7 @@ import { InventoryPanel } from '../ui/inventory.js';
 import { Accessibility } from '../ui/accessibility.js';
 import { GamepadInput } from '../core/gamepad.js';
 import { MatchLoader } from '../ui/tips.js';
+import { Trails } from './trails.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -130,6 +131,7 @@ export class Game {
     this.audio = audio;
     this.effects = new Effects(this);
     this.explosives = new Explosives(this);
+    this.trails = new Trails(this);
     this.camShake = 0;
     this.pickups = new PickupManager(this);
     this.containers = new ContainerManager(this, this.world.chestSpots, this.world.ammoSpots);
@@ -779,6 +781,7 @@ export class Game {
     const res = this.progress.matchEnd({
       kills: p.stats.kills, damage: p.stats.damage, chests: p.stats.chests, built: p.stats.built, edits: p.stats.edits,
       heads: p.stats.heads, time: this.matchTime, place, win, online: !!this.net, respawn: !!this.mode.respawn,
+      distance: Math.round(p.stats.distance || 0), emotes: p.stats.emotes || 0, mode: this.mode.id,
     });
     return res;
   }
@@ -885,6 +888,13 @@ export class Game {
 
   onElimination(victim, killer, type) {
     if (this.net?.isLocal(victim)) this.net.sendElim(victim, killer, type);
+    // Los bots a veces celebran la eliminación con un gesto
+    if (killer?.isBot && killer !== victim && Math.random() < 0.3) {
+      const id = ['baile', 'saludo', 'victoria', 'aplauso'][Math.floor(Math.random() * 4)];
+      setTimeout(() => {
+        if (killer.alive && killer.startEmote(id)) this.net?.sendEmote(killer, id);
+      }, 700);
+    }
     const how = { storm: 'la tormenta', fall: 'una caída', quit: 'abandono', explosion: 'una explosión', fire: 'el fuego' }[type] || null;
     const v = `<b class="${this.teamTag(victim)}">${this.name(victim)}</b>`;
     let text;
@@ -1257,6 +1267,7 @@ export class Game {
     this.explosives.update(dt);
     this.effects.update(dt);
     this.grass.update(dt, this.camera.position);
+    this.trails.update(dt);
     this.inventory.update();
     this.a11y.update(dt);
     this.updatePings(dt);
@@ -1272,6 +1283,16 @@ export class Game {
     const p = this.player;
     if (input.hit('map')) this.hud.toggleMap();
     if (input.hit('inventory')) this.inventory.toggle();
+    if (input.hit('emote') && !p.emote && !this.build.active) {
+      const id = p.outfit?.emote || 'baile';
+      if (p.startEmote(id)) {
+        p.stats.emotes = (p.stats.emotes || 0) + 1;
+        this.net?.sendEmote(p, id);
+      }
+    } else if (p.emote && (input.held('forward') || input.held('back') || input.held('left') || input.held('right') || input.hit('jump') || input.held('fire') || input.held('ads') || input.axis.active || this.build.active)) {
+      p.stopEmote();
+      this.net?.sendEmote(p, '');
+    }
     if (input.hit('camera')) {
       this.camMode = this.camMode === 'fp' ? 'tp' : 'fp';
       this.hud.toast(this.camMode === 'fp' ? 'Cámara: primera persona' : 'Cámara: tercera persona');
@@ -1670,7 +1691,7 @@ export class Game {
       if (p.sprinting) fov += 6;
       this.scene.fog.near = 200;
       this.scene.fog.far = 1250;
-      if (this.camMode === 'fp' && !this.build.active) {
+      if (this.camMode === 'fp' && !this.build.active && !p.emote) {
         cam.position.copy(p.eye);
         this.aimOrigin.copy(cam.position);
         p.model.root.visible = false;
@@ -1678,7 +1699,7 @@ export class Game {
         const pivot = p.eye.clone();
         pivot.y += 0.15;
         const right = tmpR.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
-        const back = this.build.active ? 4.2 : 3.0 - ads * 1.5;
+        const back = this.build.active ? 4.2 : p.emote ? 4.2 : 3.0 - ads * 1.5;
         const desired = pivot.clone().addScaledVector(right, 0.7 - ads * 0.15).addScaledVector(f, -back);
         const dir = desired.clone().sub(pivot);
         const dist = dir.length();
@@ -1717,7 +1738,7 @@ export class Game {
 
   render() {
     const r = this.renderer;
-    const view = this.state === 'playing' && this.camMode === 'fp' && this.player.mode === 'ground' && this.combat.viewmodel.visible && !this.spectating;
+    const view = this.state === 'playing' && this.camMode === 'fp' && this.player.mode === 'ground' && this.combat.viewmodel.visible && !this.spectating && !this.player.emote;
     if (this.composer) {
       this.viewPass.enabled = view;
       this.composer.render();

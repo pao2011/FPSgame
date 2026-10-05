@@ -3911,3 +3911,27 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 #match-loader .ml-tip { margin-top: 22px; background: rgba(0, 0, 0, 0.3); border-left: 4px solid #ffd34d; border-radius: 10px; padding: 10px 14px; }
 #match-loader .ml-tip small { color: #ffd34d; font-weight: 800; letter-spacing: 1px; }
 #match-loader .ml-tip p { margin: 4px 0 0; line-height: 1.4; }
+
+/* Iconos de cosméticos sin modelo (estelas, gestos, pantallas de carga) */
+.cos-icon {
+  width: 100%;
+  height: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  border-radius: 10px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--ic, #888) 45%, transparent), transparent 70%);
+}
+.cos-icon.emote { background: radial-gradient(circle, rgba(255, 211, 77, 0.35), transparent 70%); }
+.cos-icon.screen { font-size: 34px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.15); }
+.tier-card .cos-icon { min-height: 54px; font-size: 30px; }
+.locker .tabs { flex-wrap: wrap; }
+.challenges h3 small, .mode-stats h3 small { opacity: 0.6; font-size: 12px; font-weight: 500; margin-left: 6px; }
+.mode-stats .st-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.mode-stats .st-grid span { background: rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 6px 10px; font-size: 12px; opacity: 0.9; }
+.mode-stats .st-grid b { display: block; font-size: 18px; }
+.st-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.st-table th, .st-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.st-table th { opacity: 0.6; font-weight: 600; }

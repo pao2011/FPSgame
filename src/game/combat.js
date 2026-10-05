@@ -132,7 +132,7 @@ export class Combat {
     this.modelKey = key;
     if (this.vm) this.viewmodel.remove(this.vm);
     const vm = new THREE.Group();
-    const model = item.kind === 'pickaxe' ? makeWeaponModel('pickaxe') : makeItemModel(item, camo);
+    const model = item.kind === 'pickaxe' ? makeWeaponModel('pickaxe', 0, null, this.player.outfit?.pick) : makeItemModel(item, camo);
     if (item.kind === 'throwable') {
       model.scale.setScalar(0.55);
       model.position.set(0.02, 0.0, -0.06);
