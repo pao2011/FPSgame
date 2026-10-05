@@ -152,6 +152,8 @@ class Bot extends Character {
     this.strafeT = 0;
     this.thinkT = random.float(0, THINK);
     this.jumpFrac = random.float(0.1, 0.85);
+    this.rumor = null; // último tiroteo oído a lo lejos
+    this.bold = random.next(); // los más atrevidos (bold < 0.7) acuden a los disparos
     this.deployAlt = random.float(70, 120);
     this.landTarget = null;
     this.lastHurt = -99;
@@ -349,7 +351,10 @@ class Bot extends Character {
     }
     for (const pk of g.pickups.items) if (pk.item.kind === 'weapon' && Math.hypot(pk.pos.x - this.pos.x, pk.pos.z - this.pos.z) < 300 && low(pk.pos)) cands.push(pk.pos);
     if (cands.length) {
-      const s = random.pick(cands);
+      // Casi la mitad prefiere zonas con nombre, cuevas y trincheras
+      // (aterrizajes "calientes": hay pelea desde el principio)
+      const hot = random.chance(0.45) ? cands.filter((p) => g.world.poiAt(p.x, p.z) || g.world.sites.some((q) => q.contains(p.x, p.z))) : [];
+      const s = random.pick(hot.length ? hot : cands);
       return new THREE.Vector3(s.x + random.float(-5, 5), 0, s.z + random.float(-5, 5));
     }
     const st = g.storm;
@@ -449,9 +454,13 @@ class Bot extends Character {
     // Oído: disparos cercanos de enemigos
     for (const n of g.noises) {
       if (now - n.t > 0.8 || !n.src.alive || n.src.team === this.team) continue;
-      if (this.pos.distanceTo(n.pos) < n.r) {
+      const d = this.pos.distanceTo(n.pos);
+      if (d < n.r) {
         const m = this.memory.get(n.src);
         if (!m || now - m.time > 0.5) this.remember(n.src, false, n.pos);
+      } else if (d < n.r * 2.6 && (!this.rumor || now - this.rumor.t > 4)) {
+        // Tiroteo a lo lejos: puede acudir a él (ver decide)
+        this.rumor = { pos: n.pos.clone(), t: now };
       }
     }
   }
@@ -620,6 +629,13 @@ class Bot extends Character {
       const d = leader.pos.distanceTo(this.pos);
       if (d > 30 || (this.task === 'follow' && d > 12)) return this.setTask('follow', leader.pos, leader);
     }
+    // Tiroteo a lo lejos: los bots equipados y atrevidos van hacia él
+    // (más peleas y menos paseos por la isla vacía)
+    const rumor = this.rumor;
+    if (rumor && now - rumor.t < 20 && this.bold < 0.7 && this.hasWeapon && hpTot >= 100 && !g.storm.isOutside(rumor.pos.x, rumor.pos.z)) {
+      if (this.pos.distanceTo(rumor.pos) > 18) return this.setTask('investigate', rumor.pos);
+      this.rumor = null;
+    }
     if (this.task === 'loot' && this.goalRef && this.goalT < 25 && this.lootValid(this.goalRef)) return;
     if (this.needsLoot()) {
       const l = this.findLoot();
@@ -654,7 +670,7 @@ class Bot extends Character {
       const a = random.float(0, Math.PI * 2);
       const rr = Math.sqrt(random.next()) * r;
       const x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
-      if (g.world.terrain.heightAt(x, z) > 1 && Math.hypot(x - this.pos.x, z - this.pos.z) < 150) return new THREE.Vector3(x, 0, z);
+      if (g.world.isLand(x, z, 1) && Math.hypot(x - this.pos.x, z - this.pos.z) < 150) return new THREE.Vector3(x, 0, z);
     }
     const a = random.float(0, Math.PI * 2);
     return new THREE.Vector3(this.pos.x + Math.cos(a) * 40, 0, this.pos.z + Math.sin(a) * 40);
@@ -764,6 +780,10 @@ class Bot extends Character {
         this.navigate(this.goal, 4);
         speed = 7.2;
         if (this.targetVisible) this.aimAndShoot(dt);
+        break;
+      case 'investigate':
+        if (this.navigate(this.goal, 10)) this.rumor = null;
+        speed = 6.8;
         break;
       case 'fight':
         speed = this.fightMove(dt);

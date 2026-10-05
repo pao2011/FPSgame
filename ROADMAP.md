@@ -128,6 +128,30 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 - **Puertas reales** en las casas del mapa (E; los bots también las abren).
 - **Mapa de calor** de aterrizajes y eliminaciones al terminar.
 
+### Mapa (actualización)
+- **Carreteras sin montañas encima:** cada carretera tiene un perfil de
+  altura suavizado (pendiente máxima ~12 %) y el terreno se moldea a su
+  alrededor como un corredor continuo con taludes (desmontes entre rocas si
+  cruza una loma). Las salidas compartidas y los cruces quedan a nivel y el
+  asfalto se subdivide para que el relieve nunca asome. El trazado elige la
+  ruta con menos desmonte y evita las conexiones que exigirían cortar media
+  montaña.
+- **Ríos y lagos** (`src/world/hydro.js`): tres lagos en hondonadas y dos ríos
+  con meandros que bajan hasta el mar, cada uno con su propio nivel de agua
+  (nadar, lanchas, IA, minimapa), orillas de arena húmeda y corriente
+  animada. **Puentes** con barandillas y pilar donde una carretera cruza un río.
+- **Bajo tierra** (`src/world/underground.js`): dos **cuevas** (salas y
+  túneles cubiertos, roca irregular, estalactitas, cristales de colores,
+  antorchas y un tragaluz) y dos **redes de trincheras** (zigzag con
+  tablones, sacos terreros, banquetas de tiro, escaleras, refugios cubiertos
+  y faroles). Excavadas en la rejilla del terreno: se entra por rampas y la
+  IA puede llegar a todos sus cofres. Luz horneada en los vértices y luces
+  dinámicas cerca del jugador; no llueve dentro.
+- **Más densidad:** 14 zonas (antes 12) más cerca del centro, más
+  edificios junto a las carreteras, los bots acuden a los tiroteos lejanos y
+  prefieren aterrizar en zonas con nombre, y las dos primeras fases de la
+  tormenta son más cortas.
+
 ---
 
 ## 🔜 Pendiente para próximas versiones

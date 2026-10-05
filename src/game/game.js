@@ -9,6 +9,7 @@ import { GamepadInput } from '../core/gamepad.js';
 import { MatchLoader } from '../ui/tips.js';
 import { Trails } from './trails.js';
 import { Weather } from '../world/weather.js';
+import { UndergroundFx } from '../world/underground.js';
 import { NPCs } from './npcs.js';
 import { RebootVans } from './reboot.js';
 import { Replay, Viewer } from './replay.js';
@@ -134,6 +135,8 @@ export class Game {
     this.seed = MAP_SEED;
     this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1' });
     this.grass = new Grass(this.scene, this.world, this.quality);
+    // Luces dinámicas de cuevas y trincheras (cerca de la cámara)
+    this.underFx = new UndergroundFx(this.scene, this.world.sites, this.quality);
     this.grass.onAutoOff = () => this.hud?.toast('Rendimiento: se ha quitado el césped para ganar FPS');
     this.weather = new Weather(this);
 
@@ -755,7 +758,7 @@ export class Game {
       const a = this.arenaAngle + team * Math.PI + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.18 + (this.mode.arena ? 0 : random.float(-0.25, 0.25));
       const rr = this.mode.arena ? r : r + random.float(-40, 40);
       const x = st.center.x + Math.cos(a) * rr, z = st.center.y + Math.sin(a) * rr;
-      if (this.world.terrain.heightAt(x, z) > 1.5) return [x, z];
+      if (this.world.isLand(x, z)) return [x, z];
     }
     return [st.center.x, st.center.y];
   }
@@ -1080,7 +1083,7 @@ export class Game {
         x = st.center.x + Math.cos(a) * r;
         z = st.center.y + Math.sin(a) * r;
       }
-      if (this.world.terrain.heightAt(x, z) > 1.5 && !st.isOutside(x, z)) return [x, z];
+      if (this.world.isLand(x, z) && !st.isOutside(x, z)) return [x, z];
     }
     return [st.center.x, st.center.y];
   }
@@ -1238,6 +1241,7 @@ export class Game {
     const t = this.time;
 
     this.world.water.material.uniforms.time.value = t;
+    this.underFx.update(dt, this.camera.position);
     this.sky.material.uniforms.time.value = t;
     if (this.state === 'menu') {
       this.updateMenuCamera(t);

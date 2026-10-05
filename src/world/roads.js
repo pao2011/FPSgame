@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { smoothstep } from '../core/rng.js';
 
 // Grano de asfalto, parches y grietas (procedural, coordenadas de mundo).
 function addAsphaltDetail(mat) {
@@ -82,12 +83,14 @@ export class RoadNetwork {
     this.cell = 24;
   }
 
-  add(pts, width = 7, kind = 'road') {
-    const road = { pts, width, kind };
+  // hs (opcional): altura del firme en cada punto (perfil suavizado). Las
+  // carreteras con perfil moldean el terreno a su alrededor (corredor).
+  add(pts, width = 7, kind = 'road', hs = null) {
+    const road = { pts, width, kind, hs };
     this.roads.push(road);
     for (let i = 0; i < pts.length - 1; i++) {
       const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
-      const s = { ax, az, bx, bz, w: width, road };
+      const s = { ax, az, bx, bz, w: width, road, i };
       const m = width / 2 + 2;
       const c = this.cell;
       for (let gx = Math.floor((Math.min(ax, bx) - m) / c); gx <= Math.floor((Math.max(ax, bx) + m) / c); gx++) {
@@ -125,6 +128,31 @@ export class RoadNetwork {
     return best;
   }
 
+  // Altura del perfil de la carretera (con perfil) más cercana a menos de
+  // `maxD` m del eje, o null.
+  profileNear(x, z, maxD = 8) {
+    let best = null;
+    const c = this.cell;
+    const r = Math.ceil(maxD / c);
+    const gx0 = Math.floor(x / c), gz0 = Math.floor(z / c);
+    for (let gx = gx0 - r; gx <= gx0 + r; gx++) {
+      for (let gz = gz0 - r; gz <= gz0 + r; gz++) {
+        const l = this.segs.get(gx * 100000 + gz);
+        if (!l) continue;
+        for (const s of l) {
+          const hs = s.road.hs;
+          if (!hs) continue;
+          const dx = s.bx - s.ax, dz = s.bz - s.az;
+          const len2 = dx * dx + dz * dz || 1;
+          const t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / len2));
+          const d = Math.hypot(x - (s.ax + dx * t), z - (s.az + dz * t));
+          if (d < maxD && (!best || d < best.d)) best = { d, hp: hs[s.i] + (hs[s.i + 1] - hs[s.i]) * t };
+        }
+      }
+    }
+    return best;
+  }
+
   // Punto de carretera más cercano y su dirección.
   nearest(x, z, search = 60) {
     let best = null, bd = Infinity;
@@ -152,51 +180,108 @@ export class RoadNetwork {
     return best;
   }
 
-  // Ribbon de asfalto que sigue el terreno + líneas discontinuas.
+  // Terreno moldeado por el corredor de las carreteras con perfil: el firme
+  // queda a la altura del perfil y a los lados hay un talud cuya anchura
+  // crece con el desnivel (nada de montaña "atravesando" el asfalto).
+  // hydro: no se rellenan los cauces de los ríos (ahí hay puentes).
+  corridor(x, z, h, hydro) {
+    const c = this.cell;
+    const gx0 = Math.floor(x / c), gz0 = Math.floor(z / c);
+    let bw = 0, bd = Infinity, target = h;
+    for (let gx = gx0 - 1; gx <= gx0 + 1; gx++) {
+      for (let gz = gz0 - 1; gz <= gz0 + 1; gz++) {
+        const l = this.segs.get(gx * 100000 + gz);
+        if (!l) continue;
+        for (const s of l) {
+          const hs = s.road.hs;
+          if (!hs) continue;
+          const dx = s.bx - s.ax, dz = s.bz - s.az;
+          const len2 = dx * dx + dz * dz || 1;
+          const t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / len2));
+          const d = Math.hypot(x - (s.ax + dx * t), z - (s.az + dz * t));
+          const hp = hs[s.i] + (hs[s.i + 1] - hs[s.i]) * t;
+          const inner = s.w / 2 + 3;
+          const fade = Math.min(26, Math.max(4, Math.abs(h - hp) * 1.8));
+          const w = 1 - smoothstep(inner, inner + fade, d);
+          // el tramo más cercano manda (continuidad en curvas y cruces)
+          if (w > bw || (w > 0 && w === bw && d < bd)) {
+            bw = w;
+            bd = d;
+            target = hp;
+          }
+        }
+      }
+    }
+    if (bw <= 0) return h;
+    if (hydro) bw *= 1 - hydro.riverMask(x, z);
+    return h + (target - h) * bw;
+  }
+
+  // Puntos cada `step` m a lo largo de una carretera, con su tangente y la
+  // altura del perfil (null si la carretera no tiene perfil).
+  samples(road, step = 2) {
+    const out = [];
+    const { pts, hs } = road;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+      const len = Math.hypot(bx - ax, bz - az);
+      const n = Math.max(1, Math.ceil(len / step));
+      const last = i === pts.length - 2;
+      for (let q = 0; q < n + (last ? 1 : 0); q++) {
+        const t = q / n;
+        out.push({ x: ax + (bx - ax) * t, z: az + (bz - az) * t, hp: hs ? hs[i] + (hs[i + 1] - hs[i]) * t : null });
+      }
+    }
+    for (let k = 0; k < out.length; k++) {
+      const a = out[Math.max(0, k - 1)], b = out[Math.min(out.length - 1, k + 1)];
+      const tx = b.x - a.x, tz = b.z - a.z;
+      const tl = Math.hypot(tx, tz) || 1;
+      out[k].tx = tx / tl;
+      out[k].tz = tz / tl;
+      out[k].dist = k ? out[k - 1].dist + Math.hypot(out[k].x - out[k - 1].x, out[k].z - out[k - 1].z) : 0;
+    }
+    return out;
+  }
+
+  // Ribbon de asfalto que sigue el perfil (o el terreno) + líneas discontinuas.
   buildMesh(terrain) {
     const pos = [], col = [], dash = [];
     const asphalt = new THREE.Color(0x3d3f44);
     const street = new THREE.Color(0x4a4c51);
+    // Altura del firme: nunca por debajo del terreno (subdividido cada 2 m
+    // y con tres filas transversales para que el relieve no lo atraviese).
+    const yAt = (x, z, hp, lift) => Math.max(hp ?? -Infinity, terrain.heightAt(x, z)) + lift;
     for (const road of this.roads) {
-      const pts = road.pts;
       const c = road.kind === 'street' ? street : asphalt;
       const hw = road.width / 2;
-      const L = [], Rr = [];
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
-        let tx = b[0] - a[0], tz = b[1] - a[1];
-        const tl = Math.hypot(tx, tz) || 1;
-        tx /= tl;
-        tz /= tl;
-        const nx = -tz, nz = tx;
-        const [x, z] = pts[i];
-        const lx = x + nx * hw, lz = z + nz * hw, rx = x - nx * hw, rz = z - nz * hw;
-        L.push([lx, terrain.heightAt(lx, lz) + 0.09, lz]);
-        Rr.push([rx, terrain.heightAt(rx, rz) + 0.09, rz]);
+      const S = this.samples(road, 2);
+      const rows = [[], [], []];
+      for (const p of S) {
+        const nx = -p.tz, nz = p.tx;
+        for (let r = 0; r < 3; r++) {
+          const o = hw * (1 - r); // +hw (izquierda), 0, -hw (derecha)
+          const x = p.x + nx * o, z = p.z + nz * o;
+          rows[r].push([x, yAt(x, z, p.hp, 0.08), z]);
+        }
       }
-      for (let i = 0; i < pts.length - 1; i++) {
-        const quad = [L[i], Rr[i + 1], Rr[i], L[i], L[i + 1], Rr[i + 1]]; // CCW visto desde arriba
-        for (const v of quad) {
-          pos.push(v[0], v[1], v[2]);
-          col.push(c.r, c.g, c.b);
+      for (let r = 0; r < 2; r++) {
+        const A = rows[r], B = rows[r + 1];
+        for (let i = 0; i < S.length - 1; i++) {
+          const quad = [A[i], B[i + 1], B[i], A[i], A[i + 1], B[i + 1]]; // CCW visto desde arriba
+          for (const v of quad) {
+            pos.push(v[0], v[1], v[2]);
+            col.push(c.r, c.g, c.b);
+          }
         }
       }
       // Línea central discontinua (solo carreteras)
       if (road.kind !== 'road') continue;
-      let acc = 0;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
-        const seg = Math.hypot(bx - ax, bz - az);
-        const dx = (bx - ax) / seg, dz = (bz - az) / seg;
-        for (let s = 0; s < seg; s += 1) {
-          if ((acc + s) % 9 > 3.5) continue;
-          const x = ax + dx * s, z = az + dz * s;
-          const y = terrain.heightAt(x, z) + 0.12;
-          const nx = -dz * 0.1, nz = dx * 0.1;
-          const x2 = x + dx, z2 = z + dz, y2 = terrain.heightAt(x2, z2) + 0.12;
-          dash.push(x + nx, y, z + nz, x2 - nx, y2, z2 - nz, x - nx, y, z - nz, x + nx, y, z + nz, x2 + nx, y2, z2 + nz, x2 - nx, y2, z2 - nz);
-        }
-        acc += seg;
+      for (let i = 0; i < S.length - 1; i++) {
+        const a = S[i], b = S[i + 1];
+        if (a.dist % 9 > 3.5) continue;
+        const nx = -a.tz * 0.1, nz = a.tx * 0.1;
+        const y = yAt(a.x, a.z, a.hp, 0.12), y2 = yAt(b.x, b.z, b.hp, 0.12);
+        dash.push(a.x + nx, y, a.z + nz, b.x - nx, y2, b.z - nz, a.x - nx, y, a.z - nz, a.x + nx, y, a.z + nz, b.x + nx, y2, b.z + nz, b.x - nx, y2, b.z - nz);
       }
     }
     const group = new THREE.Group();

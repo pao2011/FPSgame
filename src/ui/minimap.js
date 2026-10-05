@@ -27,8 +27,9 @@ export class MapRenderer {
         const z = -HALF + ((py + 0.5) / SIZE) * MAP_SIZE;
         const h = t.heightAt(x, z);
         const i = (py * SIZE + px) * 4;
-        if (h < 0) {
-          const d = Math.min(1, -h / 12);
+        const wd = this.world.waterDepth ? this.world.waterDepth(x, z) : -h;
+        if (wd > 0) {
+          const d = Math.min(1, wd / 12);
           img.data[i] = 70 - d * 40;
           img.data[i + 1] = 160 - d * 60;
           img.data[i + 2] = 220 - d * 50;
@@ -70,6 +71,18 @@ export class MapRenderer {
       const [x1, z1] = this.toPx(p.x + p.fw / 2, p.z + p.fd / 2);
       ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
       ctx.strokeRect(x0, z0, x1 - x0, z1 - z0);
+    }
+    // Cuevas y trincheras: los pasillos excavados en oscuro
+    for (const s of this.world.sites || []) {
+      ctx.fillStyle = s.kind === 'cave' ? 'rgba(52,46,58,0.9)' : 'rgba(92,70,44,0.95)';
+      for (let j = 0; j < s.nz; j++) {
+        for (let i = 0; i < s.nx; i++) {
+          if (!s.get(i, j)) continue;
+          const [x0, z0] = this.toPx(s.ox + i * 4, s.oz + j * 4);
+          const [x1, z1] = this.toPx(s.ox + (i + 1) * 4, s.oz + (j + 1) * 4);
+          ctx.fillRect(x0, z0, x1 - x0 + 0.5, z1 - z0 + 0.5);
+        }
+      }
     }
   }
 

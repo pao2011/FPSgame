@@ -46,12 +46,16 @@ export class NavGrid {
       }
     }
     const G = this.ground;
+    const w = this.world;
     for (let j = 2; j < S - 2; j++) {
       for (let i = 2; i < S - 2; i++) {
         const k = j * S + i;
         const h = G[k];
-        if (h < -3.5) this.block[k] = 255; // mar profundo
-        else if (h < -0.9) this.cost[k] = 6; // nadar es lento
+        // profundidad del agua (mar, lagos o ríos)
+        const wl = h > (w.maxWaterLevel ?? 0) || !w.waterLevelAt ? 0 : w.waterLevelAt(-HALF + (i + 0.5) * CELL, -HALF + (j + 0.5) * CELL);
+        const depth = wl - h;
+        if (depth > 3.5) this.block[k] = 255; // agua profunda
+        else if (depth > 0.9) this.cost[k] = 6; // nadar es lento
         else {
           const sl = Math.abs(G[k + 2] - G[k - 2]) + Math.abs(G[k + 2 * S] - G[k - 2 * S]);
           this.cost[k] = sl > 6 ? 5 : sl > 3 ? 2 : 0;
@@ -68,6 +72,18 @@ export class NavGrid {
   mark(b, delta) {
     if (b.data?.type === 'leaves') return;
     const S = this.size;
+    if (b.data?.type === 'bridge') {
+      // Puente: por encima del cauce; la IA cruza por él sin nadar
+      if (delta > 0) {
+        for (let j = Math.max(0, Math.floor((b.minZ + HALF) / CELL)); j <= Math.min(S - 1, Math.floor((b.maxZ + HALF) / CELL)); j++) {
+          for (let i = Math.max(0, Math.floor((b.minX + HALF) / CELL)); i <= Math.min(S - 1, Math.floor((b.maxX + HALF) / CELL)); i++) {
+            this.cost[j * S + i] = 0;
+            if (this.block[j * S + i] === 255) this.block[j * S + i] = 0;
+          }
+        }
+      }
+      return;
+    }
     const i0 = Math.max(0, Math.floor((b.minX - R + HALF) / CELL));
     const i1 = Math.min(S - 1, Math.floor((b.maxX + R + HALF) / CELL));
     const j0 = Math.max(0, Math.floor((b.minZ - R + HALF) / CELL));

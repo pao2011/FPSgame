@@ -120,6 +120,8 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Mapa renovado', 'Las carreteras ya no las atraviesan las montañas (firme con pendiente suave, taludes y pasos entre rocas), ríos y lagos en los que se puede nadar y navegar, puentes, dos cuevas iluminadas con antorchas y cristales, dos redes de trincheras con refugios y faroles, y más zonas, más juntas.'],
+  ['Más acción', 'Los bots acuden a los tiroteos que oyen a lo lejos, más de ellos aterrizan en zonas con nombre y las dos primeras fases de la tormenta son algo más cortas.'],
   ['Gráficos renovados', 'Materiales PBR con iluminación de entorno, oclusión ambiental (calidad alta), personajes con rodillas y codos, fachadas con textura, asfalto con grietas, césped que se mece, armas detalladas, trazadoras que viajan, casquillos, polvo de impacto y construcciones con relieve.'],
   ['Clima y ciclo de día', 'Cada partida tiene su clima (despejado, nublado, lluvia o niebla) y la hora avanza hasta el anochecer.'],
   ['Tormenta mejorada', 'Fases con tiempos distintos, zona final que se desplaza y ruta a la zona segura en el mapa.'],

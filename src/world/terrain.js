@@ -49,6 +49,9 @@ export class Terrain {
     this.flat = !!opts.flat; // isla plana del modo creativo
     this.flats = []; // {x, z, radius, height}
     this.zones = []; // POIs para colorear el suelo
+    this.hydro = null; // ríos y lagos (excavan el terreno)
+    this.roadNet = null; // carreteras (corredor con perfil suavizado)
+    this.sites = []; // cuevas y trincheras (excavadas en la rejilla)
     this.res = 400;
     this.cell = MAP_SIZE / this.res;
     this.heights = null;
@@ -117,6 +120,17 @@ export class Terrain {
     return h;
   }
 
+  // Altura final de un vértice: relieve + zonas aplanadas, después ríos y
+  // lagos, luego el corredor de las carreteras (que no rellena los cauces:
+  // ahí van puentes) y por último las cuevas/trincheras.
+  finalHeight(x, z) {
+    let h = this.shapedHeight(x, z);
+    if (this.hydro) h = this.hydro.shape(x, z, h);
+    if (this.roadNet) h = this.roadNet.corridor(x, z, h, this.hydro);
+    for (const s of this.sites) if (s.contains(x, z, 0.01)) return s.vertexHeight(x, z);
+    return h;
+  }
+
   build() {
     this.indexFlats();
     const N = this.res;
@@ -125,7 +139,7 @@ export class Terrain {
     let maxH = -Infinity;
     for (let j = 0; j < V; j++) {
       for (let i = 0; i < V; i++) {
-        const h = this.shapedHeight(-HALF + i * this.cell, -HALF + j * this.cell);
+        const h = this.finalHeight(-HALF + i * this.cell, -HALF + j * this.cell);
         heights[j * V + i] = h;
         if (h > maxH) maxH = h;
       }
@@ -194,7 +208,8 @@ export class Terrain {
     return Math.sqrt(dx * dx + dz * dz);
   }
 
-  colorAt(x, z, h, slope, out) {
+  colorAt(x, z, h, slope, out, noSites = false) {
+    if (!noSites) for (const s of this.sites) if (s.contains(x, z, 0.01) && s.floorColor(x, z, h, out)) return out;
     const n = this.noise(x * 0.02, z * 0.02) * 0.5 + 0.5;
     const n2 = this.noise(x * 0.07 + 50, z * 0.07) * 0.5 + 0.5;
     if (h < 0.6) {
@@ -224,6 +239,15 @@ export class Terrain {
         else out.lerp(tmpRock.setRGB(0.72, 0.68, 0.3), edge * 0.7);
       } else {
         out.lerp(tmpRock.setRGB(0.55, 0.5, 0.4), edge * 0.35 * n2);
+      }
+    }
+    // Orillas de ríos y lagos: arena húmeda y lecho más oscuro
+    if (this.hydro && h > 0.6) {
+      const s = this.hydro.surfaceAt(x, z);
+      if (s > -Infinity) {
+        const wet = smoothstep(-1.4, 0.1, s - h);
+        out.lerp(tmpRock.setRGB(0.66, 0.6, 0.44), wet * 0.85);
+        out.lerp(tmpRock.setRGB(0.4, 0.38, 0.3), smoothstep(0.3, 2.5, s - h) * 0.7);
       }
     }
     return out;

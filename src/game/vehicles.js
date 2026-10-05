@@ -141,13 +141,13 @@ class Vehicle {
 
   ground(x, z, fromY) {
     const g = this.game.world.groundBelow(x, z, fromY);
-    // La lancha flota sobre el agua
-    return this.def.water ? Math.max(g, WATER_LEVEL - 0.4) : g;
+    // La lancha flota sobre el agua (también en lagos y ríos)
+    return this.def.water ? Math.max(g, this.game.world.waterLevelAt(x, z) - 0.4) : g;
   }
 
   // ¿Está la lancha sobre tierra firme?
   beached() {
-    return this.game.world.groundBelow(this.pos.x, this.pos.z, this.pos.y + 1.2) > WATER_LEVEL - 0.25;
+    return this.game.world.groundBelow(this.pos.x, this.pos.z, this.pos.y + 1.2) > this.game.world.waterLevelAt(this.pos.x, this.pos.z) - 0.25;
   }
 
   // ¿Choca la carrocería en esta posición? (ignora bordillos bajos)
