@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ISLAND_RADIUS } from './constants.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { usesPBR } from '../game/models.js';
+import { usesPBR, isMobileQuality } from '../game/models.js';
 
 // Geometría con color por vértice (para fusionar varias piezas en una).
 function tinted(geo, r, g, b) {
@@ -98,49 +98,78 @@ export function createNature(world, rng) {
   const up = new THREE.Vector3(0, 1, 0);
   const col = new THREE.Color();
 
-  const instanced = (geo, material, list, fn, shadow = true) => {
-    const mesh = new THREE.InstancedMesh(geo, material, Math.max(1, list.length));
-    mesh.count = list.length;
-    list.forEach((t, i) => {
-      fn(t, i, mesh);
-      mesh.setMatrixAt(i, m);
+  // Instancias repartidas en parcelas de CH m: cada parcela es un InstancedMesh
+  // con su esfera envolvente (three.js descarta las que no se ven) y se
+  // registra en world.lod para ocultarla cuando queda lejos. Se recorre la
+  // lista en su orden original para que el generador aleatorio dé lo mismo.
+  // Devuelve, para cada elemento, { mesh, index } (para talar/picar).
+  const CH = 160;
+  const chunked = (geo, material, list, fn, shadow, kind) => {
+    const groups = new Map();
+    const slot = list.map((t) => {
+      const key = Math.floor(t.x / CH) * 1000 + Math.floor(t.z / CH);
+      let g = groups.get(key);
+      if (!g) groups.set(key, (g = { n: 0, mesh: null, minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity }));
+      g.minX = Math.min(g.minX, t.x);
+      g.maxX = Math.max(g.maxX, t.x);
+      g.minZ = Math.min(g.minZ, t.z);
+      g.maxZ = Math.max(g.maxZ, t.z);
+      return { g, index: g.n++ };
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.castShadow = shadow;
-    mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
-    scene.add(mesh);
-    return mesh;
+    for (const g of groups.values()) {
+      const mesh = (g.mesh = new THREE.InstancedMesh(geo, material, g.n));
+      mesh.castShadow = shadow;
+      mesh.receiveShadow = true;
+      mesh.matrixAutoUpdate = false;
+      scene.add(mesh);
+    }
+    const parts = list.map((t, i) => {
+      const { g, index } = slot[i];
+      fn(t, index, g.mesh);
+      g.mesh.setMatrixAt(index, m);
+      return { mesh: g.mesh, index };
+    });
+    for (const g of groups.values()) {
+      const mesh = g.mesh;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      const cx = (g.minX + g.maxX) / 2, cz = (g.minZ + g.maxZ) / 2;
+      world.lod?.add(mesh, kind, cx, cz, Math.hypot(g.maxX - g.minX, g.maxZ - g.minZ) / 2 + 4);
+    }
+    return parts;
   };
 
   const PBR = usesPBR();
+  // Móvil: menos polígonos por árbol/roca/arbusto
+  const LITE = isMobileQuality();
+  const ico = LITE ? 0 : 1;
   const M = ({ roughness = 0.9, ...o }) => (PBR ? new THREE.MeshStandardMaterial({ roughness, metalness: 0, ...o }) : new THREE.MeshLambertMaterial(o));
-  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.36, 1, 7).translate(0, 0.5, 0);
+  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.36, 1, LITE ? 5 : 7, 1, LITE).translate(0, 0.5, 0);
   const trunkMat = M({ color: 0x6b4a2b });
   const all = [...pines, ...rounds];
-  const trunkMesh = instanced(trunkGeo, trunkMat, all, (t, i) => {
+  const trunkParts = chunked(trunkGeo, trunkMat, all, (t) => {
     const th = t.pine ? 2.2 : 2.8;
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y - 0.2, t.z), q, new THREE.Vector3(t.s, th * t.s, t.s));
-  });
+  }, !LITE, 'tree');
 
   // Pino: tres pisos de ramas (más oscuros abajo) en una sola geometría
   const pineGeo = mergeGeometries([
-    tinted(new THREE.ConeGeometry(2.0, 4.0, 8).translate(0, 3.6, 0), 0.78, 0.82, 0.78),
-    tinted(new THREE.ConeGeometry(1.6, 3.4, 8).rotateY(0.4).translate(0, 5.6, 0), 0.9, 0.95, 0.9),
-    tinted(new THREE.ConeGeometry(1.1, 2.8, 8).rotateY(0.8).translate(0, 7.5, 0), 1.05, 1.08, 1.0),
+    tinted(new THREE.ConeGeometry(2.0, 4.0, LITE ? 6 : 8).translate(0, 3.6, 0), 0.78, 0.82, 0.78),
+    tinted(new THREE.ConeGeometry(1.6, 3.4, LITE ? 6 : 8).rotateY(0.4).translate(0, 5.6, 0), 0.9, 0.95, 0.9),
+    tinted(new THREE.ConeGeometry(1.1, 2.8, LITE ? 6 : 8).rotateY(0.8).translate(0, 7.5, 0), 1.05, 1.08, 1.0),
   ]);
   const pineMat = M({ color: 0xffffff, vertexColors: true, flatShading: true });
-  const pineMeshes = [instanced(pineGeo, pineMat, pines, (t, i, mesh) => {
+  const pineParts = chunked(pineGeo, pineMat, pines, (t, i, mesh) => {
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s, t.s, t.s));
     col.setHSL(0.36 + rng.float(-0.03, 0.03), 0.5, 0.24 + rng.float(-0.04, 0.04));
     mesh.setColorAt(i, col);
-  })];
+  }, true, 'tree');
 
   // Árbol frondoso: racimo de copas irregulares
-  const blob = (r, x, y, z, k, seed) => tinted(lumpy(new THREE.IcosahedronGeometry(r, 1), 0.08, seed).translate(x, y, z), k, k, k * 0.95);
+  const blob = (r, x, y, z, k, seed) => tinted(lumpy(new THREE.IcosahedronGeometry(r, ico), 0.08, seed).translate(x, y, z), k, k, k * 0.95);
   const roundGeo = mergeGeometries([
     blob(1.9, 0, 4.4, 0, 0.85, 1),
     blob(1.4, 1.1, 5.2, 0.4, 1.0, 2),
@@ -148,33 +177,33 @@ export function createNature(world, rng) {
     blob(1.1, 0.2, 6.2, -0.2, 1.15, 4),
   ]);
   const roundMat = M({ color: 0xffffff, vertexColors: true, flatShading: true });
-  const roundMesh = instanced(roundGeo, roundMat, rounds, (t, i, mesh) => {
+  const roundParts = chunked(roundGeo, roundMat, rounds, (t, i, mesh) => {
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s * 1.1, t.s, t.s * 1.1));
     col.setHSL(0.27 + rng.float(-0.05, 0.05), 0.55, 0.36 + rng.float(-0.06, 0.06));
     mesh.setColorAt(i, col);
-  });
+  }, true, 'tree');
 
-  const rockGeo = lumpy(new THREE.IcosahedronGeometry(1, 1), 0.14, 7);
+  const rockGeo = lumpy(new THREE.IcosahedronGeometry(1, ico), 0.14, 7);
   const rockMat = M({ color: 0xffffff, flatShading: true, roughness: 0.95 });
-  const rockMesh = instanced(rockGeo, rockMat, rocks, (t, i, mesh) => {
+  const rockParts = chunked(rockGeo, rockMat, rocks, (t, i, mesh) => {
     q.setFromEuler(new THREE.Euler(rng.float(0, 1), t.rot, rng.float(0, 1)));
     m.compose(new THREE.Vector3(t.x, t.y + t.s * 0.25, t.z), q, new THREE.Vector3(t.s * 1.2, t.s * 0.8, t.s));
     const g = 0.45 + rng.float(-0.06, 0.08);
     col.setRGB(g, g * 0.98, g * 0.94);
     mesh.setColorAt(i, col);
-  });
+  }, !LITE, 'rock');
 
   const bushGeo = mergeGeometries([
-    tinted(lumpy(new THREE.IcosahedronGeometry(0.8, 1), 0.1, 11).translate(0, 0.5, 0), 0.9, 0.9, 0.9),
-    tinted(lumpy(new THREE.IcosahedronGeometry(0.55, 1), 0.1, 12).translate(0.45, 0.75, 0.2), 1.1, 1.1, 1.05),
+    tinted(lumpy(new THREE.IcosahedronGeometry(0.8, ico), 0.1, 11).translate(0, 0.5, 0), 0.9, 0.9, 0.9),
+    tinted(lumpy(new THREE.IcosahedronGeometry(0.55, ico), 0.1, 12).translate(0.45, 0.75, 0.2), 1.1, 1.1, 1.05),
   ]);
-  instanced(bushGeo, roundMat, bushes, (t, i, mesh) => {
+  chunked(bushGeo, roundMat, bushes, (t, i, mesh) => {
     q.setFromAxisAngle(up, t.rot);
     m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s * 1.3, t.s, t.s * 1.3));
     col.setHSL(0.3 + rng.float(-0.04, 0.04), 0.5, 0.3 + rng.float(-0.05, 0.05));
     mesh.setColorAt(i, col);
-  }, false);
+  }, false, 'bush');
 
   // Colisiones y datos para poder talar/picar (ver game/harvest.js)
   const harvestables = [];
@@ -182,20 +211,20 @@ export function createNature(world, rng) {
     t.kind = 'tree';
     t.mat = 'wood';
     t.hp = t.maxHp = Math.round(120 * t.s);
-    t.parts = [{ mesh: trunkMesh, index: i }];
+    t.parts = [trunkParts[i]];
     t.center = new THREE.Vector3(t.x, t.y, t.z);
     const e = 0.35 * t.s;
     t.boxes = [[t.x - e, t.y - 1, t.z - e, t.x + e, t.y + (t.pine ? 9 : 3.2) * t.s, t.z + e, 'tree']];
     if (!t.pine) t.boxes.push([t.x - 1.7 * t.s, t.y + 3.2 * t.s, t.z - 1.7 * t.s, t.x + 1.7 * t.s, t.y + 6.2 * t.s, t.z + 1.7 * t.s, 'leaves']);
     harvestables.push(t);
   });
-  pines.forEach((t, i) => pineMeshes.forEach((mesh) => t.parts.push({ mesh, index: i })));
-  rounds.forEach((t, i) => t.parts.push({ mesh: roundMesh, index: i }));
+  pines.forEach((t, i) => t.parts.push(pineParts[i]));
+  rounds.forEach((t, i) => t.parts.push(roundParts[i]));
   rocks.forEach((r, i) => {
     r.kind = 'rock';
     r.mat = 'stone';
     r.hp = r.maxHp = Math.round(90 * r.s + 60);
-    r.parts = [{ mesh: rockMesh, index: i }];
+    r.parts = [rockParts[i]];
     r.center = new THREE.Vector3(r.x, r.y, r.z);
     const e = r.s * 0.75;
     r.boxes = [[r.x - e, r.y - 1, r.z - e, r.x + e, r.y + r.s * 0.8, r.z + e, 'rock']];

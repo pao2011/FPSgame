@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { isMobileQuality } from '../game/models.js';
 
 // Grano de asfalto, parches y grietas (procedural, coordenadas de mundo).
+// En calidad móvil, versión ligera (menos ruido por píxel, sin grietas).
 function addAsphaltDetail(mat) {
+  if (isMobileQuality()) mat.defines = { ...mat.defines, LITE: '' };
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vAWorld;')
@@ -20,15 +23,22 @@ float aNoise(vec2 p) {
   vec2 p = vAWorld.xz;
   float camD = length(cameraPosition - vAWorld);
   float fade = 1.0 - smoothstep(40.0, 260.0, camD);
+  vec3 c = diffuseColor.rgb;
+#ifdef LITE
+  float grain = aNoise(p * 3.1);
+  float aPatch = smoothstep(0.62, 0.66, aNoise(p * 0.11 + 7.3));
+  c *= mix(1.0, 0.86 + grain * 0.26, fade);
+  c = mix(c, c * 0.8, aPatch * 0.7);
+#else
   float grain = aNoise(p * 7.0) * 0.55 + aNoise(p * 2.3) * 0.45;
   float aPatch = smoothstep(0.62, 0.66, aNoise(p * 0.11 + 7.3));
   float crack = 1.0 - smoothstep(0.0, 0.012, abs(aNoise(p * 0.5) - 0.5));
   crack *= smoothstep(0.45, 0.6, aNoise(p * 0.07 + 3.0));
-  vec3 c = diffuseColor.rgb;
   c *= 0.9 + aNoise(p * 0.05) * 0.18;
   c *= mix(1.0, 0.86 + grain * 0.26, fade);
   c = mix(c, c * 0.8, aPatch * 0.7);
   c = mix(c, c * 0.62, crack * (1.0 - smoothstep(10.0, 70.0, camD)));
+#endif
   diffuseColor.rgb = c;
 }`);
   };

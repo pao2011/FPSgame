@@ -29,19 +29,41 @@ export class Weather {
     this.baseSun = game.sun.intensity;
     this.baseEnv = game.scene.environmentIntensity ?? 1;
     this.baseSunDir = game.sunDir.clone();
-    // Lluvia: segmentos que caen en una caja alrededor de la cámara
+    // Lluvia: segmentos que caen en una caja alrededor de la cámara. La caída
+    // se calcula en la GPU (shader de vértices): la CPU no toca las gotas.
     const low = game.quality === 'baja' || game.quality === 'movil';
-    this.N = low ? 1200 : 3500;
-    const pos = new Float32Array(this.N * 6);
-    this.drops = new Float32Array(this.N * 3);
+    this.N = game.quality === 'movil' ? 700 : low ? 1200 : 3500;
+    const drop = new Float32Array(this.N * 8);
     for (let i = 0; i < this.N; i++) {
-      this.drops[i * 3] = (Math.random() - 0.5) * 80;
-      this.drops[i * 3 + 1] = Math.random() * 40;
-      this.drops[i * 3 + 2] = (Math.random() - 0.5) * 80;
+      const x = (Math.random() - 0.5) * 80, y = Math.random() * 40, z = (Math.random() - 0.5) * 80;
+      drop.set([x, y, z, 0, x, y, z, 1], i * 8);
     }
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xaac4e0, transparent: true, opacity: 0.45, depthWrite: false }));
+    const ib = new THREE.InterleavedBuffer(drop, 4);
+    g.setAttribute('position', new THREE.InterleavedBufferAttribute(ib, 3, 0));
+    g.setAttribute('aEnd', new THREE.InterleavedBufferAttribute(ib, 1, 3));
+    this.rainUniforms = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uColor: { value: new THREE.Color(0xaac4e0) } };
+    const mat = new THREE.ShaderMaterial({
+      uniforms: this.rainUniforms,
+      transparent: true,
+      depthWrite: false,
+      vertexShader: /* glsl */ `
+        uniform float uTime;
+        uniform vec3 uCam;
+        attribute float aEnd;
+        void main() {
+          float y = mod(position.y + 6.0 - uTime * 28.0, 46.0) - 6.0;
+          vec3 p = uCam + vec3(position.x, y - 20.0, position.z) + aEnd * vec3(0.08, 0.9, 0.04);
+          gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        void main() {
+          gl_FragColor = vec4(uColor, 0.45);
+          #include <colorspace_fragment>
+        }`,
+    });
+    this.rain = new THREE.LineSegments(g, mat);
     this.rain.frustumCulled = false;
     this.rain.visible = false;
     game.scene.add(this.rain);
@@ -114,29 +136,13 @@ export class Weather {
     }
     // Niebla más cerrada con mal tiempo y de noche
     const night = THREE.MathUtils.clamp((this.hour - 20) / 1.5, 0, 1);
-    const f = K.fog * (1 - night * 0.3);
-    g.scene.fog.near *= f;
-    g.scene.fog.far *= f;
+    this.fogMul = K.fog * (1 - night * 0.3);
     if (this.rain.visible) this.updateRain(dt);
   }
 
   updateRain(dt) {
-    const cam = this.game.camera.position;
-    const pos = this.rain.geometry.attributes.position.array;
-    const d = this.drops;
-    for (let i = 0; i < this.N; i++) {
-      let y = d[i * 3 + 1] - dt * 28;
-      if (y < -6) y += 46;
-      d[i * 3 + 1] = y;
-      const x = cam.x + d[i * 3], z = cam.z + d[i * 3 + 2], yy = cam.y + y - 20;
-      const o = i * 6;
-      pos[o] = x;
-      pos[o + 1] = yy;
-      pos[o + 2] = z;
-      pos[o + 3] = x + 0.08;
-      pos[o + 4] = yy + 0.9;
-      pos[o + 5] = z + 0.04;
-    }
-    this.rain.geometry.attributes.position.needsUpdate = true;
+    const u = this.rainUniforms;
+    u.uTime.value = (u.uTime.value + dt) % 23; // 23 s × 28 m/s = 14 ciclos de 46 m: sin saltos
+    u.uCam.value.copy(this.game.camera.position);
   }
 }

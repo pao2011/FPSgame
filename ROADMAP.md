@@ -130,10 +130,31 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 
 ---
 
+## ✅ Optimización para móviles
+
+- **Mundo por parcelas:** terreno (8×8), vegetación (parcelas de 160 m) y
+  edificios (120 m) se descartan fuera de cámara y por distancia
+  (`src/world/lod.js`). En calidad *Móvil*: de ~1,65 M a ~0,2 M triángulos
+  por fotograma; la Isla de Inicio pasa de ~200 llamadas de dibujo a 7.
+- **Calidad *Móvil*:** árboles, rocas y arbustos con menos polígonos, cielo
+  con 3 octavas de nubes, agua sin ruido, suelo y asfalto con menos ruido,
+  fachadas con dibujo sólo de cerca, sin luces puntuales, niebla más cercana,
+  sonido 3D *equalpower* y máximo de sonidos simultáneos.
+- **CPU:** rutas de los bots con presupuesto de tiempo por fotograma y atajo
+  en línea recta (de ~13 ms a ~1 ms por fotograma en la prueba), animación
+  de los bots lejanos a menos FPS, matrices sólo de lo visible, minimapa a
+  ~13 Hz, lluvia en el *shader*.
+- **Batería:** 30 FPS en el menú y el mapa, 15 FPS en pausa; distancia de
+  visión (*Opciones → Móvil y táctil*) que se acorta sola si la resolución
+  dinámica ya está al mínimo.
+- **Sin tirones:** shaders precompilados en la carga y luces fijas (añadir
+  luces obligaba a recompilar todo).
+
 ## 🔜 Pendiente para próximas versiones
 
 - **Rendimiento:** *instancing* de las piezas de construcción, navegación de
-  los bots en un *worker*, sombras en cascada y LOD de los edificios lejanos.
+  los bots en un *worker*, sombras en cascada e impostores de los edificios
+  lejanos.
 - **IA:** bots que conducen vehículos y que usan las furgonetas de
   reaparición en online.
 - **Online:** furgonetas de reaparición, PNJ y jefe en partidas online

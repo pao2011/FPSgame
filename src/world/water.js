@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MAP_SIZE, HALF } from './constants.js';
+import { isMobileQuality } from '../game/models.js';
 
 // Textura con la altura del terreno (para saber la profundidad del agua y
 // pintar la orilla con espuma y tonos turquesa).
@@ -32,6 +33,8 @@ export function createWater(scene, terrain, sunDir) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     fog: true,
+    // Móvil: olas sólo con senos (sin ruido) y espuma más sencilla
+    defines: isMobileQuality() ? { LITE: '' } : {},
     depthWrite: false,
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
@@ -79,8 +82,12 @@ export function createWater(scene, terrain, sunDir) {
         h += sin(dot(p, vec2(0.12, 0.05)) + time * 1.1) * 0.35;
         h += sin(dot(p, vec2(-0.07, 0.15)) + time * 1.4) * 0.25;
         h += sin(dot(p, vec2(0.31, -0.22)) + time * 2.1) * 0.10;
+      #ifdef LITE
+        h += sin(dot(p, vec2(0.9, 0.7)) - time * 1.7) * 0.06;
+      #else
         h += (vnoise(p * 0.35 + vec2(time * 0.35, time * 0.2)) - 0.5) * 0.35;
         h += (vnoise(p * 1.1 - vec2(time * 0.5, -time * 0.3)) - 0.5) * 0.12;
+      #endif
         return h;
       }
 
@@ -112,7 +119,11 @@ export function createWater(scene, terrain, sunDir) {
         col += sunColor * pow(max(dot(R, normalize(sunDir)), 0.0), 18.0) * 0.08;
         // Espuma en la orilla
         float foamLine = 1.0 - smoothstep(0.0, 1.3, depth + sin(time * 1.6 + p.x * 0.05 + p.y * 0.04) * 0.25);
+      #ifdef LITE
+        float foamNoise = 0.55 + 0.25 * sin(p.x * 1.3 + time * 0.8) * sin(p.y * 1.1 - time * 0.6);
+      #else
         float foamNoise = vnoise(p * 1.6 + vec2(time * 0.6, time * 0.4));
+      #endif
         float foam = foamLine * smoothstep(0.35, 0.75, foamNoise + foamLine * 0.45);
         col = mix(col, vec3(0.95, 0.98, 1.0), foam * 0.9);
 

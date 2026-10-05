@@ -120,6 +120,7 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Optimización para móviles', 'El mundo se dibuja por parcelas (sólo lo visible y cercano), sombreados más ligeros, lluvia en la tarjeta gráfica, rutas de los bots sin tirones, menos FPS en menús y pausa, shaders precompilados y nueva opción «Distancia de visión».'],
   ['Gráficos renovados', 'Materiales PBR con iluminación de entorno, oclusión ambiental (calidad alta), personajes con rodillas y codos, fachadas con textura, asfalto con grietas, césped que se mece, armas detalladas, trazadoras que viajan, casquillos, polvo de impacto y construcciones con relieve.'],
   ['Clima y ciclo de día', 'Cada partida tiene su clima (despejado, nublado, lluvia o niebla) y la hora avanza hasta el anochecer.'],
   ['Tormenta mejorada', 'Fases con tiempos distintos, zona final que se desplaza y ruta a la zona segura en el mapa.'],
@@ -463,7 +464,9 @@ export class Menu {
         ${check('touchFullscreen', 'Pantalla completa al jugar (navegador)')}
         ${range('resScale', 'Resolución (calidad Móvil)', 40, 100, 5, pct)}
         ${check('autoRes', 'Resolución dinámica (baja la resolución si van lentos los FPS)')}
-        <div class="opt-row"><label>Ahorro de batería</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS']])}</div>`;
+        <div class="opt-row"><label>Ahorro de batería</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS']])}</div>
+        <div class="opt-row"><label>Distancia de visión</label>${seg('viewDist', [[0.7, 'Corta'], [1, 'Normal'], [1.3, 'Lejana']])}
+          <small class="hint">Hasta dónde se dibujan árboles, rocas y edificios. Corta = más FPS y menos batería. En calidad Móvil se acorta sola si el juego va lento.</small></div>`;
     } else {
       body = `
         ${range('fov', 'Campo de visión', 65, 100, 1, deg)}
@@ -596,73 +599,19 @@ export class Menu {
       e.stopPropagation();
       s.colorblind = b.dataset.v;
       this.game.applySettings();
-      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const g = this.game;
-      if (!g.touch) return;
-      const inMenu = g.state === 'menu';
-      const ui = inMenu ? $('main-menu') : $('pause');
-      ui.style.display = 'none';
-      g.touch.editLayout(() => {
-        if (inMenu) this.showMain('options');
-        else ui.style.display = 'flex';
-      });
-    });
-    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      s.padScheme = b.dataset.v;
-      this.game.applySettings();
-      rerender();
-    }));
-    el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
     el.querySelectorAll('[data-seg="fpsCap"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       s.fpsCap = Number(b.dataset.v);
       this.game.applySettings();
-      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const g = this.game;
-      if (!g.touch) return;
-      const inMenu = g.state === 'menu';
-      const ui = inMenu ? $('main-menu') : $('pause');
-      ui.style.display = 'none';
-      g.touch.editLayout(() => {
-        if (inMenu) this.showMain('options');
-        else ui.style.display = 'flex';
-      });
-    });
-    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      s.padScheme = b.dataset.v;
-      this.game.applySettings();
-      rerender();
+      el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
-    el.querySelectorAll('[data-seg="colorblind"] button').forEach((b) => b.addEventListener('click', (e) => {
+    el.querySelectorAll('[data-seg="viewDist"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      s.colorblind = b.dataset.v;
+      s.viewDist = Number(b.dataset.v);
       this.game.applySettings();
-      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const g = this.game;
-      if (!g.touch) return;
-      const inMenu = g.state === 'menu';
-      const ui = inMenu ? $('main-menu') : $('pause');
-      ui.style.display = 'none';
-      g.touch.editLayout(() => {
-        if (inMenu) this.showMain('options');
-        else ui.style.display = 'flex';
-      });
-    });
-    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      s.padScheme = b.dataset.v;
-      this.game.applySettings();
-      rerender();
-    }));
-    el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
-    }));
-    el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelectorAll('[data-seg="viewDist"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
   }
 

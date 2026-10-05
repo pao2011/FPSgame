@@ -59,6 +59,27 @@ const tmpF = new THREE.Vector3();
 const tmpR = new THREE.Vector3();
 const tmpCol = new THREE.Color();
 
+// Como Object3D.updateMatrixWorld, pero sin bajar por objetos ocultos (miles
+// de piezas en reserva: efectos, botín lejano, puertas…). Al saltarse un hijo
+// oculto con el padre movido, se marca para recalcularlo cuando reaparezca.
+function updateVisibleMatrices(o, force) {
+  if (o.matrixAutoUpdate) o.updateMatrix();
+  if (o.matrixWorldNeedsUpdate || force) {
+    if (o.matrixWorldAutoUpdate) {
+      if (o.parent === null) o.matrixWorld.copy(o.matrix);
+      else o.matrixWorld.multiplyMatrices(o.parent.matrixWorld, o.matrix);
+    }
+    o.matrixWorldNeedsUpdate = false;
+    force = true;
+  }
+  const ch = o.children;
+  for (let i = 0, n = ch.length; i < n; i++) {
+    const c = ch[i];
+    if (c.visible) updateVisibleMatrices(c, force);
+    else if (force) c.matrixWorldNeedsUpdate = true;
+  }
+}
+
 export class Game {
   constructor(container) {
     this.settings = loadSettings();
@@ -89,6 +110,8 @@ export class Game {
     this.canvas = renderer.domElement;
 
     this.scene = new THREE.Scene();
+    // Las matrices se actualizan a mano en render() (sólo lo visible)
+    this.scene.matrixWorldAutoUpdate = false;
     this.scene.fog = new THREE.Fog(SKY_COLOR, 200, 1300);
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, innerWidth / innerHeight, 0.1, 5000);
     this.camera.rotation.order = 'YXZ';
@@ -141,6 +164,7 @@ export class Game {
     this.gamepad = new GamepadInput(this);
     this.touch = null;
     this.audio = audio;
+    audio.lite = this.quality === 'movil';
     this.effects = new Effects(this);
     this.explosives = new Explosives(this);
     this.trails = new Trails(this);
@@ -271,6 +295,10 @@ export class Game {
     pf.t = pf.n = 0;
     const target = this.settings.fpsCap === 30 ? 28 : 50;
     let next = this.dynRes;
+    // Con la resolución ya al mínimo, se acorta también la distancia de visión
+    this.drawAuto = this.drawAuto || 1;
+    if (fps < target - 6 && this.dynRes <= 0.55) this.drawAuto = Math.max(0.6, this.drawAuto - 0.1);
+    else if (fps > target + 6 && this.dynRes >= 1) this.drawAuto = Math.min(1, this.drawAuto + 0.05);
     if (fps < target - 6) next = Math.max(0.55, this.dynRes - 0.12);
     else if (fps > target + 6 && ++pf.cool >= 3) next = Math.min(1, this.dynRes + 0.06);
     if (next !== this.dynRes) {
@@ -335,6 +363,7 @@ export class Game {
     i18n.set(s.lang || 'es');
     this.music?.setVolume((s.music ?? 40) / 100 * (s.volume / 100));
     if (this.audio) this.audio.spatial = s.spatialAudio !== false;
+    if (this.world?.lod) this.world.lod.t = 0; // distancia de visión al momento
     if (this.renderer && this.quality === 'movil') {
       const pr = this.pixelRatio();
       if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.01) {
@@ -879,14 +908,22 @@ export class Game {
     this.pathQueue.push({ bot, goal: goal.clone() });
   }
 
+  // Calcula caminos pendientes con un presupuesto de tiempo por fotograma
+  // (menor en móvil); lo que no cabe espera al siguiente fotograma.
   processPaths() {
-    let budget = this.pathQueue.length > 8 ? 3 : 2;
-    while (budget-- > 0 && this.pathQueue.length) {
+    if (!this.pathQueue.length) return;
+    const mobile = this.quality === 'movil';
+    const budget = mobile ? 1.5 : this.quality === 'baja' ? 2.5 : 4;
+    const maxNodes = mobile ? 9000 : this.quality === 'baja' ? 15000 : 30000;
+    const t0 = performance.now();
+    let n = 0;
+    while (this.pathQueue.length && (n === 0 || performance.now() - t0 < budget)) {
       const { bot, goal } = this.pathQueue.shift();
       if (!bot.alive) {
         bot.pathPending = false;
         continue;
       }
+      n++;
       // Los trayectos largos se dividen en tramos de ~140 m
       let tx = goal.x, tz = goal.z;
       const dx = tx - bot.pos.x, dz = tz - bot.pos.z;
@@ -895,7 +932,7 @@ export class Game {
         tx = bot.pos.x + (dx / d) * 140;
         tz = bot.pos.z + (dz / d) * 140;
       }
-      bot.setPath(this.nav.findPath(bot.pos.x, bot.pos.z, tx, tz), goal);
+      bot.setPath(this.nav.findPath(bot.pos.x, bot.pos.z, tx, tz, maxNodes), goal);
     }
   }
 
@@ -1209,11 +1246,12 @@ export class Game {
     if (lim > 0 && ts - this.lastFrame < 1000 / lim - 1) return;
     this.lastFrame = ts;
     this.timer.update(ts);
-    let raw = this.timer.getDelta();
-    // Límite de 30 FPS (ahorro de batería): se salta un fotograma de cada dos
-    if (this.settings.fpsCap === 30) {
+    let raw = Math.max(0, this.timer.getDelta());
+    // Límite de FPS (ahorro de batería): se saltan fotogramas.
+    const cap = this.frameCap();
+    if (cap) {
       this.capAcc = (this.capAcc || 0) + raw;
-      if (this.capAcc < 1 / 32) return;
+      if (this.capAcc < 1 / (cap + 2)) return;
       raw = this.capAcc;
       this.capAcc = 0;
     }
@@ -1223,6 +1261,40 @@ export class Game {
     this.render();
   };
 
+  // Precompila los shaders de todo lo que hay en la escena (también lo que
+  // está oculto: efectos en reserva, botín lejano…) para que la primera
+  // explosión o el primer cofre no den un tirón (en móvil, de cientos de ms).
+  warmShaders() {
+    const hidden = [];
+    const show = (root) => root.traverse((o) => {
+      if (!o.visible) {
+        hidden.push(o);
+        o.visible = true;
+      }
+    });
+    show(this.scene);
+    show(this.viewScene);
+    try {
+      updateVisibleMatrices(this.scene, true);
+      this.renderer.compile(this.scene, this.camera);
+      this.renderer.compile(this.viewScene, this.viewCamera);
+    } catch (err) {
+      console.warn('Sin precompilar shaders:', err);
+    }
+    for (const o of hidden) o.visible = false;
+  }
+
+  // FPS máximos ahora mismo (0 = sin límite). En calidad móvil, cuando no
+  // se está jugando de verdad (menú, pausa, mapa abierto) se dibuja menos.
+  frameCap() {
+    let cap = this.settings.fpsCap === 30 ? 30 : 0;
+    if (this.quality === 'movil') {
+      if (this.paused && !this.net) cap = 15;
+      else if (this.state === 'menu' || this.hud?.mapOpen) cap = cap ? Math.min(cap, 30) : 30;
+    }
+    return cap;
+  }
+
   step(dt) {
     const input = this.input;
     this.frameDt = dt;
@@ -1231,6 +1303,7 @@ export class Game {
       this.time += dt;
       this.world.water.material.uniforms.time.value = this.time;
       this.viewer.updateReplay(dt);
+      this.updateDrawDistance(dt);
       input.endFrame();
       return;
     }
@@ -1241,6 +1314,7 @@ export class Game {
     this.sky.material.uniforms.time.value = t;
     if (this.state === 'menu') {
       this.updateMenuCamera(t);
+      this.updateDrawDistance(dt);
       this.music?.update(this);
       this.world.clouds.rotation.y = t * 0.003;
       this.containers.update(dt, t);
@@ -1257,6 +1331,7 @@ export class Game {
     if (this.waiting && this.phase !== 'lobby') {
       this.net?.update(dt);
       this.updateCamera(dt);
+      this.updateDrawDistance(dt);
       this.updateBanner();
       this.hud.update(dt);
       this.touch?.update();
@@ -1343,6 +1418,7 @@ export class Game {
       this.reboot.update(dt);
     }
     if (this.state === 'playing') this.weather.update(dt);
+    this.updateDrawDistance(dt);
     this.inventory.update();
     this.a11y.update(dt);
     this.updatePings(dt);
@@ -1751,9 +1827,33 @@ export class Game {
     const a = t * 0.03;
     this.camera.position.set(Math.cos(a) * 640, 260, Math.sin(a) * 640);
     this.camera.lookAt(0, 10, 0);
-    this.scene.fog.near = 400;
-    this.scene.fog.far = 2200;
+    this.setFog(400, 2200);
     this.focusShadow(new THREE.Vector3(0, 0, 0));
+  }
+
+  // Distancia de dibujado de objetos pequeños (botín, cofres, puertas…):
+  // más corta en calidad móvil/baja.
+  propDist(base) {
+    return base * (this.quality === 'movil' ? 0.6 : this.quality === 'baja' ? 0.8 : 1);
+  }
+
+  // Niebla base según la cámara; el tiempo (lluvia, niebla) y la calidad
+  // móvil la acortan en updateDrawDistance().
+  setFog(near, far) {
+    this.fogBase = [near, far];
+  }
+
+  // Niebla final y distancia de dibujado de las parcelas del mundo.
+  updateDrawDistance(dt) {
+    const fog = this.scene.fog;
+    const [near, far] = this.fogBase || [200, 1250];
+    // Distancia de visión (Opciones) × ajuste automático por rendimiento
+    const view = (this.settings.viewDist || 1) * (this.drawAuto || 1);
+    const k = (this.weather?.active ? this.weather.fogMul ?? 1 : 1) * (this.quality === 'movil' ? 0.72 : 1) * Math.min(1, 0.5 + 0.5 * view);
+    fog.near = near * k;
+    fog.far = far * k;
+    const cam = this.camera.position;
+    this.world.lod.update(dt, cam, fog.far, this.world.terrain.heightAt(cam.x, cam.z), false, view);
   }
 
   updateCamera(dt) {
@@ -1785,8 +1885,7 @@ export class Game {
       cam.position.copy(target).addScaledVector(f, -30);
       this.aimOrigin.copy(cam.position);
       p.model.root.visible = false;
-      this.scene.fog.near = 350;
-      this.scene.fog.far = 2000;
+      this.setFog(350, 2000);
     } else if (p.vehicle) {
       const target = p.vehicle.pos.clone();
       target.y += 2.2;
@@ -1796,8 +1895,7 @@ export class Game {
       this.aimOrigin.copy(cam.position);
       p.model.root.visible = true;
       fov = base + Math.min(10, Math.abs(p.vehicle.speed) / 2.5);
-      this.scene.fog.near = 220;
-      this.scene.fog.far = 1300;
+      this.setFog(220, 1300);
     } else if (p.mode === 'freefall' || p.mode === 'glide' || !p.alive || p.knocked) {
       const target = p.pos.clone();
       target.y += p.mode === 'glide' ? 2.2 : 1.2;
@@ -1808,16 +1906,14 @@ export class Game {
       this.aimOrigin.copy(cam.position);
       p.model.root.visible = p.alive;
       fov = base + (p.mode === 'freefall' ? Math.min(12, -p.vel.y / 5) : 0);
-      this.scene.fog.near = 300;
-      this.scene.fog.far = 1700;
+      this.setFog(300, 1700);
     } else {
       const ads = this.combat.adsBlend;
       const item = p.item;
       const adsFov = item && item.kind === 'weapon' && !this.build.active ? this.combat.def(item).adsFov : base;
       fov = base + (adsFov - base) * ads;
       if (p.sprinting) fov += 6;
-      this.scene.fog.near = 200;
-      this.scene.fog.far = 1250;
+      this.setFog(200, 1250);
       if (this.camMode === 'fp' && !this.build.active && !p.emote) {
         cam.position.copy(p.eye);
         this.aimOrigin.copy(cam.position);
@@ -1865,6 +1961,7 @@ export class Game {
 
   render() {
     const r = this.renderer;
+    updateVisibleMatrices(this.scene, false);
     const view = this.state === 'playing' && this.camMode === 'fp' && this.player.mode === 'ground' && this.combat.viewmodel.visible && !this.spectating && !this.player.emote;
     if (this.composer) {
       this.viewPass.enabled = view;

@@ -17,6 +17,7 @@ requestAnimationFrame(() =>
   setTimeout(() => {
     try {
       const game = new Game(document.getElementById('app'));
+      game.warmShaders();
       document.getElementById('loading').style.display = 'none';
       game.menu.showMain();
       setupPlatform(game);

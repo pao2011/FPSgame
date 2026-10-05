@@ -183,7 +183,8 @@ export class Effects {
 
     // Fogonazo (luz + estrella)
     this.flashLight = new THREE.PointLight(0xffc870, 0, 12, 2);
-    this.scene.add(this.flashLight);
+    // En móvil sin luz puntual (encarece todos los píxeles iluminados)
+    if (game.quality !== 'movil') this.scene.add(this.flashLight);
     this.flashT = 0;
     const star = starTexture();
     this.flashSprite = new THREE.Sprite(

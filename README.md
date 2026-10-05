@@ -19,6 +19,13 @@ reaparición**, 🎬 **repeticiones, espectador y mapa de calor**, 🏆 **Arena*
 **inglés y portugués**, puertas reales en las casas y **códigos para
 compartir islas** del creativo. Detalles en [`ROADMAP.md`](ROADMAP.md).
 
+**Optimización para móviles:** el mundo se dibuja por parcelas (sólo lo que
+se ve y está cerca: ~8 veces menos triángulos en calidad *Móvil*), sombreados
+ligeros para el cielo, el agua, el suelo y los edificios, lluvia calculada en
+la tarjeta gráfica, bots que calculan rutas sin tirones, menos FPS en menús y
+pausa, sonido 3D más barato y la nueva opción **Distancia de visión** (que en
+*Móvil* se acorta sola si el juego va lento).
+
 **En la 0.4:** 🗺️ **un solo mapa** (*Isla Royale*, siempre la misma
 isla), 🧰 **cofres aleatorios** en cada partida, 🏝️ **Isla de Inicio** antes
 del autobús, 🚌 **autobús de batalla detallado** (y puedes dar las gracias al
@@ -647,8 +654,11 @@ funciona en `/estado`.
 El mismo juego funciona en móviles y tabletas con **controles táctiles**
 (joystick, botones de disparar, apuntar, saltar, agacharse, recargar,
 construir, usar, inventario y mapa táctiles), interfaz adaptada a pantallas
-pequeñas, calidad gráfica **Móvil** con resolución dinámica y límite de 30
-FPS opcional.
+pequeñas, calidad gráfica **Móvil** con resolución dinámica, límite de 30
+FPS opcional y **distancia de visión** ajustable (*Opciones → Móvil y
+táctil*). En calidad *Móvil* el juego dibuja menos (vegetación más sencilla,
+sin luces puntuales, sombreados ligeros, niebla más cercana) y baja sólo la
+resolución y la distancia de visión si los FPS caen.
 
 - **Instalar la APK:** en GitHub → **Releases** → *Isla Royale (APK de
   prueba)* → descarga `IslaRoyale-debug.apk` en el móvil y ábrela. GitHub la

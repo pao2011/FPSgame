@@ -156,6 +156,7 @@ export const DEFAULT_SETTINGS = {
   resScale: 70, // % de resolución en calidad «móvil»
   autoRes: true, // resolución dinámica en calidad «móvil»
   fpsCap: 0, // 0 = sin límite · 30 = ahorro de batería
+  viewDist: 1, // distancia de visión: 0.7 corta · 1 normal · 1.3 lejana
 };
 
 // Primera vez en un móvil o tableta: ajustes pensados para rendimiento.

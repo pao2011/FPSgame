@@ -137,7 +137,8 @@ class AudioSys {
     if (!pos || !this.ctx || this.spatial === false) return null;
     const c = this.ctx;
     const p = c.createPanner();
-    p.panningModel = 'HRTF';
+    // HRTF es caro (una convolución por sonido): en móvil, panorámica simple
+    p.panningModel = this.lite ? 'equalpower' : 'HRTF';
     p.distanceModel = 'linear';
     p.rolloffFactor = 0;
     if (p.positionX) {
@@ -157,24 +158,36 @@ class AudioSys {
     const e = cam.matrixWorld.elements;
     const fx = -e[8], fy = -e[9], fz = -e[10], ux = e[4], uy = e[5], uz = e[6];
     if (L.positionX) {
-      const t = this.ctx.currentTime;
-      L.positionX.setValueAtTime(cam.position.x, t);
-      L.positionY.setValueAtTime(cam.position.y, t);
-      L.positionZ.setValueAtTime(cam.position.z, t);
-      L.forwardX.setValueAtTime(fx, t);
-      L.forwardY.setValueAtTime(fy, t);
-      L.forwardZ.setValueAtTime(fz, t);
-      L.upX.setValueAtTime(ux, t);
-      L.upY.setValueAtTime(uy, t);
-      L.upZ.setValueAtTime(uz, t);
+      // Asignación directa: no acumula eventos programados en el hilo de audio
+      L.positionX.value = cam.position.x;
+      L.positionY.value = cam.position.y;
+      L.positionZ.value = cam.position.z;
+      L.forwardX.value = fx;
+      L.forwardY.value = fy;
+      L.forwardZ.value = fz;
+      L.upX.value = ux;
+      L.upY.value = uy;
+      L.upZ.value = uz;
     } else {
       L.setPosition(cam.position.x, cam.position.y, cam.position.z);
       L.setOrientation(fx, fy, fz, ux, uy, uz);
     }
   }
 
+  // Límite de sonidos que empiezan a la vez (sobre todo en móvil): con muchos
+  // sonando, los flojos (lejanos) se descartan.
+  _room(volume) {
+    const now = this.ctx.currentTime;
+    if (now - (this.winT || 0) > 0.15) {
+      this.winT = now;
+      this.winN = 0;
+    }
+    this.winN++;
+    return volume > 0.5 || this.winN <= (this.lite ? 8 : 20);
+  }
+
   shot(kind, volume = 1, pos = null) {
-    if (!this.ctx) return;
+    if (!this.ctx || !this._room(volume)) return;
     this._out = this._at(pos);
     this._shot(kind, volume);
     this._out = null;
@@ -368,7 +381,7 @@ class AudioSys {
 
   // Pasos según el suelo: hierba, arena, madera, piedra o metal.
   step(mat = 'grass', volume = 1, pos = null) {
-    if (!this.ctx || volume < 0.02) return;
+    if (!this.ctx || volume < 0.02 || !this._room(volume * 0.5)) return;
     this._out = this._at(pos);
     const v = volume;
     switch (mat) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { usesPBR } from '../game/models.js';
+import { usesPBR, isMobileQuality } from '../game/models.js';
 
 const tmpColor = new THREE.Color();
 const va = new THREE.Vector3();
@@ -31,6 +31,8 @@ export function buildingMaterial() {
   if (sharedMat) return sharedMat;
   const pbr = usesPBR();
   const m = pbr ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86, metalness: 0.02 }) : new THREE.MeshLambertMaterial({ vertexColors: true });
+  // Móvil: el dibujo sólo se calcula de cerca (más allá, color liso)
+  if (isMobileQuality()) m.defines = { LITE: '' };
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float pat;\nvarying float vPat;\nvarying vec3 vBW;\nvarying vec3 vBN;')
@@ -106,10 +108,19 @@ vec2 surfacePattern(float pat, vec3 p, vec3 n) {
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   float camD = length(cameraPosition - vBW);
+#ifdef LITE
+  if (camD < 110.0) {
+    vec2 sp = surfacePattern(vPat, vBW, normalize(vBN));
+    float fade = smoothstep(45.0, 110.0, camD);
+    float k = mix(sp.x, 1.0, fade);
+    diffuseColor.rgb = mix(diffuseColor.rgb * k, vec3(0.78, 0.76, 0.72), sp.y * (1.0 - fade));
+  }
+#else
   vec2 sp = surfacePattern(vPat, vBW, normalize(vBN));
   float fade = smoothstep(90.0, 260.0, camD);
   float k = mix(sp.x, 1.0, fade * 0.7);
   diffuseColor.rgb = mix(diffuseColor.rgb * k, vec3(0.78, 0.76, 0.72), sp.y * (1.0 - fade));
+#endif
 }`);
   };
   sharedMat = m;
@@ -219,5 +230,56 @@ export class GeoBuilder {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     return mesh;
+  }
+
+  // Como build(), pero repartiendo los triángulos en parcelas de `cell` m
+  // (según su centro) para que se puedan descartar por separado. Devuelve un
+  // grupo y la lista de parcelas { mesh, cx, cz, r }.
+  buildChunks(cell, material) {
+    const mat = material || buildingMaterial();
+    const cells = new Map();
+    const P = this.pos, Nn = this.nor, C = this.col, T = this.pat;
+    for (let v = 0; v < P.length; v += 9) {
+      const x = (P[v] + P[v + 3] + P[v + 6]) / 3, z = (P[v + 2] + P[v + 5] + P[v + 8]) / 3;
+      const key = Math.floor(x / cell) * 1000 + Math.floor(z / cell);
+      let c = cells.get(key);
+      if (!c) cells.set(key, (c = []));
+      c.push(v);
+    }
+    const group = new THREE.Group();
+    group.matrixAutoUpdate = false;
+    group.material = mat;
+    const chunks = [];
+    for (const list of cells.values()) {
+      const n = list.length * 9;
+      const pos = new Float32Array(n), nor = new Float32Array(n), col = new Float32Array(n), pat = new Float32Array(n / 3);
+      let k = 0;
+      for (const v of list) {
+        for (let i = 0; i < 9; i++) {
+          pos[k + i] = P[v + i];
+          nor[k + i] = Nn[v + i];
+          col[k + i] = C[v + i];
+        }
+        pat[k / 3] = T[v / 3];
+        pat[k / 3 + 1] = T[v / 3 + 1];
+        pat[k / 3 + 2] = T[v / 3 + 2];
+        k += 9;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.setAttribute('pat', new THREE.BufferAttribute(pat, 1));
+      geo.computeBoundingSphere();
+      geo.computeBoundingBox();
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.matrixAutoUpdate = false;
+      group.add(mesh);
+      const bb = geo.boundingBox;
+      chunks.push({ mesh, cx: (bb.min.x + bb.max.x) / 2, cz: (bb.min.z + bb.max.z) / 2, r: Math.hypot(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 });
+    }
+    return { group, chunks };
   }
 }

@@ -8,10 +8,14 @@ import { CAMOS, PICKAXES, GLIDERS, BAGS } from './cosmetics.js';
 // con las aristas redondeadas; en calidad baja/móvil, Lambert y cajas.
 
 let PBR = true;
+let QUALITY = 'normal';
 export function setModelQuality(q) {
+  QUALITY = q;
   PBR = q !== 'baja' && q !== 'movil';
 }
 export const usesPBR = () => PBR;
+export const modelQuality = () => QUALITY;
+export const isMobileQuality = () => QUALITY === 'movil';
 
 const matCache = new Map();
 export function mat(color, opts = {}) {

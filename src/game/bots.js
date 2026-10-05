@@ -264,7 +264,26 @@ class Bot extends Character {
       return;
     }
     this.model.root.visible = visible;
-    if (visible) this.updateModel(dt, this.weapon || PICKAXE, this.swingT);
+    if (visible) this.animLOD(dt, this.weapon || PICKAXE, this.swingT);
+  }
+
+  // LOD de animación: de lejos la pose se recalcula menos veces por segundo
+  // (más espaciado en calidad móvil); la posición se actualiza siempre.
+  animLOD(dt, item, swingT) {
+    const g = this.game;
+    const d2 = this.pos.distanceToSquared(g.camera.position);
+    const mobile = g.quality === 'movil';
+    const every = d2 < 45 * 45 ? 1 : d2 < 110 * 110 ? (mobile ? 3 : 2) : mobile ? 5 : 3;
+    this.animAcc = (this.animAcc || 0) + dt;
+    this.animN = (this.animN || 0) + 1;
+    if (this.animN >= every) {
+      this.updateModel(this.animAcc, item, swingT);
+      this.animAcc = 0;
+      this.animN = 0;
+    } else {
+      this.model.root.position.copy(this.pos);
+      this.model.root.rotation.set(0, this.yaw, 0);
+    }
   }
 
   // ----------------------------------------------------------- ISLA DE INICIO

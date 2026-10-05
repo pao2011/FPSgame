@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isMobileQuality } from '../game/models.js';
 
 export const SKY = {
   top: 0x2a74d8,
@@ -9,10 +10,12 @@ export const SKY = {
 // Cúpula de cielo: degradado atmosférico, halo del sol y nubes altas
 // procedurales que se desplazan despacio.
 export function createSky(scene, sunDir) {
-  const geo = new THREE.SphereGeometry(2800, 48, 24);
+  const geo = new THREE.SphereGeometry(2800, isMobileQuality() ? 24 : 48, isMobileQuality() ? 12 : 24);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
+    // Móvil: nubes con 3 octavas de ruido en vez de 5
+    defines: { OCTAVES: isMobileQuality() ? 3 : 5 },
     fog: false,
     uniforms: {
       top: { value: new THREE.Color(SKY.top) },
@@ -40,7 +43,7 @@ export function createSky(scene, sunDir) {
       }
       float fbm(vec2 p) {
         float v = 0.0, a = 0.5;
-        for (int i = 0; i < 5; i++) { v += noise(p) * a; p = p * 2.03 + 17.1; a *= 0.5; }
+        for (int i = 0; i < OCTAVES; i++) { v += noise(p) * a; p = p * 2.03 + 17.1; a *= 0.5; }
         return v;
       }
       void main() {

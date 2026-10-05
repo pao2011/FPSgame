@@ -455,11 +455,11 @@ export class HUD {
     this.set('heading', e.heading, 'text', `${Math.round(hd)}°`);
     this.updateMarkers(p);
 
-    // Minimapa (en calidad móvil se redibuja a ~20 Hz para ahorrar CPU)
+    // Minimapa (en calidad móvil se redibuja a ~13 Hz para ahorrar CPU)
     const mm = e.mini;
     this.miniT = (this.miniT || 0) - dt;
     if (this.miniT <= 0) {
-      this.miniT = g.quality === 'movil' ? 0.05 : 0;
+      this.miniT = g.quality === 'movil' ? 0.075 : 0;
       g.mapRenderer.drawMini(this.miniCtx, mm.width, mm.height, g, p.mode === 'ground' ? 220 : 420);
     }
     this.fullT = (this.fullT || 0) - dt;

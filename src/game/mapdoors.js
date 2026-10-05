@@ -115,7 +115,8 @@ export class MapDoors {
     this.cullT = (this.cullT || 0) - dt;
     if (this.cullT <= 0) {
       this.cullT = 0.5;
-      for (const door of this.list) door.hinge.visible = door.center.distanceToSquared(cam) < 140 * 140;
+      const d2 = g.propDist(140) ** 2;
+      for (const door of this.list) door.hinge.visible = door.center.distanceToSquared(cam) < d2;
     }
     // Animación de la hoja (abre hacia dentro de la casa)
     for (const door of this.near(cam.x, cam.z)) {
