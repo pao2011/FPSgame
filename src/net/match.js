@@ -96,6 +96,10 @@ export class OnlineMatch {
         if (m.e) e.startEmote(m.e);
         else e.stopEmote();
       },
+      'm.wdoor': (m) => {
+        const d = this.game.mapDoors.list[m.i];
+        if (d) this.game.mapDoors.setOpen(d, !!m.open, true);
+      },
       'm.vboom': (m) => this.game.vehicles.list[m.i]?.destroy(true),
       'm.pad': (m) => Array.isArray(m.p) && this.game.combat.addPad(m.p[0], m.p[1], m.p[2], m.y || 0),
       'm.away': (m) => this.onAway(m, true),
@@ -473,6 +477,10 @@ export class OnlineMatch {
 
   sendEmote(c, id) {
     if (this.isLocal(c)) this.net.send('m.emote', { s: c.netId, e: id || '' });
+  }
+
+  sendMapDoor(door) {
+    this.net.send('m.wdoor', { i: door.i, open: door.open });
   }
 
   sendVehicleBoom(v) {

@@ -33,6 +33,7 @@ export class BuildingCtx {
     this.lootSpots = [];
     this.ammoSpots = [];
     this.ladders = [];
+    this.doors = [];
   }
 
   // Contexto hijo desplazado (lx, lz locales) y girado dRot*90°; comparte
@@ -44,7 +45,21 @@ export class BuildingCtx {
     c.lootSpots = this.lootSpots;
     c.ammoSpots = this.ammoSpots;
     c.ladders = this.ladders;
+    c.doors = this.doors;
     return c;
+  }
+
+  // Puerta real (hoja con bisagra) en un hueco de muro paralelo al eje X
+  // local: de x0 a x1, en la cara z (grosor t), altura y0..y1.
+  door(x0, x1, z0, z1, y0, y1) {
+    const a = this.tp(x0, y0, z0), b = this.tp(x1, y1, z1);
+    // El eje del hueco en el mundo: X si rot es 0 o 2, Z si es 1 o 3
+    const alongX = this.rot % 2 === 0;
+    this.doors.push({
+      minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]),
+      minZ: Math.min(a[2], b[2]), maxZ: Math.max(a[2], b[2]),
+      y0: a[1], y1: b[1], alongX,
+    });
   }
 
   // Volumen de escalera de mano (no sólido): el jugador sube al pulsar W.
@@ -250,12 +265,18 @@ export function genHouse(ctx, rng, o) {
     // Muros exteriores
     const big = !!o.bigWindows;
     const frontOps = windowsFor(-hw + t, hw - t, y0, rng, f === 0 ? [[doorX - 0.9, doorX + 0.9]] : [], big);
-    if (f === 0) frontOps.push({ a: doorX - 0.8, b: doorX + 0.8, bottom: y0, top: y0 + 2.5 });
+    if (f === 0) {
+      frontOps.push({ a: doorX - 0.8, b: doorX + 0.8, bottom: y0, top: y0 + 2.5 });
+      ctx.door(doorX - 0.8, doorX + 0.8, hd - t, hd, y0, y0 + 2.5);
+    }
     ctx.wall('x', -hw, hw, hd - t, hd, y0, y1, frontOps, wallColor);
 
     const bx = side < 0 ? hw * 0.5 : -hw * 0.5;
     const backOps = windowsFor(-hw + t, hw - t, y0, rng, f === 0 ? [[bx - 0.9, bx + 0.9]] : [], big);
-    if (f === 0) backOps.push({ a: bx - 0.75, b: bx + 0.75, bottom: y0, top: y0 + 2.5 });
+    if (f === 0) {
+      backOps.push({ a: bx - 0.75, b: bx + 0.75, bottom: y0, top: y0 + 2.5 });
+      ctx.door(bx - 0.75, bx + 0.75, -hd, -hd + t, y0, y0 + 2.5);
+    }
     ctx.wall('x', -hw, hw, -hd, -hd + t, y0, y1, backOps, wallColor);
     ctx.wall('z', -hd + t, hd - t, -hw, -hw + t, y0, y1, windowsFor(-hd + t, hd - t, y0, rng, [], big), wallColor);
     ctx.wall('z', -hd + t, hd - t, hw - t, hw, y0, y1, windowsFor(-hd + t, hd - t, y0, rng, [], big), wallColor);

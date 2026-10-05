@@ -70,6 +70,7 @@ export class World {
     this.carSpots = [];
     this.wreckSpots = [];
     this.ladders = [];
+    this.doors = [];
     this.landmarks = []; // lugares destacados con nombre (mapa)
     this.generate();
   }
@@ -806,6 +807,7 @@ export class World {
       this.lootSpots.push(...ctx.lootSpots);
       this.ammoSpots.push(...ctx.ammoSpots);
       this.ladders.push(...ctx.ladders);
+      this.doors.push(...ctx.doors);
     }
     for (const d of this.dummySpots) d.y = this.terrain.heightAt(d.x, d.z);
     for (const c of [...this.carSpots, ...this.wreckSpots]) c.y = this.terrain.heightAt(c.x, c.z);

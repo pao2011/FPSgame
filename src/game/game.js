@@ -14,6 +14,7 @@ import { RebootVans } from './reboot.js';
 import { Replay, Viewer } from './replay.js';
 import { EditCourse } from './editcourse.js';
 import { Music } from '../core/music.js';
+import { MapDoors } from './mapdoors.js';
 import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
@@ -201,6 +202,7 @@ export class Game {
     this.loader = new MatchLoader(this);
     this.npcs = new NPCs(this);
     this.reboot = new RebootVans(this);
+    this.mapDoors = new MapDoors(this);
     this.replay = new Replay(this);
     this.viewer = new Viewer(this);
     this.editCourse = new EditCourse(this);
@@ -558,6 +560,7 @@ export class Game {
     this.weather.start(o.stormRng, mode);
     this.npcs.reset(mode, !!o.online);
     this.reboot.reset();
+    this.mapDoors.reset();
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
     this.storm.mesh.visible = true;
     this.arenaAngle = o.stormRng.float(0, Math.PI * 2);
@@ -1319,6 +1322,7 @@ export class Game {
     this.grass.update(dt, this.camera.position);
     this.trails.update(dt);
     this.replay.record(dt);
+    this.mapDoors.update(dt);
     // Mapa de calor: dónde aterriza cada uno (la primera vez)
     if (this.heat && this.state === 'playing' && this.phase !== 'lobby') {
       for (const c of this.chars) {
@@ -1604,6 +1608,12 @@ export class Game {
     if (door) {
       this.hud.setPrompt(`${E} ${door.doorOpen ? 'Cerrar' : 'Abrir'} puerta`);
       if (input.hit('interact')) this.build.setDoor(door, !door.doorOpen);
+      return;
+    }
+    const mdoor = !target || target.score < 1.2 ? this.mapDoors.findDoor(eye, dir) : null;
+    if (mdoor) {
+      this.hud.setPrompt(`${E} ${mdoor.open ? 'Cerrar' : 'Abrir'} puerta`);
+      if (input.hit('interact')) this.mapDoors.setOpen(mdoor, !mdoor.open);
       return;
     }
 

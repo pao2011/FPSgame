@@ -7,7 +7,7 @@ import { lootForChest, lootForAmmoBox, setLootPool } from '../src/game/items.js'
 import { HitGuard } from './anticheat.js';
 
 let nextMatch = 1;
-const RELAY = new Set(['m.fx', 'm.ex', 'm.down', 'm.bdmg', 'm.harv', 'm.veh', 'm.emote', 'm.ping', 'm.vboom']);
+const RELAY = new Set(['m.fx', 'm.ex', 'm.down', 'm.bdmg', 'm.harv', 'm.veh', 'm.emote', 'm.ping', 'm.vboom', 'm.wdoor']);
 // Tiempo que se guarda el sitio de un jugador que pierde la conexión.
 export const REJOIN_MS = 45000;
 const now = () => Date.now() / 1000;
