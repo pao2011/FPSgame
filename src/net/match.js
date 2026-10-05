@@ -4,6 +4,7 @@ import { MODES } from '../game/modes.js';
 import { PICKAXE } from '../game/items.js';
 import { clamp } from '../core/rng.js';
 import { ISLAND_RADIUS } from '../world/constants.js';
+import { VoiceChat } from './voice.js';
 
 // Lo de la Isla de Inicio (fuera del mapa) se borra al salir el autobús.
 const offMap = (x, z) => Math.hypot(x, z) > ISLAND_RADIUS + 120;
@@ -144,9 +145,15 @@ export class OnlineMatch {
     if (this.started) return;
     this.started = true;
     this.game.onOnlineGo();
+    if (this.game.settings.voice && this.remotes.some((r) => r.isHuman)) {
+      this.voice = new VoiceChat(this.game, this);
+      this.voice.start();
+    }
   }
 
   dispose() {
+    this.voice?.stop();
+    this.voice = null;
     clearTimeout(this.rejoinTimer);
     clearTimeout(this.rejoinWait);
     this.game.hud.netBanner?.(null);

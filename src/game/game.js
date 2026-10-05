@@ -1311,6 +1311,7 @@ export class Game {
     this.processPaths();
     this.bots.update(dt);
     this.net?.update(dt);
+    this.net?.voice?.update(dt, input);
     this.updateRespawns(dt);
     this.harvest.update(dt);
     this.bus.update(dt, t);

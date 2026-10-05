@@ -131,6 +131,17 @@ export class Match {
         m.from = me.id;
         this.broadcast(m, c);
         break;
+      case 'm.rtc': {
+        // Señalización del chat de voz: sólo al destinatario
+        const to = this.ent(m.to);
+        if (!to?.client || to.client === c) return;
+        const out = { t: 'm.rtc', from: me.id };
+        if (m.sdp && typeof m.sdp.sdp === 'string' && m.sdp.sdp.length < 20000) out.sdp = { type: m.sdp.type === 'answer' ? 'answer' : 'offer', sdp: m.sdp.sdp };
+        else if (m.ice && typeof m.ice.candidate === 'string' && m.ice.candidate.length < 2000) out.ice = { candidate: m.ice.candidate, sdpMid: m.ice.sdpMid ?? null, sdpMLineIndex: m.ice.sdpMLineIndex ?? null };
+        else return;
+        this.send(to.client, out);
+        break;
+      }
       case 'm.pad': {
         const p = Array.isArray(m.p) && m.p.slice(0, 3).map(Number);
         if (!p || !p.every(Number.isFinite) || this.pads.length > 300) return;

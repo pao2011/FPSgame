@@ -466,6 +466,9 @@ export class Menu {
         ${check('weather', 'Clima y ciclo de día en las partidas', 'Lluvia, niebla o nubes y la hora avanzando hasta el anochecer.')}
         ${range('volume', 'Volumen', 0, 100, 5, pct)}
         ${range('music', 'Música dinámica', 0, 100, 5, pct)}
+        ${check('voice', 'Chat de voz en partidas online', 'Rivales por proximidad y compañeros siempre. Pide permiso para el micrófono.')}
+        <div class="opt-row"><label>Micrófono</label><div class="seg" data-seg="voiceMode"><button data-v="ptt" class="${s.voiceMode !== 'open' ? 'on' : ''}">Pulsar para hablar</button><button data-v="open" class="${s.voiceMode === 'open' ? 'on' : ''}">Abierto</button></div></div>
+        ${range('voiceVolume', 'Volumen de la voz', 0, 100, 5, pct)}
         ${check('spatialAudio', 'Sonido 3D (HRTF)', 'Oye de qué dirección vienen los disparos y los pasos (mejor con auriculares).')}
         <div class="opt-row"><label>Límite de FPS</label>
           <select data-k="fpsLimit">${[0, 30, 60, 120, 144, 240].map((v) => `<option value="${v}" ${Number(s.fpsLimit) === v ? 'selected' : ''}>${v ? v + ' FPS' : 'Sin límite'}</option>`).join('')}</select></div>
@@ -567,6 +570,12 @@ export class Menu {
         else ui.style.display = 'flex';
       });
     });
+    el.querySelectorAll('[data-seg="voiceMode"] button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.voiceMode = b.dataset.v;
+      this.game.applySettings();
+      el.querySelectorAll('[data-seg="voiceMode"] button').forEach((x) => x.classList.toggle('on', x === b));
+    }));
     el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       s.padScheme = b.dataset.v;

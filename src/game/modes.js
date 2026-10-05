@@ -136,6 +136,9 @@ export const DEFAULT_SETTINGS = {
   weather: true, // clima y ciclo de día en las partidas
   music: 40, // volumen de la música dinámica (0 = sin música)
   spatialAudio: true, // sonido 3D (HRTF)
+  voice: false, // chat de voz en partidas online
+  voiceMode: 'ptt', // ptt (pulsar para hablar) | open (micrófono abierto)
+  voiceVolume: 80,
   // Mando
   padScheme: 'clasico', // clasico | pro (constructor pro)
   padSens: 1,
