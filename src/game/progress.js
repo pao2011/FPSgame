@@ -264,6 +264,7 @@ export class Progress {
     if (r.chests) add(`Cofres abiertos ×${r.chests}`, r.chests * 20);
     if (r.built) add(`Construcción (${r.built} piezas)`, Math.min(100, r.built));
     if (r.edits) add(`Ediciones ×${r.edits}`, Math.min(100, r.edits * 5));
+    if (r.quests) add(`Misiones de PNJ ×${r.quests}`, r.quests * 300);
     if (r.win) add('¡Victoria!', r.respawn ? 300 : 500);
     else if (!r.respawn && r.place && r.place <= 5) add(`Top 5 (puesto #${r.place})`, 200);
     else if (!r.respawn && r.place && r.place <= 10) add(`Top 10 (puesto #${r.place})`, 100);

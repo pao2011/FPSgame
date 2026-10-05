@@ -3942,3 +3942,23 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 #speedo .vbars i.low { background: #ff5a4a; }
 #speedo .vref { font-size: 11px; color: #ffd34d; margin-top: 3px; }
 #speedo .vref.low { color: #ff7a6a; }
+#storm-info .qst { font-size: 12px; margin-top: 3px; color: #ffe28a; }
+#mats .mat.gold { color: #ffd34d; padding: 0 8px; }
+#npc-dialog { position: fixed; inset: 0; z-index: 58; align-items: center; justify-content: center; background: rgba(5, 10, 25, 0.55); color: #fff; font-family: Inter, system-ui, sans-serif; }
+#npc-dialog .npc-box { width: min(520px, calc(100vw - 32px)); background: linear-gradient(180deg, rgba(48, 38, 20, 0.97), rgba(26, 20, 10, 0.97)); border: 2px solid #c99a3a; border-radius: 16px; padding: 16px 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+#npc-dialog .npc-head { display: flex; align-items: center; gap: 12px; }
+#npc-dialog .npc-head .ic { font-size: 30px; }
+#npc-dialog .npc-head h3 { margin: 0; font-family: 'Lilita One', Inter, sans-serif; font-size: 22px; letter-spacing: 0.5px; }
+#npc-dialog .npc-head small { opacity: 0.7; }
+#npc-dialog .npc-head .gold { margin-left: auto; font-weight: 800; color: #ffd34d; }
+#npc-dialog .npc-head .x { position: static; background: none; border: 0; color: #fff; font-size: 18px; box-shadow: none; padding: 0 4px; }
+#npc-dialog .say { font-style: italic; opacity: 0.9; margin: 12px 0; line-height: 1.4; }
+#npc-dialog .offers { display: flex; flex-direction: column; gap: 8px; }
+#npc-dialog .offer { display: flex; align-items: center; gap: 12px; background: rgba(0, 0, 0, 0.3); border-left: 4px solid var(--rc); border-radius: 10px; padding: 6px 10px; }
+#npc-dialog .offer img { width: 56px; height: 40px; object-fit: contain; }
+#npc-dialog .offer div { flex: 1; display: flex; flex-direction: column; }
+#npc-dialog .offer small { color: var(--rc); font-size: 12px; }
+#npc-dialog .offer button, #npc-dialog .accept { padding: 5px 12px; font-size: 13px; }
+#npc-dialog .quest { background: rgba(0, 0, 0, 0.3); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+#npc-dialog .msg { margin-top: 10px; font-size: 13px; }
+#npc-dialog .hint { display: block; margin-top: 10px; opacity: 0.6; }

@@ -479,6 +479,9 @@ export class HUD {
       else if (st.state === 'shrink') stTxt = `<span class="ico">⚠</span> ¡La tormenta se está cerrando! <b>${mmss}</b>`;
       else stTxt = '<span class="ico">🌀</span> Tormenta final';
       if (g.weather?.label) stTxt += `<div class="wx">${g.weather.label}</div>`;
+      for (const q of g.npcs?.quests || []) {
+        if (q.state === 'active') stTxt += `<div class="qst">📜 ${g.npcs.questText(q)} · <b>${q.v}/${q.goal}</b></div>`;
+      }
       if (p.mode !== 'lobby') {
         const out = st.distanceOutside(p.pos.x, p.pos.z);
         if (out > 0) stTxt += `<div class="warn">Fuera de la zona segura · ${Math.round(out)} m</div>`;
@@ -522,7 +525,8 @@ export class HUD {
       const low = p.mats[m] < BUILD_COST ? ' low' : '';
       return `<span class="mat ${m}${sel}${low}"><i></i>${p.mats[m]}</span>`;
     }).join('');
-    this.set('mats', e.mats, 'html', mats);
+    const gold = g.npcs?.list.length && g.state === 'playing' && !g.mode.creative ? `<span class="mat gold" title="Oro (PNJ)">💰 ${p.gold || 0}</span>` : '';
+    this.set('mats', e.mats, 'html', gold + mats);
 
     // Barra de construcción
     const showBar = b.active || !!b.editing;

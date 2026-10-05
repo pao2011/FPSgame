@@ -332,6 +332,7 @@ export class Character {
   // eliminación. Devuelve true (eliminado), 'knock' (derribado) o false.
   damage(amount, type, attacker = null) {
     if (!this.alive || amount <= 0) return false;
+    if (this.dmgTaken) amount *= this.dmgTaken; // jefe: aguanta más
     if (attacker && attacker !== this && attacker.team === this.team) return false;
     // Isla de inicio y modo dios (creativo): sin daño
     if (this.game.phase === 'lobby' || (this.isPlayer && this.game.godMode)) return false;

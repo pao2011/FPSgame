@@ -9,6 +9,8 @@ import { GamepadInput } from '../core/gamepad.js';
 import { MatchLoader } from '../ui/tips.js';
 import { Trails } from './trails.js';
 import { Weather } from '../world/weather.js';
+import { NPCs } from './npcs.js';
+import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -192,6 +194,8 @@ export class Game {
     this.inventory = new InventoryPanel(this);
     this.a11y = new Accessibility(this);
     this.loader = new MatchLoader(this);
+    this.npcs = new NPCs(this);
+    this.npcDialog = new NpcDialog(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
@@ -412,6 +416,7 @@ export class Game {
     this.botDiff = this.settings.difficulty;
     this.bots.reset(nb, teams, this.settings.difficulty);
     this.chars = [this.player, ...this.bots.list];
+    this.npcs.startBoss(mode);
     this.beginMatch({});
     if (mode.creative) {
       const p = this.player;
@@ -534,6 +539,7 @@ export class Game {
     this.dummies.reset();
     this.player.team = o.team;
     this.weather.start(o.stormRng, mode);
+    this.npcs.reset(mode, !!o.online);
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
     this.storm.mesh.visible = true;
     this.arenaAngle = o.stormRng.float(0, Math.PI * 2);
@@ -785,7 +791,7 @@ export class Game {
     const res = this.progress.matchEnd({
       kills: p.stats.kills, damage: p.stats.damage, chests: p.stats.chests, built: p.stats.built, edits: p.stats.edits,
       heads: p.stats.heads, time: this.matchTime, place, win, online: !!this.net, respawn: !!this.mode.respawn,
-      distance: Math.round(p.stats.distance || 0), emotes: p.stats.emotes || 0, mode: this.mode.id,
+      distance: Math.round(p.stats.distance || 0), emotes: p.stats.emotes || 0, mode: this.mode.id, quests: p.stats.quests || 0,
     });
     return res;
   }
@@ -892,6 +898,7 @@ export class Game {
 
   onElimination(victim, killer, type) {
     if (this.net?.isLocal(victim)) this.net.sendElim(victim, killer, type);
+    this.npcs.onElim(victim, killer);
     // Los bots a veces celebran la eliminación con un gesto
     if (killer?.isBot && killer !== victim && Math.random() < 0.3) {
       const id = ['baile', 'saludo', 'victoria', 'aplauso'][Math.floor(Math.random() * 4)];
@@ -933,13 +940,13 @@ export class Game {
 
   get aliveCount() {
     let n = 0;
-    for (const c of this.chars) if (c.alive) n++;
+    for (const c of this.chars) if (c.alive && !c.boss) n++;
     return n;
   }
 
   teamsAlive() {
     const s = new Set();
-    for (const c of this.chars) if (c.alive) s.add(c.team);
+    for (const c of this.chars) if (c.alive && !c.boss) s.add(c.team);
     return s;
   }
 
@@ -1272,6 +1279,7 @@ export class Game {
     this.effects.update(dt);
     this.grass.update(dt, this.camera.position);
     this.trails.update(dt);
+    if (this.state === 'playing') this.npcs.update(dt);
     if (this.state === 'playing') this.weather.update(dt);
     this.inventory.update();
     this.a11y.update(dt);
@@ -1544,6 +1552,13 @@ export class Game {
       return;
     }
 
+    const npc = !target || target.score < 1.2 ? this.npcs.findNear(p.pos) : null;
+    if (npc) {
+      const what = npc.role === 'merchant' ? 'Comerciar con' : npc.quest?.state === 'new' ? 'Misión de' : 'Hablar con';
+      this.hud.setPrompt(`${E} ${what} ${npc.name}`);
+      if (input.hit('interact')) this.npcDialog.open(npc);
+      return;
+    }
     if (!target) {
       const car = this.vehicles.findNear(p.pos);
       if (car) {
@@ -1560,7 +1575,10 @@ export class Game {
       this.hud.setPrompt(`${E} ${ct.kind === 'chest' ? 'Abrir cofre' : 'Abrir caja de munición'}`);
       if (input.hit('interact')) {
         this.containers.open(ct, p);
-        if (ct.kind === 'chest') p.stats.chests++;
+        if (ct.kind === 'chest') {
+          p.stats.chests++;
+          this.npcs.onChest();
+        }
       }
     } else {
       const it = target.pickup.item;
