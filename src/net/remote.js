@@ -14,7 +14,7 @@ export function heldCode(item) {
   return 'p';
 }
 
-function heldFromCode(code) {
+export function heldFromCode(code) {
   if (!code) return null;
   if (code === 'p') return PICKAXE;
   if (code[0] === 'w') {

@@ -3962,3 +3962,14 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 #npc-dialog .quest { background: rgba(0, 0, 0, 0.3); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
 #npc-dialog .msg { margin-top: 10px; font-size: 13px; }
 #npc-dialog .hint { display: block; margin-top: 10px; opacity: 0.6; }
+
+/* ------------------------------------------------------------ REPETICIÓN / ESPECTADOR */
+#viewer { position: fixed; inset: 0; z-index: 40; pointer-events: none; flex-direction: column; justify-content: space-between; align-items: center; padding: 14px 16px; color: #fff; font-family: Inter, system-ui, sans-serif; }
+#viewer .vw-top { pointer-events: auto; background: rgba(0, 0, 0, 0.55); padding: 8px 16px; border-radius: 12px; font-size: 15px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+#viewer .vw-top small { opacity: 0.7; font-size: 12px; }
+#viewer .vw-bar { pointer-events: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; background: rgba(10, 16, 34, 0.85); border: 1px solid rgba(255, 255, 255, 0.15); padding: 10px 14px; border-radius: 14px; max-width: calc(100vw - 32px); }
+#viewer .vw-bar button { padding: 5px 10px; font-size: 13px; }
+#viewer .vw-bar button.on { background: #ffd34d; color: #222; }
+#viewer .vw-bar button.exit { background: #b8402e; color: #fff; }
+#viewer .vw-bar input[type=range] { width: min(360px, 60vw); }
+#viewer .vw-time { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; }

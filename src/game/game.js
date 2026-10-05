@@ -11,6 +11,7 @@ import { Trails } from './trails.js';
 import { Weather } from '../world/weather.js';
 import { NPCs } from './npcs.js';
 import { RebootVans } from './reboot.js';
+import { Replay, Viewer } from './replay.js';
 import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
@@ -197,6 +198,8 @@ export class Game {
     this.loader = new MatchLoader(this);
     this.npcs = new NPCs(this);
     this.reboot = new RebootVans(this);
+    this.replay = new Replay(this);
+    this.viewer = new Viewer(this);
     this.npcDialog = new NpcDialog(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
@@ -565,6 +568,8 @@ export class Game {
   // Coloca a todos: en la isla de inicio (y luego el autobús), en el modo
   // creativo o (modos con reaparición) directamente en el aire.
   beginMatch(o) {
+    this.viewer.hide();
+    this.replay.start();
     const mode = this.mode;
     const p = this.player;
     this.busOpts = o;
@@ -756,6 +761,7 @@ export class Game {
 
   quitToMenu() {
     this.inventory?.hide();
+    this.viewer.hide();
     this.weather.reset();
     const wasOnline = !!this.net || this.mode.online;
     if (this.mode.creative) this.creative.stop();
@@ -1194,6 +1200,13 @@ export class Game {
   step(dt) {
     const input = this.input;
     this.gamepad.update(dt);
+    if (this.state === 'replay') {
+      this.time += dt;
+      this.world.water.material.uniforms.time.value = this.time;
+      this.viewer.updateReplay(dt);
+      input.endFrame();
+      return;
+    }
     this.time += dt;
     const t = this.time;
 
@@ -1283,6 +1296,7 @@ export class Game {
     this.effects.update(dt);
     this.grass.update(dt, this.camera.position);
     this.trails.update(dt);
+    this.replay.record(dt);
     if (this.state === 'playing') {
       this.npcs.update(dt);
       this.reboot.update(dt);
@@ -1663,6 +1677,7 @@ export class Game {
   }
 
   updateCamera(dt) {
+    if (this.viewer?.active && this.viewer.camera(dt)) return;
     const p = this.player;
     const cam = this.camera;
     const base = this.baseFov;

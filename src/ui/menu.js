@@ -221,6 +221,10 @@ export class Menu {
           <button id="again-btn">JUGAR OTRA VEZ</button>
           <button id="menu-btn" class="secondary">MENÚ PRINCIPAL</button>
         </div>
+        <div class="pause-buttons row">
+          <button id="spectate-btn" class="secondary">👁 ESPECTAR</button>
+          <button id="replay-btn" class="secondary">🎬 VER REPETICIÓN</button>
+        </div>
         <div class="end-hint" id="end-hint"></div>
       </div>`;
     $('again-btn').addEventListener('click', () => {
@@ -228,6 +232,8 @@ export class Menu {
       else this.game.startMatch(this.s.mode);
     });
     $('menu-btn').addEventListener('click', () => this.game.quitToMenu());
+    $('spectate-btn').addEventListener('click', () => this.game.viewer.open('live'));
+    $('replay-btn').addEventListener('click', () => this.game.viewer.open('replay'));
     this.show('play');
   }
 
@@ -660,6 +666,9 @@ export class Menu {
     const m = this.game.mode;
     $('end-cause').textContent = win ? (m.arena ? '¡Has ganado el 1v1!' : m.respawn ? '¡Tu equipo ha ganado el duelo!' : (m.teamSize || 1) > 1 ? 'Tu equipo es el último en pie' : 'Eres el último superviviente de la isla') : cause;
     $('end-stats').innerHTML = stats;
+    const g = this.game;
+    $('replay-btn').style.display = g.replay.available ? '' : 'none';
+    $('spectate-btn').style.display = !win && g.chars.some((c) => c.alive && c !== g.player) ? '' : 'none';
     $('end').style.display = 'flex';
     $('end').classList.toggle('win', win);
   }
