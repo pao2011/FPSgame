@@ -535,6 +535,67 @@ export class Creative {
     this.game.hud.toast('Construcciones borradas');
   }
 
+  // ------------------------------------------------------------ COMPARTIR
+  // Código de isla: edificios del mapa colocados, construcciones y punto de
+  // aparición, comprimido (deflate) y en base64. Prefijo ISLA1-.
+  async exportCode() {
+    const g = this.game;
+    const data = {
+      v: 1,
+      prefabs: this.placed.map((r) => [r.id, Math.round(r.x * 10) / 10, Math.round(r.z * 10) / 10, r.rot, r.seed]),
+      pieces: [...g.build.pieces.values()].map((q) => [q.type[0], q.cx, q.cz, Math.round(q.base * 100) / 100, q.dir, q.mat[0], q.edit | 0]),
+      spawn: this.spawnPoint ? [Math.round(this.spawnPoint.x * 10) / 10, Math.round(this.spawnPoint.z * 10) / 10] : null,
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(data));
+    let out = bytes, z = 'j';
+    if (typeof CompressionStream !== 'undefined') {
+      const cs = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      out = new Uint8Array(await new Response(cs).arrayBuffer());
+      z = 'z';
+    }
+    let bin = '';
+    for (let i = 0; i < out.length; i++) bin += String.fromCharCode(out[i]);
+    return `ISLA1-${z}${btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+  }
+
+  async importCode(code) {
+    const g = this.game;
+    const m = /^ISLA1-([zj])([A-Za-z0-9_-]+)$/.exec(String(code || '').trim());
+    if (!m) throw new Error('Código no válido');
+    const b64 = m[2].replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '==='.slice((b64.length + 3) % 4));
+    let bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    if (m[1] === 'z') {
+      const ds = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      bytes = new Uint8Array(await new Response(ds).arrayBuffer());
+    }
+    const data = JSON.parse(new TextDecoder().decode(bytes));
+    const TYPES = { w: 'wall', f: 'floor', r: 'ramp', c: 'cone' }, MATS = { w: 'wood', s: 'stone', m: 'metal' };
+    for (const r of [...this.placed]) this.removePrefab(r);
+    g.build.reset();
+    let n = 0;
+    for (const [id, x, z, rot, seed] of (data.prefabs || []).slice(0, 300)) {
+      if (Number.isFinite(x) && Number.isFinite(z)) {
+        this.spawn(id, x, z, rot | 0, seed);
+        n++;
+      }
+    }
+    const pieces = (data.pieces || []).slice(0, 5000).map(([t, cx, cz, base, dir, mat, edit]) => ({ type: TYPES[t], cx, cz, base, dir, mat: MATS[mat], edit }));
+    const np = g.build.load(pieces.filter((q) => q.type && q.mat));
+    if (Array.isArray(data.spawn)) {
+      this.spawnPoint = { x: data.spawn[0], z: data.spawn[1] };
+      this.teleport(data.spawn[0], data.spawn[1]);
+    }
+    this.changed();
+    return { prefabs: n, pieces: np };
+  }
+
+  setSpawn() {
+    const p = this.game.player;
+    this.spawnPoint = { x: p.pos.x, z: p.pos.z };
+    this.game.hud.toast('Punto de aparición guardado (se incluye en el código de la isla)');
+  }
+
   saveSlot(i) {
     try {
       const data = this.game.build.serialize();

@@ -176,6 +176,12 @@ export class CreativePanel {
             ${[1, 2, 3].map((i) => `<div class="cr-slot"><span>Ranura ${i} <small>${t.slotInfo(i)}</small></span>
               <button data-save="${i}">Guardar</button><button data-load="${i}">Cargar</button></div>`).join('')}
           </div>
+          <div class="cr-sec"><h3>Compartir isla</h3>
+            <p class="hint">Genera un código con tus edificios, construcciones y punto de aparición, y pásaselo a un amigo.</p>
+            <div class="cr-btns"><button data-act="islandCode">🔗 Generar código</button><button data-act="setSpawn">📍 Aparición aquí</button><button data-act="photo">📷 Modo foto</button></div>
+            <textarea id="cr-code" rows="3" placeholder="Pega aquí un código ISLA1-… para cargar una isla" spellcheck="false">${this.lastCode || ''}</textarea>
+            <div class="cr-btns"><button data-act="copyCode">📋 Copiar</button><button data-act="loadCode">⬇ Cargar código</button></div>
+          </div>
         </div>`;
     }
     return `
@@ -268,6 +274,38 @@ export class CreativePanel {
       this.render();
     }));
     el.querySelectorAll('[data-load]').forEach((b) => b.addEventListener('click', () => t.loadSlot(Number(b.dataset.load))));
+    const codeBox = el.querySelector('#cr-code');
+    el.querySelector('[data-act="islandCode"]')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      this.lastCode = await t.exportCode();
+      codeBox.value = this.lastCode;
+      codeBox.select();
+      g.hud.toast(`Código generado (${this.lastCode.length} caracteres)`);
+    });
+    el.querySelector('[data-act="photo"]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.hide();
+      setTimeout(() => g.viewer.open('photo'), 50);
+    });
+    el.querySelector('[data-act="setSpawn"]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      t.setSpawn();
+    });
+    el.querySelector('[data-act="copyCode"]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      codeBox.select();
+      navigator.clipboard?.writeText(codeBox.value).then(() => g.hud.toast('Código copiado'), () => document.execCommand?.('copy'));
+    });
+    el.querySelector('[data-act="loadCode"]')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const r = await t.importCode(codeBox.value);
+        g.hud.toast(`Isla cargada: ${r.prefabs} edificios y ${r.pieces} piezas`);
+      } catch (err) {
+        g.hud.toast(`No se ha podido cargar: ${err.message}`);
+      }
+    });
+    codeBox?.addEventListener('keydown', (e) => e.stopPropagation());
     const map = el.querySelector('#cr-map');
     if (map) {
       const ctx = map.getContext('2d');

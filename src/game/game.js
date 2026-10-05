@@ -457,7 +457,7 @@ export class Game {
     }
     if (this.net) this.leaveOnline();
     const base = MODES[info.mode] || MODES.solo;
-    const mode = { ...base, scoreLimit: info.scoreLimit || base.scoreLimit, online: true };
+    const mode = { ...base, scoreLimit: info.scoreLimit || base.scoreLimit, online: true, onlineMatch: true };
     const net = new OnlineMatch(this, this.netClient, info);
     this.net = net;
     this.prepareMatch(mode, { rng: new RNG(info.lootSeed), stormRng: new RNG(info.stormSeed), team: net.myTeam, online: true });
@@ -572,6 +572,8 @@ export class Game {
   // Coloca a todos: en la isla de inicio (y luego el autobús), en el modo
   // creativo o (modos con reaparición) directamente en el aire.
   beginMatch(o) {
+    this.heat = { land: [], elim: [] };
+    for (const c of this.chars) c.landedHeat = false;
     this.viewer.hide();
     this.editCourse.stop();
     this.replay.start();
@@ -770,7 +772,7 @@ export class Game {
     setLootPool(null);
     this.viewer.hide();
     this.weather.reset();
-    const wasOnline = !!this.net || this.mode.online;
+    const wasOnline = !!this.net || !!this.mode.onlineMatch;
     if (this.mode.creative) this.creative.stop();
     // Abandonar a mitad de partida también da XP (sin bonus de puesto)
     const abandon = this.state === 'playing' && !this.matchAwarded && this.matchTime > 30 ? this.awardMatch(false, null) : null;
@@ -915,6 +917,7 @@ export class Game {
   onElimination(victim, killer, type) {
     if (this.net?.isLocal(victim)) this.net.sendElim(victim, killer, type);
     this.npcs.onElim(victim, killer);
+    if (this.heat && this.phase !== 'lobby') this.heat.elim.push([victim.pos.x, victim.pos.z]);
     this.reboot.onElim(victim);
     // Los bots a veces celebran la eliminación con un gesto
     if (killer?.isBot && killer !== victim && Math.random() < 0.3) {
@@ -1110,7 +1113,7 @@ export class Game {
       if (customCause) cause = customCause;
     }
     const xp = this.awardMatch(win, this.mode.respawn ? null : place);
-    this.menu.showEnd(win, cause, this.statsHTML(), !!this.mode.online, xp);
+    this.menu.showEnd(win, cause, this.statsHTML(), !!this.net, xp);
   }
 
   statsHTML() {
@@ -1253,7 +1256,7 @@ export class Game {
         if (b.mode === 'bus') this.hud.killFeed(`<b>${b.name}</b> ha dado las gracias al conductor del autobús 🚌`);
       }
     }
-    if (this.state === 'playing' && p.alive) {
+    if (this.state === 'playing' && p.alive && !(this.viewer.active && this.viewer.kind === 'photo')) {
       if (this.phase !== 'lobby') this.matchTime += dt;
       if (!this.paused) this.handleGlobalKeys(input);
       const zoom = this.camera.fov / this.baseFov;
@@ -1304,6 +1307,16 @@ export class Game {
     this.grass.update(dt, this.camera.position);
     this.trails.update(dt);
     this.replay.record(dt);
+    // Mapa de calor: dónde aterriza cada uno (la primera vez)
+    if (this.heat && this.state === 'playing' && this.phase !== 'lobby') {
+      for (const c of this.chars) {
+        if (!c.landedHeat && c.mode === 'ground' && c.alive && (c.prevHeatMode === 'glide' || c.prevHeatMode === 'freefall')) {
+          c.landedHeat = true;
+          this.heat.land.push([c.pos.x, c.pos.z]);
+        }
+        c.prevHeatMode = c.mode;
+      }
+    }
     if (this.state === 'playing') this.editCourse.update(dt);
     if (this.state === 'playing') {
       this.npcs.update(dt);

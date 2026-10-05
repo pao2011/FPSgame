@@ -184,6 +184,7 @@ export class Viewer {
 
   candidates() {
     const g = this.game;
+    if (this.kind === 'photo') return [];
     if (this.kind === 'replay') return g.replay.chars.filter((c) => c.model.root.visible);
     return g.chars.filter((c) => c.alive && c !== g.player && c.mode !== 'bus' && c.mode !== 'lobby');
   }
@@ -194,7 +195,11 @@ export class Viewer {
     this.active = true;
     this.free = false;
     this.prevState = g.state;
-    document.getElementById('end').style.display = 'none';
+    if (kind !== 'photo') document.getElementById('end').style.display = 'none';
+    else {
+      g.input.unlock();
+      g.chatOpen = true; // sin menú de pausa al soltar el ratón
+    }
     g.hud.show(false);
     if (kind === 'replay') {
       g.state = 'replay';
@@ -210,7 +215,12 @@ export class Viewer {
     this.cam.pos.copy(g.player.pos).add(new THREE.Vector3(0, 25, 18));
     this.cam.yaw = 0;
     this.cam.pitch = -0.8;
-    if (!this.follow) this.free = true;
+    if (!this.follow || kind === 'photo') this.free = true;
+    if (kind === 'photo') {
+      this.cam.pos.copy(g.camera.position);
+      this.cam.yaw = g.camera.rotation.y;
+      this.cam.pitch = g.camera.rotation.x;
+    }
     this.el.style.display = 'flex';
     this.render();
   }
@@ -229,7 +239,25 @@ export class Viewer {
     this.active = false;
     this.el.style.display = 'none';
     if (this.kind === 'replay') g.state = this.prevState;
+    if (this.kind === 'photo') {
+      g.hud.show(true);
+      g.chatOpen = false;
+      g.input.lock();
+      return;
+    }
     document.getElementById('end').style.display = 'flex';
+  }
+
+  // Modo foto: guarda la imagen del juego sin interfaz.
+  snapshot() {
+    const g = this.game;
+    g.render();
+    const url = g.renderer.domElement.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `isla-royale-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`;
+    a.click();
+    g.hud.toast?.('📷 Foto guardada');
   }
 
   render() {
@@ -238,6 +266,11 @@ export class Viewer {
     const name = this.free ? 'Cámara libre' : this.follow ? this.follow.name || 'Tú' : '—';
     const time = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
     const replay = this.kind === 'replay';
+    if (this.kind === 'photo') {
+      this.el.innerHTML = `<div class="vw-top">📷 MODO FOTO <small>WASD mover · Espacio/Shift subir/bajar · arrastra para girar · H ocultar barra</small></div>
+        <div class="vw-bar"><button data-a="shot">📸 Hacer foto</button><button data-a="close" class="exit">Salir del modo foto</button></div>`;
+      return;
+    }
     this.el.innerHTML = `
       <div class="vw-top">${replay ? '🎬 REPETICIÓN' : '👁 ESPECTADOR'} · <b>${name}</b>
         <small>${this.free ? 'WASD mover · Espacio/Shift subir/bajar · arrastra para girar' : 'Cambia de jugador con las flechas'}</small></div>
@@ -263,6 +296,7 @@ export class Viewer {
     else if (a === 'free') this.free = !this.free;
     else if (a === 'prev' || a === 'next') this.cycle(a === 'next' ? 1 : -1);
     else if (a === 'close') return this.close();
+    else if (a === 'shot') return this.snapshot();
     this.render();
   }
 
@@ -297,6 +331,7 @@ export class Viewer {
     const g = this.game;
     const cam = g.camera;
     const input = g.input;
+    if (this.kind === 'photo' && input.wasPressed('KeyH')) this.el.style.display = this.el.style.display === 'none' ? 'flex' : 'none';
     if (input.wasPressed('ArrowRight')) this.cycle(1);
     if (input.wasPressed('ArrowLeft')) this.cycle(-1);
     if (input.wasPressed('ArrowRight') || input.wasPressed('ArrowLeft')) this.render();

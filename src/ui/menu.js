@@ -224,7 +224,10 @@ export class Menu {
         <div class="pause-buttons row">
           <button id="spectate-btn" class="secondary">👁 ESPECTAR</button>
           <button id="replay-btn" class="secondary">🎬 VER REPETICIÓN</button>
+          <button id="heat-btn" class="secondary">🗺 MAPA DE CALOR</button>
         </div>
+        <div id="heat-box" style="display:none"><canvas id="heat-canvas" width="320" height="320"></canvas>
+          <div class="heat-legend"><span><i style="background:#5ad1ff"></i>Aterrizajes</span><span><i style="background:#ff5a4a"></i>Eliminaciones</span></div></div>
         <div class="end-hint" id="end-hint"></div>
       </div>`;
     $('again-btn').addEventListener('click', () => {
@@ -234,6 +237,11 @@ export class Menu {
     $('menu-btn').addEventListener('click', () => this.game.quitToMenu());
     $('spectate-btn').addEventListener('click', () => this.game.viewer.open('live'));
     $('replay-btn').addEventListener('click', () => this.game.viewer.open('replay'));
+    $('heat-btn').addEventListener('click', () => {
+      const box = $('heat-box');
+      box.style.display = box.style.display === 'none' ? '' : 'none';
+      if (box.style.display === '') this.drawHeat($('heat-canvas'));
+    });
     this.show('play');
   }
 
@@ -645,6 +653,29 @@ export class Menu {
     this.prog.updatePill();
   }
 
+  // Mapa de calor de la partida: aterrizajes (azul) y eliminaciones (rojo).
+  drawHeat(cv) {
+    const g = this.game;
+    const ctx = cv.getContext('2d');
+    const w = cv.width, h = cv.height;
+    ctx.drawImage(g.mapRenderer.base, 0, 0, w, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 0, w, h);
+    const toPx = (x, z) => [((x + 800) / 1600) * w, ((z + 800) / 1600) * h];
+    ctx.globalCompositeOperation = 'lighter';
+    const blob = (x, z, col, r) => {
+      const [px, py] = toPx(x, z);
+      const gr = ctx.createRadialGradient(px, py, 0, px, py, r);
+      gr.addColorStop(0, col);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(px - r, py - r, r * 2, r * 2);
+    };
+    for (const [x, z] of g.heat.land) blob(x, z, 'rgba(90,209,255,0.55)', 16);
+    for (const [x, z] of g.heat.elim) blob(x, z, 'rgba(255,90,74,0.7)', 12);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   hideAll() {
     for (const id of ['main-menu', 'pause', 'end']) $(id).style.display = 'none';
     $('pause-options').innerHTML = '';
@@ -669,6 +700,8 @@ export class Menu {
     $('end-stats').innerHTML = stats;
     const g = this.game;
     $('replay-btn').style.display = g.replay.available ? '' : 'none';
+    $('heat-btn').style.display = g.heat && (g.heat.land.length || g.heat.elim.length) ? '' : 'none';
+    $('heat-box').style.display = 'none';
     $('spectate-btn').style.display = !win && g.chars.some((c) => c.alive && c !== g.player) ? '' : 'none';
     $('end').style.display = 'flex';
     $('end').classList.toggle('win', win);

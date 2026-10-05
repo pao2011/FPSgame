@@ -3979,3 +3979,9 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 .arena-res small, .arena-box small { opacity: 0.8; }
 .arena-box { margin: 0 0 10px; }
 .mode-card .ltm-badge { position: absolute; top: 6px; right: 6px; background: #ff5a8a; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 6px; }
+#cr-code { width: 100%; box-sizing: border-box; margin: 8px 0; background: rgba(0, 0, 0, 0.35); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 6px 8px; font: 12px ui-monospace, monospace; resize: vertical; }
+#heat-box { margin-top: 12px; text-align: center; }
+#heat-canvas { width: min(320px, 70vw); height: auto; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.2); }
+.heat-legend { display: flex; gap: 14px; justify-content: center; font-size: 12px; margin-top: 4px; opacity: 0.85; }
+.heat-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+#end .menu-card { max-height: calc(100vh - 32px); overflow-y: auto; }
