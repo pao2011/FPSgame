@@ -1009,7 +1009,7 @@ class Bot extends Character {
       g.net?.shotFx(this, def.sound, muzzleE, []);
       const dC = this.pos.distanceTo(g.camera.position);
       const v = clamp(1 - dC / 260, 0, 1);
-      if (v > 0.03) g.audio.shot(def.sound, v * v * 0.9);
+      if (v > 0.03) g.audio.shot(def.sound, v * v * 0.9, this.pos);
       g.noise(this.pos, 90, this);
       return;
     }
@@ -1052,7 +1052,7 @@ class Bot extends Character {
     if (ends) g.net.shotFx(this, def.sound, muzzle, ends);
     const dCam = this.pos.distanceTo(g.camera.position);
     const vol = clamp(1 - dCam / 260, 0, 1);
-    if (vol > 0.03) g.audio.shot(def.sound, vol * vol * 0.9);
+    if (vol > 0.03) g.audio.shot(def.sound, vol * vol * 0.9, this.pos);
     if (dCam < 150) g.effects.muzzleFlash(null, muzzle);
     if (dCam < 35 && !def.beam) g.effects.shell(muzzle.clone().addScaledVector(dir, -0.45), this.yaw, !!def.pellets);
     g.noise(this.pos, def.sound === 'sniper' || def.sound === 'dmr' ? 160 : 90, this);

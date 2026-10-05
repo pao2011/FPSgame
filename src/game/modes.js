@@ -134,6 +134,8 @@ export const DEFAULT_SETTINGS = {
   compassSounds: true, // disparos y pasos cercanos en la brújula
   subtitles: false,
   weather: true, // clima y ciclo de día en las partidas
+  music: 40, // volumen de la música dinámica (0 = sin música)
+  spatialAudio: true, // sonido 3D (HRTF)
   // Mando
   padScheme: 'clasico', // clasico | pro (constructor pro)
   padSens: 1,

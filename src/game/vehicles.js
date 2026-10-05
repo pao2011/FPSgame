@@ -91,7 +91,7 @@ class Vehicle {
     this.hp = 0;
     const at = this.pos.clone().setY(this.pos.y + 1);
     g.effects.explosion(at, 6);
-    g.audio.explosion?.(Math.max(0.1, 1 - at.distanceTo(g.camera.position) / 300));
+    g.audio.explosion?.(Math.max(0.1, 1 - at.distanceTo(g.camera.position) / 300), false, at);
     const d = this.driver;
     if (d) {
       g.vehicles.exit(d);

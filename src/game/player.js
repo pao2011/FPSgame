@@ -240,7 +240,7 @@ export class Player extends Character {
       this.stepTimer -= dt * hs;
       if (this.stepTimer <= 0) {
         this.stepTimer = 2.4;
-        this.game.audio.step();
+        this.game.audio.step(this.game.groundMaterial(this), 1);
       }
     }
   }

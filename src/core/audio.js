@@ -109,7 +109,7 @@ class AudioSys {
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
     const g = c.createGain();
     this._env(g, gain, 0.005, dur, t);
-    o.connect(g).connect(this.master);
+    o.connect(g).connect(this._out || this.master);
     o.start(t);
     o.stop(t + dur + 0.05);
   }
@@ -126,13 +126,61 @@ class AudioSys {
     if (endFreq) f.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
     const g = c.createGain();
     this._env(g, gain, 0.003, dur, t);
-    s.connect(f).connect(g).connect(this.master);
+    s.connect(f).connect(g).connect(this._out || this.master);
     s.start(t, Math.random() * Math.max(0, 1.9 - dur));
     s.stop(t + dur + 0.05);
   }
 
-  shot(kind, volume = 1) {
+  // Audio posicional (HRTF): un panner por sonido, sin atenuar por distancia
+  // (el volumen ya lo calcula quien llama); sólo da la dirección.
+  _at(pos) {
+    if (!pos || !this.ctx || this.spatial === false) return null;
+    const c = this.ctx;
+    const p = c.createPanner();
+    p.panningModel = 'HRTF';
+    p.distanceModel = 'linear';
+    p.rolloffFactor = 0;
+    if (p.positionX) {
+      p.positionX.value = pos.x;
+      p.positionY.value = pos.y;
+      p.positionZ.value = pos.z;
+    } else p.setPosition(pos.x, pos.y, pos.z);
+    p.connect(this.master);
+    setTimeout(() => p.disconnect(), 2500);
+    return p;
+  }
+
+  // Oyente = cámara (llamado cada fotograma).
+  setListener(cam) {
     if (!this.ctx) return;
+    const L = this.ctx.listener;
+    const e = cam.matrixWorld.elements;
+    const fx = -e[8], fy = -e[9], fz = -e[10], ux = e[4], uy = e[5], uz = e[6];
+    if (L.positionX) {
+      const t = this.ctx.currentTime;
+      L.positionX.setValueAtTime(cam.position.x, t);
+      L.positionY.setValueAtTime(cam.position.y, t);
+      L.positionZ.setValueAtTime(cam.position.z, t);
+      L.forwardX.setValueAtTime(fx, t);
+      L.forwardY.setValueAtTime(fy, t);
+      L.forwardZ.setValueAtTime(fz, t);
+      L.upX.setValueAtTime(ux, t);
+      L.upY.setValueAtTime(uy, t);
+      L.upZ.setValueAtTime(uz, t);
+    } else {
+      L.setPosition(cam.position.x, cam.position.y, cam.position.z);
+      L.setOrientation(fx, fy, fz, ux, uy, uz);
+    }
+  }
+
+  shot(kind, volume = 1, pos = null) {
+    if (!this.ctx) return;
+    this._out = this._at(pos);
+    this._shot(kind, volume);
+    this._out = null;
+  }
+
+  _shot(kind, volume = 1) {
     const s = SHOTS[kind] || SHOTS.ar;
     if (s.zap) {
       this._tone(s.f * 0.5, s.d, { type: 'sawtooth', gain: s.g * 0.5 * volume, slide: 0.15 });
@@ -149,8 +197,14 @@ class AudioSys {
   }
 
   // volume: 0..1 según la distancia. impulse: estallido sin metralla.
-  explosion(volume = 1, impulse = false) {
+  explosion(volume = 1, impulse = false, pos = null) {
     if (!this.ctx || volume < 0.01) return;
+    this._out = this._at(pos);
+    this._explosion(volume, impulse);
+    this._out = null;
+  }
+
+  _explosion(volume, impulse) {
     if (impulse) {
       this._burst(0.5, { freq: 2500, endFreq: 200, type: 'bandpass', gain: 0.6 * volume, q: 1.2 });
       this._tone(300, 0.4, { type: 'sine', gain: 0.35 * volume, slide: 0.2 });
@@ -312,9 +366,31 @@ class AudioSys {
     this._tone(180, 0.2, { type: 'sawtooth', gain: 0.12, slide: 0.5 });
   }
 
-  step() {
-    if (!this.ctx) return;
-    this._burst(0.06, { freq: 400, gain: 0.08 });
+  // Pasos según el suelo: hierba, arena, madera, piedra o metal.
+  step(mat = 'grass', volume = 1, pos = null) {
+    if (!this.ctx || volume < 0.02) return;
+    this._out = this._at(pos);
+    const v = volume;
+    switch (mat) {
+      case 'sand':
+        this._burst(0.12, { freq: 1400, type: 'bandpass', gain: 0.1 * v, q: 0.8 });
+        break;
+      case 'wood':
+        this._tone(170 + Math.random() * 30, 0.08, { type: 'triangle', gain: 0.12 * v, slide: 0.7 });
+        this._burst(0.05, { freq: 900, gain: 0.07 * v });
+        break;
+      case 'stone':
+        this._burst(0.04, { freq: 2600, type: 'highpass', gain: 0.08 * v });
+        this._burst(0.06, { freq: 700, gain: 0.07 * v });
+        break;
+      case 'metal':
+        this._tone(520 + Math.random() * 80, 0.12, { type: 'square', gain: 0.035 * v, slide: 0.9 });
+        this._burst(0.05, { freq: 3000, type: 'bandpass', gain: 0.06 * v, q: 3 });
+        break;
+      default:
+        this._burst(0.07, { freq: 450, gain: 0.08 * v });
+    }
+    this._out = null;
   }
 
   land() {
@@ -322,11 +398,6 @@ class AudioSys {
     this._burst(0.2, { freq: 300, gain: 0.3 });
   }
 
-  explosion(volume = 1) {
-    if (!this.ctx || volume < 0.02) return;
-    this._burst(1.2, { freq: 900, endFreq: 60, gain: 0.9 * volume });
-    this._tone(70, 0.6, { type: 'sine', gain: 0.6 * volume, slide: 0.4 });
-  }
 
   throwItem() {
     if (!this.ctx) return;

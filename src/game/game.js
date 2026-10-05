@@ -13,6 +13,7 @@ import { NPCs } from './npcs.js';
 import { RebootVans } from './reboot.js';
 import { Replay, Viewer } from './replay.js';
 import { EditCourse } from './editcourse.js';
+import { Music } from '../core/music.js';
 import { NpcDialog } from '../ui/npcdialog.js';
 import { makeEnvironment } from '../world/envmap.js';
 import { setModelQuality } from './models.js';
@@ -54,6 +55,7 @@ const SKY_COLOR = SKY.horizon;
 const tmpV = new THREE.Vector3();
 const tmpF = new THREE.Vector3();
 const tmpR = new THREE.Vector3();
+const tmpCol = new THREE.Color();
 
 export class Game {
   constructor(container) {
@@ -202,6 +204,10 @@ export class Game {
     this.replay = new Replay(this);
     this.viewer = new Viewer(this);
     this.editCourse = new EditCourse(this);
+    this.music = new Music(this.audio);
+    // El audio necesita un gesto del usuario: el primer clic activa la música del menú
+    addEventListener('pointerdown', () => this.audio.init(), { once: true });
+    this.music.setVolume((this.settings.music ?? 40) / 100);
     this.npcDialog = new NpcDialog(this);
     if (this.isTouch) this.touch = new TouchControls(this);
     addEventListener('resize', () => this.onResize());
@@ -322,6 +328,8 @@ export class Game {
     root.setProperty('--cross', s.crosshairColor || '#ffffff');
     this.touch?.applySettings();
     this.a11y?.apply();
+    this.music?.setVolume((s.music ?? 40) / 100 * (s.volume / 100));
+    if (this.audio) this.audio.spatial = s.spatialAudio !== false;
     if (this.renderer && this.quality === 'movil') {
       const pr = this.pixelRatio();
       if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.01) {
@@ -855,6 +863,8 @@ export class Game {
 
   noise(pos, r, src) {
     this.noises.push({ pos: pos.clone(), r, src, t: this.time });
+    // Música de combate si hay disparos cerca del jugador
+    if (src === this.player || pos.distanceToSquared(this.player.pos) < 70 * 70) this.lastCombat = this.time;
   }
 
   requestPath(bot, goal) {
@@ -1209,6 +1219,7 @@ export class Game {
 
   step(dt) {
     const input = this.input;
+    this.frameDt = dt;
     this.gamepad.update(dt);
     if (this.state === 'replay') {
       this.time += dt;
@@ -1224,6 +1235,7 @@ export class Game {
     this.sky.material.uniforms.time.value = t;
     if (this.state === 'menu') {
       this.updateMenuCamera(t);
+      this.music?.update(this);
       this.world.clouds.rotation.y = t * 0.003;
       this.containers.update(dt, t);
       this.touch?.update();
@@ -1669,10 +1681,43 @@ export class Game {
     } else hud.banner('');
   }
 
+  // Material del suelo bajo un personaje (para el sonido de los pasos).
+  groundMaterial(c) {
+    const q = this.world.collision.query(c.pos.x - 0.2, c.pos.y - 0.25, c.pos.z - 0.2, c.pos.x + 0.2, c.pos.y + 0.05, c.pos.z + 0.2, this._gq || (this._gq = []));
+    for (const b of q) {
+      if (b.data?.type === 'build') return b.data.piece.mat;
+      if (b.data?.type === 'car') return 'metal';
+    }
+    if (q.length) return 'stone';
+    const t = this.world.terrain;
+    const h = t.heightAt(c.pos.x, c.pos.z);
+    if (c.pos.y - h > 0.6) return 'wood';
+    if (h < 2.4) return 'sand';
+    t.colorAt(c.pos.x, c.pos.z, h, t.slopeAt(c.pos.x, c.pos.z), tmpCol);
+    if (tmpCol.g > tmpCol.r + 0.1) return 'grass';
+    return tmpCol.r > 0.5 ? 'sand' : 'stone';
+  }
+
   updateAudio() {
     const p = this.player;
     const a = this.audio;
-    if (!a.ctx || this.state !== 'playing') return;
+    if (!a.ctx) return;
+    a.setListener(this.camera);
+    this.music?.update(this);
+    if (this.state !== 'playing') return;
+    // Pasos de los demás (posicionales): se oyen a unos 30 m
+    for (const c of this.chars) {
+      if (c === p || !c.alive || c.mode !== 'ground' || c.crouching || c.vehicle) continue;
+      const hs = c.hSpeed;
+      if (hs < 2.5) continue;
+      const d = c.pos.distanceTo(this.camera.position);
+      if (d > 30) continue;
+      c.stepSnd = (c.stepSnd ?? Math.random() * 2) - hs * (this.frameDt || 0.016);
+      if (c.stepSnd <= 0) {
+        c.stepSnd = 2.4;
+        a.step(this.groundMaterial(c), Math.pow(1 - d / 30, 2) * 1.4, c.pos);
+      }
+    }
     if (p.mode === 'freefall') a.setWind(Math.min(1, p.vel.length() / 55));
     else if (p.mode === 'glide') a.setWind(0.3);
     else if (p.mode === 'bus') a.setWind(0.12);

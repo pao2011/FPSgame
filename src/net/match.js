@@ -251,7 +251,7 @@ export class OnlineMatch {
     const beam = m.w === 'plasma';
     if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), beam ? 0x3ff0e0 : 0xffe0a0, beam ? 0.045 : 0.02, beam ? 0.14 : 0.07);
     const vol = clamp(1 - d / 260, 0, 1);
-    if (vol > 0.03) g.audio.shot(m.w, vol * vol * 0.9);
+    if (vol > 0.03) g.audio.shot(m.w, vol * vol * 0.9, from);
     if (d < 150 && m.w !== 'bow') g.effects.muzzleFlash(null, from);
     if (shooter) g.noise(shooter.pos, m.w === 'sniper' || m.w === 'dmr' ? 160 : 90, shooter);
   }

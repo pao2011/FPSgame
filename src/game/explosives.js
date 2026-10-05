@@ -399,7 +399,7 @@ export class Explosives {
         g.effects.debris(pos, 0x3a3a3a);
       }
     }
-    g.audio.explosion?.(this._vol(pos, 420), o.impulse);
+    g.audio.explosion?.(this._vol(pos, 420), o.impulse, pos);
     if (camD < r * 6) this.shake = Math.min(1, this.shake + (o.impulse ? 0.35 : 0.9) * (1 - camD / (r * 6)));
     g.noise(pos, 140, o.owner || g.player);
 
