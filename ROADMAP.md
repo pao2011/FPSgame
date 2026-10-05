@@ -9,7 +9,7 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 
 ---
 
-## ✅ Versión 0.4 (esta actualización)
+## ✅ Versión 0.4
 
 - **Un solo mapa fijo** (`MAP_SEED` en `src/world/constants.js`): la isla es
   idéntica en todas las partidas, en local y online. Se quitó «Nueva isla» y
@@ -61,71 +61,89 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
 
 ---
 
-## 🔴 Prioridad alta (siguiente versión)
+## ✅ Versión 0.5 (esta actualización)
 
-1. **Sincronizar en online lo que aún es local**: plataformas de salto, las
-   puertas ya abiertas al unirse tarde y el botín de las mesas de la Isla de
-   Inicio.
-2. **Servidor con autoridad sobre el daño** (anti-trampas básico): validar
-   distancia/cadencia de los impactos y la munición en `server/match.js`.
-3. **Inventario con arrastrar y soltar** (reordenar huecos, dividir pilas,
-   tirar cantidades concretas de munición y materiales).
-4. **Ajustes de accesibilidad**: modo daltónico (protanopía, deuteranopía,
-   tritanopía), visualización de efectos de sonido (indicadores de pasos,
-   disparos y cofres en pantalla) y subtítulos.
-5. **Mando (gamepad)** con asistencia de apuntado y esquemas de botones
-   (incluido «constructor pro»), y **reasignar los botones táctiles** igual
-   que las teclas.
-6. **Pantalla de carga/emparejamiento** con consejos y el mapa, y
-   **reconexión** a una partida en curso tras perder la conexión.
-7. **Indicador de pasos y disparos cercanos** en la brújula (muy útil sin
-   cascos).
+### Gráficos
+- **Materiales PBR** con iluminación de entorno (PMREM) en calidad normal y
+  alta, **oclusión ambiental (GTAO)** y sombras suaves en alta.
+- **Personajes articulados** (rodillas y codos) con piezas redondeadas y
+  animaciones de recarga, construcción, edición y curación.
+- **Mapa:** fachadas con patrones (tablas, ladrillo, revoque), asfalto con
+  grano, parches y grietas, árboles y rocas con volumen y **césped
+  instanciado que se mece con el viento**.
+- **Armas** con guardamonte, gatillo, raíl, bocacha y ventana de expulsión;
+  manos con dedos en primera persona; pico nuevo.
+- **Construcciones** con texturas nuevas y relieve (marco y clavos, juntas,
+  chapa corrugada con remaches).
+- **Balas y efectos:** trazadoras que viajan con halo, casquillos, polvo de
+  impacto, agujeros de bala con textura y fogonazo en estrella con humo.
 
-## 🟠 Prioridad media
+### 🔴 Prioridad alta (hecho)
+1. **Online sincronizado:** plataformas de salto, puertas, armas de las mesas
+   de la Isla de Inicio y, al volver tras un corte, construcciones, cofres,
+   objetos y bajas.
+2. **Anti-trampas en el servidor** (`server/anticheat.js`): daño máximo por
+   arma/rareza/tiro a la cabeza, cadencia (cubo de daño) y distancia.
+3. **Inventario con arrastrar y soltar** (Tab): reordenar, juntar y dividir
+   pilas, soltar cantidades de munición y materiales.
+4. **Accesibilidad:** modo daltónico (protanopía, deuteranopía, tritanopía),
+   sonidos visualizados alrededor de la mira y subtítulos.
+5. **Mando** con asistencia de apuntado y esquemas *Clásico* y *Constructor
+   pro*; **editor de la disposición de los botones táctiles**.
+6. **Pantalla de emparejamiento** con mapa, jugadores y consejos; consejos en
+   la carga; **reconexión** a la partida durante 45 s.
+7. **Disparos y pasos cercanos en la brújula.**
 
-8. **Desafíos diarios y semanales** y estadísticas por modo (el pase de
-   batalla ya da XP por partida y logros).
-9. **Taquilla ampliada**: picos, planeadores, mochilas, estelas, gestos
-   (bailes) y pantallas de carga (ya hay skins, accesorios y camuflajes).
-10. **Más vehículos**: barcas, quads, avión de reconocimiento; gasolina y
-    daño de vehículos.
-11. **NPCs y misiones** en los pueblos (comerciantes que venden armas por
-    oro, misiones de buscar objetos, jefes con botín especial).
-12. **Mejoras de IA**: bots que editan, usan explosivos, se suben a
-    vehículos, hacen «90s» y reaccionan a los marcadores del jugador cuando
-    son compañeros.
-13. **Sistema de reaparición en equipo** (tarjeta de reaparición en una
-    furgoneta, como en Fortnite) para dúos/tríos/escuadras.
-14. **Repeticiones** (grabar estados y reproducir la partida) y modo
-    espectador libre al morir.
-15. **Clima y ciclo día/noche** durante la partida (lluvia, niebla).
-16. **Tormenta mejorada**: fases variables, tormenta móvil al final y
-    previsión de la siguiente zona en el mapa.
+### 🟠 Prioridad media (hecho)
+8. **Desafíos diarios (3) y semanales (4)** con XP y tokens; estadísticas
+   por modo.
+9. **Taquilla ampliada:** picos, planeadores, mochilas, estelas, gestos (con
+   animación y online) y pantallas de carga.
+10. **Vehículos:** quads, lanchas, gasolina (gasolineras) y daño/explosión.
+11. **PNJ y misiones:** comerciantes (armas por oro), misiones de reliquias,
+    eliminaciones y cofres, y **jefe** en el Castillo Corona con botín mítico.
+12. **IA:** «90s», ventanas editadas desde la caja para disparar, gestos al
+    eliminar y compañeros que acuden a los marcadores.
+13. **Furgonetas de reaparición** con tarjetas (equipos contra bots).
+14. **Repeticiones** (línea de tiempo, velocidad, seguir jugadores, cámara
+    libre) y **espectador en directo**.
+15. **Clima** (nublado, lluvia, niebla) y **ciclo de día** en la partida.
+16. **Tormenta:** fases variables, zona final móvil y ruta en el mapa.
 
-## 🟢 Prioridad baja / deseable
+### 🟢 Prioridad baja e ideas (hecho)
+17. **Compartir islas del creativo** con un código (edificios,
+    construcciones y punto de aparición) y **modo foto**.
+18. **Modos temporales:** Sólo francotiradores, Tiroteo de escopetas, Lluvia
+    de cohetes, Equipos de 20 y Práctica de edición contra el reloj.
+19. **Arena:** puntos por eliminaciones y puesto, 9 divisiones y Copa
+    semanal.
+20. **Chat de voz** WebRTC: rivales por proximidad (3D), compañeros siempre,
+    pulsar para hablar o micrófono abierto.
+21. **Rendimiento:** puertas y PNJ lejanos ocultos, césped que se desactiva
+    solo si bajan los FPS.
+22. **Animaciones** en tercera persona (recarga, construir, editar, curarse,
+    gestos).
+23. **Sonido:** música dinámica, sonido 3D (HRTF) y pasos según el suelo.
+24. **Idiomas:** inglés y portugués.
+- **Puertas reales** en las casas del mapa (E; los bots también las abren).
+- **Mapa de calor** de aterrizajes y eliminaciones al terminar.
 
-17. **Editor de islas** en el modo creativo: colocar estructuras del mapa,
-    objetos y puntos de aparición; compartir islas con un código.
-18. **Modos temporales**: «Sólo francotiradores», «Equipo de 20», «Tiroteo
-    de escopetas», «Lluvia de cohetes», «Zona de práctica de edición».
-19. **Torneos/arena** con puntuación por puestos y eliminaciones.
-20. **Chat de voz** por proximidad y de equipo (WebRTC).
-21. **Rendimiento**: LOD de edificios lejanos, *instancing* de piezas de
-    construcción, *workers* para la navegación de los bots y sombras en
-    cascada.
-22. **Animaciones**: personajes con esqueleto (correr, saltar, recargar),
-    animación de edición y de abrir cofres.
-23. **Sonido**: música dinámica (menú, autobús, combate), sonidos
-    posicionales en 3D (HRTF) y efectos distintos por material.
-24. **Localización** a otros idiomas (inglés, portugués…).
+---
 
-## 💡 Ideas sueltas
+## 🔜 Pendiente para próximas versiones
 
-- Objetos legendarios «míticos» con jefe.
-- Puertas reales en los edificios del mapa (abrir/cerrar con E).
-- Mapas de calor de aterrizajes y eliminaciones al final de la partida.
-- Logros (primera victoria, 10 eliminaciones en una partida…).
-- Fotos en el modo creativo (cámara libre sin HUD).
+- **Rendimiento:** *instancing* de las piezas de construcción, navegación de
+  los bots en un *worker*, sombras en cascada y LOD de los edificios lejanos.
+- **IA:** bots que conducen vehículos y que usan las furgonetas de
+  reaparición en online.
+- **Online:** furgonetas de reaparición, PNJ y jefe en partidas online
+  (ahora sólo contra bots); validación de la munición en el servidor.
+- **Torneos online** con clasificación entre jugadores reales (la Arena y la
+  Copa son ahora individuales).
+- **Idiomas:** traducir también las descripciones largas (modos, consejos,
+  ayuda), que siguen en español.
+- **Animaciones** de abrir cofres y de esqueleto completo (manos y dedos).
+- Más armas y objetos con jefe, y nuevos puntos de interés.
 
 ---
 
@@ -140,6 +158,12 @@ Leyenda: 🔴 imprescindible · 🟠 muy recomendable · 🟢 deseable · 💡 i
   (`WALL_PRESETS`); añadir piezas nuevas es añadir una máscara.
 - **Controles**: cualquier acción nueva va en `src/core/binds.js` y se lee
   con `input.held('accion')` / `input.hit('accion')`.
+- **Cosméticos**: `src/game/cosmetics.js` (`COSMETIC_TYPES`); el servidor
+  los valida con `cleanCosmetics`.
+- **Modos temporales**: `lootPool` en `src/game/modes.js` limita las armas
+  (cliente y servidor usan `setLootPool`).
+- **Idiomas**: `src/ui/i18n.js` traduce los textos de la página con un
+  diccionario y patrones; añadir una frase es añadir una entrada.
 - **Armas**: se definen en `src/game/items.js` (`WEAPONS`); el modelo 3D va
   en `makeWeaponModel()` de `src/game/models.js`. El campo `cat` decide cómo
   las usan los bots.

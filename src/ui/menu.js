@@ -120,27 +120,30 @@ const HOWTO = [
 ];
 
 const NEWS = [
-  ['Un solo mapa', `${MAP_NAME} es siempre la misma isla, en local y online.`],
-  ['Cofres aleatorios', 'Cada cofre tiene una probabilidad de aparecer en cada partida: ya no están siempre en el mismo sitio.'],
-  ['Isla de Inicio', 'Sala de espera antes del autobús, con armas de práctica, dianas y construcción libre. Cuenta atrás de 10 s al reunir a todos.'],
-  ['Autobús de batalla detallado', 'Conductor, pasajeros, puertas, faros, equipaje, globo con quemador y llama… y puedes darle las gracias al conductor.'],
-  ['Edición de piezas', 'Puerta (que se abre y se cierra), ventana, arco, arco grande, media pared, valla, puerta lateral, suelos con hueco, rampas giradas y tejados inclinados o planos.'],
-  ['Ajustes al estilo de Epic', 'Construcción turbo, controles personalizados, sensibilidades separadas, apuntar/agacharse alternos, cambio automático de material, límite de FPS…'],
-  ['Modo creativo', 'Vuelo, catálogo con todas las armas y consumibles, bots y dianas a demanda, cofres, prefabricados, guardar/cargar, teletransporte, hora del día y tormenta.'],
-  ['Más armas', 'Fusil de ráfagas, fusil pesado, minigun, escopeta táctica y de dos cañones, rifle de tirador, rifle de caza, revólver, cañón de mano, lanzacohetes, lanzagranadas, rifle de plasma y arco explosivo, con rarezas Mítico y Exótico.'],
-  ['Más consumibles', 'Pez saltarín, Zumo Slurp, barril de poción y plataforma de salto, además de granadas, lapa, C4, humo, molotov e impulso.'],
-  ['Pase de batalla y tienda', '40 niveles con XP por partida y logros, skins, accesorios y camuflajes de armas.'],
-  ['Versión móvil', 'Controles táctiles, calidad Móvil con resolución dinámica y APK de Android, con juego cruzado con PC.'],
-  ['Calidad de vida', 'Marcadores (clic central), destino en el mapa, recogida automática, curación rápida (H), arma anterior (X), correr automático (=)…'],
+  ['Gráficos renovados', 'Materiales PBR con iluminación de entorno, oclusión ambiental (calidad alta), personajes con rodillas y codos, fachadas con textura, asfalto con grietas, césped que se mece, armas detalladas, trazadoras que viajan, casquillos, polvo de impacto y construcciones con relieve.'],
+  ['Clima y ciclo de día', 'Cada partida tiene su clima (despejado, nublado, lluvia o niebla) y la hora avanza hasta el anochecer.'],
+  ['Tormenta mejorada', 'Fases con tiempos distintos, zona final que se desplaza y ruta a la zona segura en el mapa.'],
+  ['Inventario nuevo', 'Tab: arrastra para reordenar o juntar pilas, divide pilas y suelta cantidades de munición y materiales.'],
+  ['Taquilla ampliada', 'Picos, planeadores, mochilas, estelas, gestos (tecla N) y pantallas de carga, en el pase y en la tienda.'],
+  ['Desafíos', 'Tres desafíos diarios y cuatro semanales con XP y tokens, y estadísticas por modo.'],
+  ['PNJ y oro', 'Comerciantes que venden armas por oro, misiones en los pueblos y un jefe en el Castillo Corona con botín mítico.'],
+  ['Vehículos', 'Quads, lanchas, gasolina (reposta en las gasolineras) y vehículos que se dañan y explotan.'],
+  ['Furgonetas de reaparición', 'En equipos, recoge la tarjeta de un compañero caído y llévala a una furgoneta para que vuelva.'],
+  ['Repeticiones y espectador', 'Al terminar: repetición de la partida con cámara libre, espectar en directo y mapa de calor.'],
+  ['Modos temporales y Arena', 'Sólo francotiradores, tiroteo de escopetas, lluvia de cohetes, equipos de 20, práctica de edición y Arena con divisiones y Copa semanal.'],
+  ['Online', 'Reconexión a la partida (45 s), anti-trampas en el servidor, chat de voz por proximidad, plataformas y puertas sincronizadas y pantalla de emparejamiento.'],
+  ['Accesibilidad y mando', 'Modo daltónico, sonidos visualizados y subtítulos, mando con asistencia de apuntado y botones táctiles personalizables.'],
+  ['Sonido', 'Música dinámica, sonido 3D (HRTF) y pasos distintos según el suelo.'],
+  ['Idiomas', 'Interfaz en español, inglés y portugués.'],
+  ['IA más lista', 'Los bots hacen «90s», abren ventanas desde su caja para disparar, celebran con gestos y acuden a tus marcadores.'],
+  ['Creativo', 'Códigos para compartir islas y modo foto.'],
 ];
 
 const NEXT = [
-  'Desafíos diarios y semanales',
-  'Más cosméticos: picos, planeadores, estelas y gestos',
-  'Mochila/inventario ampliado con arrastrar y soltar',
-  'Vehículos nuevos (barcas, quads) y NPCs con misiones',
-  'Repeticiones y modo espectador completo',
-  'Ajustes de accesibilidad: modo daltónico y visualización de sonidos',
+  'Construcciones instanciadas y navegación de los bots en un worker',
+  'Sombras en cascada',
+  'Bots que conducen vehículos',
+  'Torneos online con clasificación entre jugadores',
 ];
 
 export class Menu {

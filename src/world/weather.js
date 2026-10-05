@@ -17,6 +17,7 @@ const KINDS = {
 };
 
 const tmpC = new THREE.Color();
+const tmpDir = new THREE.Vector3();
 
 export class Weather {
   constructor(game) {
@@ -81,8 +82,11 @@ export class Weather {
     const az = Math.PI * (0.15 + t * 0.7);
     const night = THREE.MathUtils.clamp((hour - 20) / 1.5, 0, 1);
     const dusk = THREE.MathUtils.clamp(1 - Math.abs(hour - 19.5) / 1.8, 0, 1) * (1 - night);
-    g.sunDir.set(Math.cos(az) * 0.8, Math.max(0.12, elev * 0.95), Math.sin(az) * 0.6).normalize();
-    if (night > 0) g.sunDir.lerp(this.baseSunDir, night).normalize(); // luna
+    // Durante el día el sol se queda donde siempre (buena luz para jugar) y
+    // por la tarde baja hacia el oeste; de noche, la luna vuelve arriba.
+    const eve = THREE.MathUtils.clamp((hour - 15) / 4.5, 0, 1);
+    tmpDir.set(Math.cos(az) * 0.8, Math.max(0.12, elev * 0.95), Math.sin(az) * 0.6).normalize();
+    g.sunDir.copy(this.baseSunDir).lerp(tmpDir, eve * (1 - night)).normalize();
     const sky = g.sky.material.uniforms;
     sky.sunDir.value.copy(g.sunDir);
     const cloud = K.cloud;

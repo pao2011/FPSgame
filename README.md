@@ -4,7 +4,22 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
-**Novedades 0.4:** 🗺️ **un solo mapa** (*Isla Royale*, siempre la misma
+**Novedades 0.5:** 🎨 **gráficos renovados** (materiales PBR con
+iluminación de entorno, oclusión ambiental, personajes articulados, fachadas y
+asfalto con textura, césped animado, armas detalladas, trazadoras, casquillos
+y construcciones con relieve), 🌦️ **clima y ciclo de día**, 🌀 **tormenta
+con zona móvil**, 🎒 **inventario con arrastrar y soltar** (Tab), 👕 **taquilla
+ampliada** (picos, planeadores, mochilas, estelas, gestos y pantallas de
+carga), 📅 **desafíos diarios y semanales**, 💰 **PNJ con misiones,
+comerciantes y un jefe**, 🚤 **quads, lanchas y gasolina**, 🚐 **furgonetas de
+reaparición**, 🎬 **repeticiones, espectador y mapa de calor**, 🏆 **Arena** y
+**modos temporales**, 🌐 **reconexión, anti-trampas y chat de voz** online,
+♿ **accesibilidad** (daltonismo, sonidos visualizados, subtítulos), 🎮
+**mando** con asistencia de apuntado, 🎵 **música dinámica y sonido 3D**, 🌍
+**inglés y portugués**, puertas reales en las casas y **códigos para
+compartir islas** del creativo. Detalles en [`ROADMAP.md`](ROADMAP.md).
+
+**En la 0.4:** 🗺️ **un solo mapa** (*Isla Royale*, siempre la misma
 isla), 🧰 **cofres aleatorios** en cada partida, 🏝️ **Isla de Inicio** antes
 del autobús, 🚌 **autobús de batalla detallado** (y puedes dar las gracias al
 conductor), ✏️ **edición con piezas reales** (puerta que se abre, ventana,
@@ -408,7 +423,7 @@ Controles* (en el móvil hay controles táctiles; ver la
 | **Shift** | Correr |
 | **C** / **Ctrl** | Agacharse · (volando) bajar |
 | **=** | Correr automáticamente |
-| **E** | Abrir cofre · recoger · abrir puerta · coche · (mantener) reanimar |
+| **E** | Abrir cofre · recoger · abrir puerta · vehículo · hablar con PNJ · (mantener) reanimar o usar la furgoneta de reaparición |
 | **R** | Recargar · (construyendo o colocando edificios) girar |
 | **1–6 / rueda** | Cambiar de objeto · (construyendo) 1–4 pieza · (editando) piezas reales |
 | **X** | Arma anterior |
@@ -417,6 +432,9 @@ Controles* (en el móvil hay controles táctiles; ver la
 | **Z** / **F1–F4** | Construir directamente muro / suelo / rampa / techo |
 | **F** | Editar la pieza a la que apuntas · confirmar la edición |
 | **G** | Soltar el objeto actual |
+| **Tab** / **I** | Inventario (arrastrar y soltar, dividir pilas, soltar cantidades) |
+| **N** | Gesto (el que lleves en la taquilla) |
+| **Y** | Hablar (chat de voz online, si está activado) |
 | **V** | Cámara en 1ª / 3ª persona |
 | **M** | Mapa de la isla (clic: marcar destino) |
 | **B** | (Autobús) dar las gracias al conductor · (creativo) panel de objetos, edificios y herramientas |
