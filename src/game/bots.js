@@ -16,7 +16,9 @@ function botOutfit() {
   o.trail = any(TRAILS, 0.35);
   return o;
 }
-import { yawToDir } from './build.js';
+import { yawToDir, WALL_PRESETS } from './build.js';
+
+const WINDOW_MASK = WALL_PRESETS.find((p) => p.name === 'Ventana').mask;
 
 const NAMES = [
   'Lucía', 'Mateo', 'Sofía', 'Hugo', 'Valeria', 'Leo', 'Martina', 'Pablo', 'Paula', 'Álvaro',
@@ -131,6 +133,9 @@ class Bot extends Character {
     this.aimPitch = 0;
     this.aimHead = false;
     this.ph = [random.float(0, 6), random.float(0, 6), random.float(0, 6)];
+    this.box = null;
+    this.peek = null;
+    this.ping = null;
     this.task = 'idle';
     this.goal = null;
     this.goalRef = null;
@@ -231,6 +236,7 @@ class Bot extends Character {
 
   // ------------------------------------------------------------ UPDATE
   update(dt) {
+    if (this.peek) this.updatePeek();
     if (!this.alive) return;
     const g = this.game;
     this.updateKnocked(dt);
@@ -607,6 +613,8 @@ class Bot extends Character {
     if (downed && !enemyClose) return this.setTask('revive', downed.pos, downed);
     if (tm && now - tm.time < 7 && this.hasWeapon && hpTot >= 70) return this.setTask('hunt', tm.pos, this.target);
     if (storm === 1) return this.setTask('rotate', this.safePoint());
+    // Compañeros: acuden al marcador del jugador
+    if (this.ping && now < this.ping.until && this.pos.distanceTo(this.ping.pos) > 6) return this.setTask('rotate', this.ping.pos);
     const leader = g.teamLeader(this.team);
     if (leader && leader !== this && leader.alive && leader.mode === 'ground' && !g.storm.isOutside(leader.pos.x, leader.pos.z)) {
       const d = leader.pos.distanceTo(this.pos);
@@ -862,10 +870,25 @@ class Bot extends Character {
     if (this.onGround && random.chance(this.d.jump * dt)) this.groundJump = true;
     // Ventaja de altura: rampa hacia el enemigo si está muy por encima
     if (this.game.mode.build && tgt.pos.y - this.pos.y > 3.5 && d < 30 && this.buildCd <= 0 && random.chance(this.d.build * 0.5)) {
-      this.game.build.placeFor(this, 'ramp', yawToDir(Math.atan2(-tmpA.x, -tmpA.z)));
-      this.buildCd = 0.8;
-      wish.copy(tmpA);
+      const dir = yawToDir(Math.atan2(-tmpA.x, -tmpA.z));
+      if (this.totalMats >= 40 && this.d.build >= 0.5) {
+        // «90»: muro hacia el enemigo y rampa girada para ganar altura
+        const b = this.game.build;
+        b.placeFor(this, 'wall', dir);
+        const side = (dir + (this.strafe > 0 ? 1 : 3)) % 4;
+        b.placeFor(this, 'ramp', side);
+        const [sx, sz] = [[0, -1], [1, 0], [0, 1], [-1, 0]][side];
+        wish.set(sx, 0, sz);
+        this.groundJump = true;
+        this.buildCd = 0.55;
+      } else {
+        this.game.build.placeFor(this, 'ramp', dir);
+        this.buildCd = 0.8;
+        wish.copy(tmpA);
+      }
     }
+    // Encajonado: abre una ventana en el muro que da al enemigo para disparar
+    if (this.box && this.buildCd <= 0 && !this.peek) this.peekEdit(m.pos);
     if (this.groundJump) {
       this.groundJump = false;
       this.vel.y = this.onGround ? 8.2 : this.vel.y;
@@ -1094,9 +1117,40 @@ class Bot extends Character {
   boxUp() {
     const b = this.game.build;
     let n = 0;
-    for (let dir = 0; dir < 4; dir++) if (b.placeFor(this, 'wall', dir)) n++;
+    const walls = [];
+    for (let dir = 0; dir < 4; dir++) {
+      const w = b.placeFor(this, 'wall', dir);
+      if (w) {
+        n++;
+        walls.push(w);
+      }
+    }
     if (b.placeFor(this, 'cone', 0)) n++;
     if (n) this.buildCd = 3;
+    if (walls.length) this.box = { walls, at: this.pos.clone(), t: this.game.time };
+  }
+
+  // Editar el muro de la caja que mira al enemigo: ventana, disparar y cerrar.
+  peekEdit(enemyPos) {
+    const g = this.game;
+    const box = this.box;
+    if (!box || this.pos.distanceTo(box.at) > 3 || g.time - box.t > 25 || this.d.build < 0.5) {
+      this.box = null;
+      return;
+    }
+    const dir = yawToDir(Math.atan2(-(enemyPos.x - this.pos.x), -(enemyPos.z - this.pos.z)));
+    const w = box.walls.find((p) => p.dir === dir && g.build.pieces.has(p.key));
+    if (!w) return;
+    g.build.applyEdit(w, WINDOW_MASK);
+    this.peek = { piece: w, until: g.time + random.float(1.6, 2.6) };
+    this.buildCd = 1;
+  }
+
+  updatePeek() {
+    const p = this.peek;
+    if (!p || this.game.time < p.until) return;
+    this.peek = null;
+    if (this.game.build.pieces.has(p.piece.key) && this.alive) this.game.build.applyEdit(p.piece, 0);
   }
 
   // ------------------------------------------------------------ ACCIONES
@@ -1235,6 +1289,17 @@ export class BotManager {
   get aliveCount() {
     let n = 0;
     for (const b of this.list) if (b.alive) n++;
+    return n;
+  }
+
+  // Marcador del jugador: sus compañeros bots van hacia allí.
+  onPing(pos, team) {
+    let n = 0;
+    for (const b of this.list) {
+      if (!b.alive || b.team !== team || b.knocked) continue;
+      b.ping = { pos: pos.clone(), until: this.game.time + 30 };
+      n++;
+    }
     return n;
   }
 

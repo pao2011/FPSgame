@@ -1355,6 +1355,7 @@ export class Game {
     g.position.copy(pos);
     this.scene.add(g);
     this.pings.push({ pos: pos.clone(), mesh: g, t: 25, who, mine });
+    if (mine && !this.net && (this.mode.teamSize || 1) > 1 && this.bots.onPing(pos, this.player.team)) this.hud.toast('Tus compañeros van hacia el marcador');
     this.audio.ping();
     if (!mine) this.hud.toast(`${who} ha marcado una ubicación`);
   }
