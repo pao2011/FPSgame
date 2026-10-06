@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RNG } from '../core/rng.js';
 import { GeoBuilder } from './geobuilder.js';
 import { BuildingCtx } from './buildings.js';
@@ -80,7 +81,7 @@ export function createLobbyIsland(world) {
     const lx = px * k, lz = pz * k;
     signCtx.box(lx - 0.35, -2, lz - 0.35, lx + 0.35, 10, lz + 0.35, 0x3a3d42);
   }
-  scene.add(gb.build());
+  group.add(gb.build());
   const signTex = makeSignTexture();
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 5.2), new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide }));
   sign.position.set(sgx, sgy + 7.4, sgz);
@@ -103,11 +104,15 @@ export function createLobbyIsland(world) {
     spawns.push({ x, z, yaw: Math.atan2(-(cx - x), -(cz - z)) + Math.PI });
   }
 
-  // Palmeras (decorativas, con colisión en el tronco)
+  // Palmeras (decorativas, con colisión en el tronco). Todas en dos mallas
+  // (troncos y hojas): 2 llamadas de dibujo en vez de ~200.
   const trunkGeo = new THREE.CylinderGeometry(0.22, 0.32, 1, 7);
   const leafGeo = new THREE.ConeGeometry(2.6, 0.9, 7, 1, true);
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8a6440 });
   const leafMat = new THREE.MeshLambertMaterial({ color: 0x3f9a3a, side: THREE.DoubleSide });
+  const trunks = [], leaves = [];
+  const tm = new THREE.Matrix4(), pm = new THREE.Matrix4(), tq = new THREE.Quaternion(), te = new THREE.Euler();
+  const tp = new THREE.Vector3(), ts = new THREE.Vector3();
   let palms = 0;
   for (let i = 0; i < 200 && palms < 22; i++) {
     const a = rng.float(0, Math.PI * 2), d = rng.float(R * 0.35, R * 0.85);
@@ -116,28 +121,28 @@ export function createLobbyIsland(world) {
     if (h < 1.2) continue;
     if (Math.hypot(x - sgx, z - sgz) < 10) continue;
     const H = rng.float(5, 8);
-    const tree = new THREE.Group();
     const segs = 4;
     const lean = rng.float(-0.25, 0.25);
+    const rotY = rng.float(0, Math.PI * 2);
+    pm.compose(tp.set(x, h - 0.2, z), tq.setFromEuler(te.set(0, rotY, 0)), ts.set(1, 1, 1));
     for (let k = 0; k < segs; k++) {
-      const t = new THREE.Mesh(trunkGeo, trunkMat);
-      t.scale.set(1, H / segs, 1);
-      t.position.set(lean * k * 0.6, (k + 0.5) * (H / segs), 0);
-      t.castShadow = true;
-      tree.add(t);
+      tm.compose(tp.set(lean * k * 0.6, (k + 0.5) * (H / segs), 0), tq.identity(), ts.set(1, H / segs, 1));
+      trunks.push(trunkGeo.clone().applyMatrix4(tm.premultiply(pm)));
     }
     for (let k = 0; k < 5; k++) {
-      const l = new THREE.Mesh(leafGeo, leafMat);
-      l.position.set(lean * segs * 0.6, H + 0.1, 0);
-      l.rotation.set(0.5, (k / 5) * Math.PI * 2, 0, 'YXZ');
-      l.castShadow = true;
-      tree.add(l);
+      tm.compose(tp.set(lean * segs * 0.6, H + 0.1, 0), tq.setFromEuler(te.set(0.5, (k / 5) * Math.PI * 2, 0, 'YXZ')), ts.set(1, 1, 1));
+      leaves.push(leafGeo.clone().applyMatrix4(tm.premultiply(pm)));
     }
-    tree.position.set(x, h - 0.2, z);
-    tree.rotation.y = rng.float(0, Math.PI * 2);
-    group.add(tree);
     collision.add(x - 0.3, h - 1, z - 0.3, x + 0.3, h + H, z + 0.3, { type: 'building' });
     palms++;
+  }
+  if (palms) {
+    for (const [list, m] of [[trunks, trunkMat], [leaves, leafMat]]) {
+      const mesh = new THREE.Mesh(mergeGeometries(list), m);
+      mesh.castShadow = true;
+      group.add(mesh);
+      list.forEach((g) => g.dispose());
+    }
   }
 
   // Mesas con armas para practicar (el botín se coloca al entrar en la isla)
@@ -172,9 +177,10 @@ export function createLobbyIsland(world) {
     for (const k of [-2, 2]) bctx.box(k - 0.06, 0, -1.1, k + 0.06, 2.6, -0.98, 0x8a8f96);
     bctx.box(-1.8, 0.45, -1.0, 1.8, 0.55, -0.6, 0x8a6440);
   }
-  scene.add(gb2.build());
+  group.add(gb2.build());
 
   scene.add(group);
+  world.lod?.add(group, 'building', cx, cz, R * 1.6);
   return { group, spawns, loot, dummies, pads, center: new THREE.Vector3(cx, y0, cz), face };
 }
 

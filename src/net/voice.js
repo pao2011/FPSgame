@@ -111,7 +111,7 @@ export class VoiceChat {
     p.el.play().catch(() => {});
     p.src = c.createMediaStreamSource(stream);
     p.panner = c.createPanner();
-    p.panner.panningModel = 'HRTF';
+    p.panner.panningModel = a.lite ? 'equalpower' : 'HRTF';
     p.panner.distanceModel = 'linear';
     p.panner.refDistance = 4;
     p.panner.maxDistance = 50;

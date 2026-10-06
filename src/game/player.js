@@ -249,7 +249,7 @@ export class Player extends Character {
   onHurt(amount, type, attacker) {
     this.game.hud.flashDamage(type, attacker);
     this.game.audio.hurt();
-    if (this.game.touch && type !== 'storm') this.game.touch.vibrate(25);
+    if (this.game.touch && type !== 'storm') this.game.touch.haptic('hurt');
   }
 
   onEliminated(type, killer) {

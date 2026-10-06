@@ -85,8 +85,9 @@ export class PickupManager {
   update(dt, time) {
     const world = this.game.world;
     const cam = this.game.camera.position;
+    const pd2 = this.game.propDist(110) ** 2;
     for (const p of this.items) {
-      const vis = p.pos.distanceToSquared(cam) < 110 * 110;
+      const vis = p.pos.distanceToSquared(cam) < pd2;
       p.group.visible = vis;
       if (!vis && p.settled) continue;
       if (!p.settled) {
@@ -232,6 +233,7 @@ export class ContainerManager {
 
   update(dt, time) {
     const cam = this.game.camera.position;
+    const cd2 = this.game.propDist(160) ** 2;
     for (const c of this.list) {
       if (!c.active) continue;
       if (c.pending) {
@@ -246,7 +248,7 @@ export class ContainerManager {
           c.pendingIds = null;
         }
       }
-      const vis = c.pos.distanceToSquared(cam) < 160 * 160;
+      const vis = c.pos.distanceToSquared(cam) < cd2;
       c.model.visible = vis;
       if (c.glow) c.glow.visible = vis && !c.opened;
       if (!vis) continue;

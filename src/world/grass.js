@@ -56,14 +56,15 @@ function tuftGeometry() {
 }
 
 export class Grass {
-  constructor(scene, world, quality) {
+  // density: fracción de matas (menos en móviles con calidad Normal).
+  constructor(scene, world, quality, density = 1) {
     this.world = world;
-    this.enabled = quality === 'alta' || quality === 'normal';
+    this.enabled = (quality === 'alta' || quality === 'normal') && density > 0;
     this.cache = new Map();
     this.cx = null;
     this.cz = null;
     if (!this.enabled) return;
-    this.perChunk = quality === 'alta' ? 260 : 150;
+    this.perChunk = Math.round((quality === 'alta' ? 260 : 150) * density);
     this.max = this.perChunk * (RING * 2 + 1) ** 2;
     this.uniforms = { uTime: { value: 0 }, uFade: { value: CHUNK * (RING + 0.2) } };
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });

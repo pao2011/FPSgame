@@ -183,7 +183,8 @@ export class Effects {
 
     // Fogonazo (luz + estrella)
     this.flashLight = new THREE.PointLight(0xffc870, 0, 12, 2);
-    this.scene.add(this.flashLight);
+    // Luz virtual: la escena tiene un número fijo de luces (ver lightpool.js)
+    game.lights.add(this.flashLight, 2);
     this.flashT = 0;
     const star = starTexture();
     this.flashSprite = new THREE.Sprite(

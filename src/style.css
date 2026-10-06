@@ -2640,6 +2640,11 @@ body.touch #touch-ui {
   display: block;
 }
 
+/* Con la mira telescópica, los botones por encima del negro de la mira */
+body.touch.scoped #touch-ui {
+  z-index: 11;
+}
+
 #touch-ui[data-mode='off'] {
   display: none !important;
 }
@@ -2743,7 +2748,7 @@ body.touch #touch-ui {
 .t-build {
   --s: 50px;
   right: calc(104px * var(--tsz) + var(--sr));
-  bottom: calc(196px * var(--tsz) + var(--sb));
+  bottom: calc(182px * var(--tsz) + var(--sb));
 }
 
 .t-use {
@@ -4154,4 +4159,104 @@ body.touch #subtitles { bottom: 46%; }
   #inventory .inv-slot .n { display: none; }
   #inventory .qty button, #inventory .act { padding: 2px 7px; }
   body.touch #zone-name { top: 30%; }
+}
+
+/* ------------------------------------- Extras para móviles (src/ui/mobile.js) */
+.t-heal {
+  --s: 50px;
+  left: calc(86px * var(--tsz) + var(--sl));
+  top: calc(150px + var(--st));
+  background: radial-gradient(circle at 50% 35%, rgba(90, 220, 120, 0.6), rgba(20, 110, 50, 0.6));
+  border-color: rgba(200, 255, 210, 0.75);
+  display: none !important;
+}
+.t-heal span { font-size: calc(8px * var(--tsz)); }
+#touch-ui.can-heal .t-heal { display: flex !important; animation: use-pop 0.2s ease-out; }
+#touch-ui.editing .t-heal { display: flex !important; }
+
+/* Disparo automático: la mira se enciende sobre un enemigo */
+#crosshair.auto-target i { box-shadow: 0 0 6px #ff3b30, 0 0 2px #000; }
+#crosshair.auto-target::after {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 70, 60, 0.85);
+  border-radius: 50%;
+  animation: use-pop 0.15s ease-out;
+}
+
+/* Batería y hora, junto a los botones de arriba a la izquierda */
+.t-status {
+  position: absolute;
+  top: calc(18px + var(--st));
+  left: calc(150px + var(--sl));
+  display: flex;
+  gap: 8px;
+  font: 800 12px var(--font);
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  opacity: 0.85;
+  pointer-events: none;
+}
+#touch-ui.online .t-status,
+#touch-ui.creative .t-status { left: calc(196px + var(--sl)); }
+#touch-ui.editing .t-status { display: none; }
+.t-status .dev-bat.low { color: #ff6b5b; opacity: 1; }
+
+/* Mapa táctil: botón de cerrar y zoom */
+#fullmap .frame { position: relative; overflow: hidden; }
+#fullmap .fm-close {
+  display: none;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 38px;
+  height: 38px;
+  padding: 8px;
+  border-radius: 10px;
+  z-index: 2;
+}
+#fullmap .fm-close svg { width: 100%; height: 100%; }
+body.touch #fullmap .fm-close { display: block; }
+body.touch #fullmap-canvas { transform-origin: 50% 50%; touch-action: none; }
+
+/* Subtítulos dentro de Opciones */
+.opt-sub { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; }
+
+/* Aviso: el navegador dibuja sin la tarjeta gráfica */
+#gpu-warning {
+  position: fixed;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 300;
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(60, 14, 10, 0.94);
+  border: 2px solid #ff8a5c;
+  color: #fff;
+  font: 500 13px/1.4 Inter, system-ui, sans-serif;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+#gpu-warning b {
+  font-size: 15px;
+}
+
+#gpu-warning button {
+  align-self: flex-end;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #ff8a5c;
+  color: #2b0d00;
+  font-weight: 800;
+  cursor: pointer;
 }

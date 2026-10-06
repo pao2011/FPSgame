@@ -2,6 +2,8 @@
 // arrastrar a la derecha para mirar y botones de acción. Escriben en el mismo
 // objeto Input que el teclado y el ratón (ver src/core/input.js).
 
+import { MobileExtras } from './mobile.js';
+
 const svg = (body, vb = '0 0 24 24') => `<svg viewBox="${vb}" aria-hidden="true">${body}</svg>`;
 const ICONS = {
   fire: svg('<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 1.5v5M12 17.5v5M1.5 12h5M17.5 12h5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'),
@@ -19,6 +21,7 @@ const ICONS = {
   catalog: svg('<path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z" fill="currentColor"/>'),
   close: svg('<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'),
   inv: svg('<path d="M8 7V5a4 4 0 0 1 8 0v2h3l1 14H4L5 7zm2 0h4V5a2 2 0 0 0-4 0z" fill="currentColor"/>'),
+  heal: svg('<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="currentColor"/>'),
   use: svg('<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V3a1.5 1.5 0 0 1 3 0v7h.5V5a1.5 1.5 0 0 1 3 0v9c0 4-2.5 7-6.5 7-3 0-4.6-1.6-6-3.7L4 13.5a1.4 1.4 0 0 1 2.2-1.7z" fill="currentColor"/>'),
 };
 
@@ -38,7 +41,36 @@ const BUTTONS = [
   { id: 'cam', key: 'KeyV' },
   { id: 'chat' },
   { id: 'inv', key: 'Tab' },
+  { id: 'heal', label: 'CURAR' },
 ];
+
+// Disposiciones predefinidas (Opciones → Móvil y táctil). Posición del centro
+// del botón en fracción de la pantalla y escala; lo que no aparece se queda
+// donde está por defecto.
+export const TOUCH_PRESETS = {
+  defecto: {},
+  // Garra: índices arriba (saltar y agacharse a la izquierda; disparar,
+  // construir y apuntar a la derecha) y pulgares para moverse y mirar.
+  garra: {
+    jump: { x: 0.2, y: 0.3, s: 1 },
+    crouch: { x: 0.2, y: 0.5, s: 1 },
+    fire2: { x: 0.8, y: 0.52, s: 1.1 },
+    build: { x: 0.66, y: 0.42, s: 1 },
+    aim: { x: 0.7, y: 0.64, s: 1 },
+    heal: { x: 0.31, y: 0.3, s: 1 },
+  },
+  // Botones grandes: los principales más grandes (pantallas pequeñas o
+  // dedos grandes).
+  grandes: {
+    fire: { s: 1.25 },
+    jump: { s: 1.2 },
+    aim: { s: 1.15 },
+    crouch: { s: 1.15 },
+    build: { s: 1.1 },
+    reload: { s: 1.15 },
+    heal: { s: 1.1 },
+  },
+};
 
 export function isTouchDevice() {
   try {
@@ -50,6 +82,20 @@ export function isTouchDevice() {
 
 export function isNativeApp() {
   return !!window.Capacitor?.isNativePlatform?.();
+}
+
+// Móvil o tableta (no un portátil con pantalla táctil): decide el perfil
+// gráfico ligero de las calidades Normal y Baja.
+export function isMobileDevice() {
+  try {
+    if (isNativeApp()) return true;
+    const ua = navigator.userAgent || '';
+    if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua)) return true;
+    if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true; // iPadOS
+    return matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900;
+  } catch {
+    return false;
+  }
 }
 
 export class TouchControls {
@@ -83,7 +129,9 @@ export class TouchControls {
     root.addEventListener('contextmenu', (e) => e.preventDefault());
     // Gestos del navegador (zoom, desplazamiento, menú de pulsación larga) fuera
     root.addEventListener('touchstart', (e) => e.preventDefault(), opts);
+    this.lastTap = null;
     this.bindHud();
+    this.bindMap();
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
@@ -92,7 +140,11 @@ export class TouchControls {
         if (g.state === 'playing' && !g.spectating) this.input.unlock();
       }
     });
+    this.statusEl = document.createElement('div');
+    this.statusEl.className = 't-status';
+    root.appendChild(this.statusEl);
     this.applySettings();
+    this.extras = new MobileExtras(game, this);
   }
 
   applySettings() {
@@ -100,6 +152,24 @@ export class TouchControls {
     this.root.style.setProperty('--tsz', String(s.touchSize || 1));
     this.root.style.setProperty('--top', String(s.touchOpacity ?? 0.85));
     this.applyLayout(s.touchLayout || {});
+    this.extras?.applySettings();
+  }
+
+  // Disposición predefinida (sustituye a la personalizada).
+  applyPreset(name) {
+    const pr = TOUCH_PRESETS[name];
+    if (!pr) return;
+    this.game.settings.touchLayout = JSON.parse(JSON.stringify(pr));
+    this.game.applySettings();
+  }
+
+  // Antes de mover la cámara y disparar (lo llama Game.step).
+  preStep(dt) {
+    this.extras?.preStep(dt);
+  }
+
+  haptic(kind) {
+    this.extras?.haptic(kind);
   }
 
   // Disposición personalizada: { id: { x, y, s } } con x/y en fracción de la
@@ -258,7 +328,6 @@ export class TouchControls {
     });
 
     tapEl(document.getElementById('minimap'), () => this.input.tap('KeyM'));
-    tapEl(document.getElementById('fullmap'), () => this.input.tap('KeyM'));
     const prompt = document.getElementById('prompt');
     prompt.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -276,6 +345,103 @@ export class TouchControls {
     prompt.addEventListener('pointercancel', upUse);
   }
 
+  // Mapa grande táctil: tocar marca un destino, mantener lo quita, pellizcar
+  // hace zoom y arrastrar (con zoom) lo desplaza. Tocar fuera lo cierra.
+  bindMap() {
+    const g = this.game;
+    const fm = document.getElementById('fullmap');
+    const cv = document.getElementById('fullmap-canvas');
+    const frame = fm.querySelector('.frame');
+    const close = document.createElement('button');
+    close.className = 'fm-close';
+    close.innerHTML = ICONS.close;
+    frame.appendChild(close);
+    const hint = fm.querySelector('.title small');
+    if (hint) hint.textContent = '(toca: marcar destino · mantén: quitarlo · pellizca: zoom)';
+    const pts = new Map();
+    const z = (this.mapZoom = { s: 1, x: 0, y: 0 });
+    let start = null, pinch = null, hold = null;
+    const apply = () => {
+      const mx = (cv.offsetWidth * (z.s - 1)) / 2, my = (cv.offsetHeight * (z.s - 1)) / 2;
+      z.x = Math.max(-mx, Math.min(mx, z.x));
+      z.y = Math.max(-my, Math.min(my, z.y));
+      cv.style.transform = z.s > 1.001 ? `translate(${z.x}px, ${z.y}px) scale(${z.s})` : '';
+    };
+    const two = () => {
+      const [a, b] = [...pts.values()];
+      return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    };
+    fm.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.target.closest('.fm-close') || !e.target.closest('.frame')) {
+        g.hud.toggleMap(false);
+        return;
+      }
+      try {
+        fm.setPointerCapture(e.pointerId);
+      } catch {
+        /* sin captura */
+      }
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      clearTimeout(hold);
+      if (pts.size === 1) {
+        start = { x: e.clientX, y: e.clientY, zx: z.x, zy: z.y, moved: false, onMap: !!e.target.closest('#fullmap-canvas') };
+        hold = setTimeout(() => {
+          if (start && !start.moved && start.onMap) {
+            g.waypoint = null;
+            this.vibrate(30);
+            start = null;
+          }
+        }, 600);
+      } else if (pts.size === 2) {
+        start = null;
+        pinch = { ...two(), s: z.s, zx: z.x, zy: z.y };
+      }
+    });
+    fm.addEventListener('pointermove', (e) => {
+      const pt = pts.get(e.pointerId);
+      if (!pt) return;
+      e.preventDefault();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      if (pinch && pts.size >= 2) {
+        const t = two();
+        z.s = Math.max(1, Math.min(4, (pinch.s * t.d) / pinch.d));
+        z.x = pinch.zx + (t.cx - pinch.cx);
+        z.y = pinch.zy + (t.cy - pinch.cy);
+        apply();
+      } else if (start) {
+        const dx = e.clientX - start.x, dy = e.clientY - start.y;
+        if (Math.hypot(dx, dy) > 10) start.moved = true;
+        if (start.moved && z.s > 1) {
+          z.x = start.zx + dx;
+          z.y = start.zy + dy;
+          apply();
+        }
+      }
+    });
+    const up = (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.delete(e.pointerId);
+      clearTimeout(hold);
+      if (start && !start.moved && start.onMap && e.type === 'pointerup' && pts.size === 0) {
+        const r = cv.getBoundingClientRect();
+        const x = ((e.clientX - r.left) / r.width) * 1600 - 800, zz = ((e.clientY - r.top) / r.height) * 1600 - 800;
+        if (Math.abs(x) <= 800 && Math.abs(zz) <= 800) {
+          g.waypoint = { x, z: zz };
+          g.audio.ping();
+          this.vibrate(12);
+        }
+      }
+      if (pts.size < 2) pinch = null;
+      if (!pts.size) start = null;
+    };
+    fm.addEventListener('pointerup', up);
+    fm.addEventListener('pointercancel', up);
+    fm.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
   // ---------------------------------------------------------- PUNTEROS
   onDown(e) {
     e.preventDefault();
@@ -288,6 +454,7 @@ export class TouchControls {
       /* puntero ya liberado */
     }
     g.audio.init();
+    this.extras?.onGesture();
     if (g.spectating) {
       if (!e.target.closest('[data-act="pause"]')) {
         g.nextSpectate();
@@ -320,7 +487,26 @@ export class TouchControls {
       this.moveJoy(e.clientX, e.clientY);
       return;
     }
-    this.ptrs.set(e.pointerId, { kind: 'look', x: e.clientX, y: e.clientY });
+    this.ptrs.set(e.pointerId, { kind: 'look', x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
+  }
+
+  // Doble toque rápido en la zona de mirar: marcador donde apuntas.
+  lookTap(p, e) {
+    const g = this.game;
+    const now = performance.now();
+    const isTap = now - p.t0 < 220 && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 14;
+    if (!isTap || g.settings.doubleTapPing === false) return;
+    const last = this.lastTap;
+    if (last && now - last.t < 340 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 60) {
+      this.lastTap = null;
+      const pm = g.player.mode;
+      if (g.state === 'playing' && g.player.alive && (pm === 'ground' || pm === 'glide' || pm === 'freefall')) {
+        g.pingAim();
+        this.haptic('ping');
+      }
+      return;
+    }
+    this.lastTap = { t: now, x: e.clientX, y: e.clientY };
   }
 
   onMove(e) {
@@ -351,6 +537,8 @@ export class TouchControls {
       this.joyEl.classList.remove('on');
       this.knobEl.style.transform = '';
       this.setAxis(0, 0, false);
+    } else if (p.kind === 'look') {
+      if (e.type === 'pointerup') this.lookTap(p, e);
     } else if (p.kind === 'btn') {
       p.el.classList.remove('down');
       this.releaseButton(p.act, p.def);
@@ -394,8 +582,11 @@ export class TouchControls {
     set('KeyS', a.y < -0.3);
     set('KeyD', a.x > 0.3);
     set('KeyA', a.x < -0.3);
-    // Joystick a tope hacia delante = correr
-    const sprint = a.active && Math.hypot(a.x, a.y) > 0.92 && a.y > 0.7;
+    // Joystick a tope hacia delante = correr (con «Correr automáticamente»,
+    // basta con empujarlo hacia delante)
+    const mag = Math.hypot(a.x, a.y);
+    const auto = this.game.settings.autoSprint && mag > 0.6 && a.y > 0.5;
+    const sprint = a.active && (auto || (mag > 0.92 && a.y > 0.7));
     set('ShiftLeft', sprint);
     this.joyEl.classList.toggle('sprint', sprint);
   }
@@ -411,6 +602,11 @@ export class TouchControls {
     }
     if (act === 'chat') {
       g.menu.online.openChat();
+      return;
+    }
+    if (act === 'heal') {
+      this.setToggle('aim', false);
+      g.combat.quickHeal();
       return;
     }
     if (act === 'aim' && (g.build.busy || g.creative?.busy || this.holdingC4())) {
@@ -431,7 +627,7 @@ export class TouchControls {
   }
 
   releaseButton(act, def) {
-    if (def?.toggle || !def?.key || act === 'pause' || act === 'chat') return;
+    if (def?.toggle || !def?.key || act === 'pause' || act === 'chat' || act === 'heal') return;
     if (act === 'aim' && (this.game.build.busy || this.game.creative?.busy || this.holdingC4())) return;
     this.input.release(def.key);
   }
@@ -520,6 +716,22 @@ export class TouchControls {
       this.state.prompt = prompt;
       this.root.classList.toggle('has-prompt', prompt);
       if (!prompt && this.input.keys.has('KeyE')) this.input.release('KeyE');
+    }
+    // Batería y hora (se actualiza un par de veces por segundo)
+    this.statusT = (this.statusT || 0) - (g.frameDt || 0.016);
+    if (this.statusT <= 0) {
+      this.statusT = 0.5;
+      const html = this.extras?.statusHTML() || '';
+      if (html !== this.state.status) {
+        this.state.status = html;
+        this.statusEl.innerHTML = html;
+      }
+    }
+    // Botón de curación rápida: sólo si estás herido y tienes algo útil
+    const canHeal = st === 'ground' && !g.combat.using && (p.health < 100 || p.shield < 100) && g.combat.healOptions().length > 0;
+    if (canHeal !== this.state.canHeal) {
+      this.state.canHeal = canHeal;
+      this.root.classList.toggle('can-heal', canHeal);
     }
     const noBuild = !g.mode.build;
     if (noBuild !== this.state.noBuild) {

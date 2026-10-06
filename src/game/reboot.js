@@ -206,7 +206,10 @@ export class RebootVans {
     if (!this.vans.length) return;
     const p = g.player;
     const t = g.time;
+    const cam = g.camera.position;
+    const d2 = g.propDist(320) ** 2;
     for (const v of this.vans) {
+      v.mesh.visible = v.pos.distanceToSquared(cam) < d2;
       if (v.cd > 0) v.cd -= dt;
       v.mesh.userData.light.material.emissiveIntensity = v.cd > 0 ? 0.2 : 0.6 + Math.sin(t * 6) * 0.4;
     }

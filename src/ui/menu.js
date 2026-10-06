@@ -90,6 +90,10 @@ class CharacterPreview {
         this.running = false;
         return;
       }
+      requestAnimationFrame(tick);
+      // Oculto (p. ej. en partida con el menú escondido): no se dibuja, que
+      // es un segundo contexto WebGL que restaría FPS al juego
+      if (!this.canvas.offsetParent) return;
       this.t += 0.016;
       if (this.model) {
         this.model.root.rotation.y = Math.PI + Math.sin(this.t * 0.6) * 0.6 + 0.3;
@@ -98,7 +102,6 @@ class CharacterPreview {
         this.model.armR.rotation.x = -Math.sin(this.t * 2) * 0.05;
       }
       this.renderer.render(this.scene, this.camera);
-      requestAnimationFrame(tick);
     };
     tick();
   }
@@ -120,6 +123,10 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Más FPS en PC y móvil', 'Resolución dinámica en todas las calidades (apunta a los 60, 90 o 120 Hz de tu pantalla y no baja la nitidez si no sirve de nada), sombras que se dibujan una sola vez por fotograma, oclusión ambiental a media resolución, ruido de los sombreados precalculado, luces de efectos compartidas, perfil ligero de Normal y Baja en móviles, calidad Móvil más nítida (con antialiasing) y aviso si el navegador no usa la tarjeta gráfica.'],
+  ['Mira telescópica en táctil', 'El botón de dejar de apuntar (y el resto de botones) se ve también mientras miras por la mira del francotirador.'],
+  ['Novedades para móviles', 'Apuntar con el giroscopio, disparo automático, asistencia de apuntado táctil, botón de curación rápida, doble toque para marcar, mapa táctil (toca para marcar, pellizca para hacer zoom), disposiciones «Garra» y «Botones grandes», correr automáticamente, más vibraciones, batería y hora en pantalla y ahorro automático con la batería baja.'],
+  ['Optimización para móviles', 'El mundo se dibuja por parcelas (sólo lo visible y cercano), sombreados más ligeros, lluvia en la tarjeta gráfica, rutas de los bots sin tirones, menos FPS en menús y pausa, shaders precompilados y nueva opción «Distancia de visión».'],
   ['Isla de la Bóveda', 'En el centro del mapa, un gran lago con una isla: el Guardián de la Bóveda y sus secuaces la defienden. Al morir suelta una tarjeta que abre la bóveda blindada (cofres seguros y armas legendarias). Se llega por una pasarela, nadando o en lancha.'],
   ['Más mapa', 'Un río que cruza la isla de costa a costa pasando por el lago central (con puentes), cuatro puertos repartidos por la costa y los nombres de las zonas también en el minimapa.'],
   ['Terreno HD', 'Con gráficos en Alto, el terreno tiene el doble de resolución, relieve fino, roca con textura en las laderas y más variedad de color de cerca.'],
@@ -466,9 +473,27 @@ export class Menu {
           <small class="hint">${this.game.touch ? 'Arrastra los botones donde quieras y cambia su tamaño.' : 'Disponible con los controles táctiles activos.'}</small></div>
         ${check('vibration', 'Vibración')}
         ${check('touchFullscreen', 'Pantalla completa al jugar (navegador)')}
-        ${range('resScale', 'Resolución (calidad Móvil)', 40, 100, 5, pct)}
-        ${check('autoRes', 'Resolución dinámica (baja la resolución si van lentos los FPS)')}
-        <div class="opt-row"><label>Ahorro de batería</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS']])}</div>`;
+        ${range('resScale', 'Resolución (calidad Móvil)', 50, 100, 5, pct)}
+        ${check('autoRes', 'Resolución dinámica', 'Si no se llega a los FPS de la pantalla (60, 90 o 120 Hz), baja un poco la resolución; si bajarla no ayuda, la deja como estaba.')}
+        <div class="opt-row"><label>Ahorro de batería</label>${seg('fpsCap', [[0, 'Sin límite'], [30, '30 FPS']])}</div>
+        <h4 class="opt-sub">Apuntar y disparar</h4>
+        <div class="opt-row"><label>Apuntar con el giroscopio</label>${seg('gyro', [['off', 'Desactivado'], ['ads', 'Al apuntar'], ['always', 'Siempre']])}
+          <small class="hint">Mueve el móvil para afinar la puntería. «Al apuntar» sólo funciona con la mira puesta.</small></div>
+        ${range('gyroSens', 'Sensibilidad del giroscopio', 0.3, 3, 0.05, num)}
+        ${check('touchAimAssist', 'Asistencia de apuntado táctil', 'Frena la mira sobre los enemigos y la acerca un poco al apuntar.')}
+        ${range('touchAssistStrength', 'Intensidad de la asistencia', 0.2, 1.5, 0.05, pct100)}
+        ${check('autoFire', 'Disparo automático', 'Dispara solo cuando la mira está sobre un enemigo visible (no con explosivos ni arcos).')}
+        <h4 class="opt-sub">Comodidad</h4>
+        ${check('autoSprint', 'Correr automáticamente', 'Basta con empujar el joystick hacia delante.')}
+        ${check('doubleTapPing', 'Doble toque para marcar', 'Dos toques rápidos en la zona de mirar ponen un marcador donde apuntas.')}
+        ${check('hapticEvents', 'Vibración al acertar, eliminar y recibir daño')}
+        <div class="opt-row"><label>Disposición predefinida</label><div class="seg" data-presets>${[['defecto', 'Por defecto'], ['garra', 'Garra'], ['grandes', 'Botones grandes']].map(([v, l]) => `<button data-preset="${v}">${l}</button>`).join('')}</div>
+          <small class="hint">Sustituye a tu disposición personalizada. «Garra»: saltar y agacharse arriba a la izquierda y un segundo botón de disparo arriba a la derecha.</small></div>
+        <h4 class="opt-sub">Rendimiento y batería</h4>
+        ${check('lowBatterySaver', 'Ahorro automático con la batería baja', 'Con un 20 % o menos y sin cargar, el juego se limita a 30 FPS.')}
+        ${check('showDeviceStatus', 'Batería y hora en la pantalla de juego')}
+        <div class="opt-row"><label>Distancia de visión</label>${seg('viewDist', [[0.7, 'Corta'], [1, 'Normal'], [1.3, 'Lejana']])}
+          <small class="hint">Hasta dónde se dibujan árboles, rocas y edificios. Corta = más FPS y menos batería. En calidad Móvil se acorta sola si el juego va lento.</small></div>`;
     } else {
       body = `
         ${range('fov', 'Campo de visión', 65, 100, 1, deg)}
@@ -488,8 +513,10 @@ export class Menu {
             <button data-v="baja" class="${s.quality === 'baja' ? 'on' : ''}">Baja (PCs modestos)</button>
             <button data-v="movil" class="${s.quality === 'movil' ? 'on' : ''}">Móvil</button>
           </div>
-          <small class="hint" data-hint="quality"></small>
-        </div>`;
+          <small class="hint" data-hint="quality">${this.game.mobileDevice ? 'En móviles y tabletas, Normal y Baja usan una versión ligera (sin posprocesado y sombras más sencillas) para ir a 60-120 FPS. Móvil: lo más ligero.' : 'Alta: bloom, oclusión ambiental y terreno HD. Normal: sombras y materiales completos sin posprocesado. Baja: para PCs modestos.'}${this.game.gpuName ? `<br>Tarjeta gráfica en uso: <b>${this.game.gpuName.replace(/[<>&]/g, '')}</b>${this.game.softwareGL ? ' ⚠ (sin aceleración por hardware)' : ''}` : ''}</small>
+        </div>
+        ${check('autoRes', 'Resolución dinámica', 'Si no se llega a los FPS de la pantalla, baja un poco la resolución (y la vuelve a subir cuando sobra).')}
+        ${check('ao', 'Oclusión ambiental (calidad Alta)', 'Sombras suaves en rincones y bases de muros. Se aplica al recargar.')}`;
     }
     return `
       <h2>Opciones</h2>
@@ -601,73 +628,36 @@ export class Menu {
       e.stopPropagation();
       s.colorblind = b.dataset.v;
       this.game.applySettings();
-      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const g = this.game;
-      if (!g.touch) return;
-      const inMenu = g.state === 'menu';
-      const ui = inMenu ? $('main-menu') : $('pause');
-      ui.style.display = 'none';
-      g.touch.editLayout(() => {
-        if (inMenu) this.showMain('options');
-        else ui.style.display = 'flex';
-      });
-    });
-    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      s.padScheme = b.dataset.v;
-      this.game.applySettings();
-      rerender();
-    }));
-    el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
     el.querySelectorAll('[data-seg="fpsCap"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       s.fpsCap = Number(b.dataset.v);
       this.game.applySettings();
-      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const g = this.game;
-      if (!g.touch) return;
-      const inMenu = g.state === 'menu';
-      const ui = inMenu ? $('main-menu') : $('pause');
-      ui.style.display = 'none';
-      g.touch.editLayout(() => {
-        if (inMenu) this.showMain('options');
-        else ui.style.display = 'flex';
-      });
-    });
-    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      s.padScheme = b.dataset.v;
-      this.game.applySettings();
-      rerender();
+      el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
-    el.querySelectorAll('[data-seg="colorblind"] button').forEach((b) => b.addEventListener('click', (e) => {
+    el.querySelectorAll('[data-seg="gyro"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      s.colorblind = b.dataset.v;
+      s.gyro = b.dataset.v;
       this.game.applySettings();
-      el.querySelector('#touch-layout')?.addEventListener('click', (e) => {
+      // iOS pide permiso para el giroscopio: tiene que ser durante un toque
+      if (s.gyro !== 'off') this.game.touch?.extras?.enableGyro(true);
+      el.querySelectorAll('[data-seg="gyro"] button').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    el.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      const g = this.game;
-      if (!g.touch) return;
-      const inMenu = g.state === 'menu';
-      const ui = inMenu ? $('main-menu') : $('pause');
-      ui.style.display = 'none';
-      g.touch.editLayout(() => {
-        if (inMenu) this.showMain('options');
-        else ui.style.display = 'flex';
-      });
-    });
-    el.querySelectorAll('[data-seg="padScheme"] button').forEach((b) => b.addEventListener('click', (e) => {
+      if (this.game.touch) this.game.touch.applyPreset(b.dataset.preset);
+      else {
+        s.touchLayout = {};
+        this.game.applySettings();
+      }
+      el.querySelectorAll('[data-preset]').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    el.querySelectorAll('[data-seg="viewDist"] button').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      s.padScheme = b.dataset.v;
+      s.viewDist = Number(b.dataset.v);
       this.game.applySettings();
-      rerender();
-    }));
-    el.querySelectorAll('[data-seg="colorblind"] button').forEach((x) => x.classList.toggle('on', x === b));
-    }));
-    el.querySelectorAll('[data-seg="fpsCap"] button').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelectorAll('[data-seg="viewDist"] button').forEach((x) => x.classList.toggle('on', x === b));
     }));
   }
 

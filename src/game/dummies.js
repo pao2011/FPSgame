@@ -85,7 +85,11 @@ export class Dummies {
   }
 
   update(dt) {
+    // Sólo se dibujan las dianas cercanas
+    const cam = this.game.camera.position;
+    const d2 = this.game.propDist(150) ** 2;
     for (const d of this.list) {
+      d.model.visible = d.pos.distanceToSquared(cam) < d2;
       if (d.shake > 0) {
         d.shake -= dt;
         d.upper.rotation.z = Math.sin(d.shake * 60) * d.shake * 0.4;

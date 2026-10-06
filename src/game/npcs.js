@@ -303,9 +303,10 @@ export class NPCs {
     const p = g.player;
     const t = g.time;
     const cam = g.camera.position;
+    const d2 = g.propDist(220) ** 2;
     for (const n of this.list) {
       const m = n.model;
-      m.root.visible = n.pos.distanceToSquared(cam) < 220 * 220;
+      m.root.visible = n.pos.distanceToSquared(cam) < d2;
       if (!m.root.visible) continue;
       const near = n.pos.distanceToSquared(p.pos) < 12 * 12;
       // Mira al jugador cuando está cerca y respira

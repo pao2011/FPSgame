@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { MAP_SIZE, HALF } from './constants.js';
+import { isMobileQuality } from '../game/models.js';
+import { NOISE_GLSL, noiseTexture } from './noisetex.js';
 
 // Textura con la profundidad del agua (mar, lagos y ríos) para pintar la
 // orilla con espuma y tonos turquesa.
@@ -38,6 +40,8 @@ export function createWater(scene, world, sunDir) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     fog: true,
+    // Móvil: olas sólo con senos (sin ruido) y espuma más sencilla
+    defines: isMobileQuality() ? { LITE: '' } : {},
     depthWrite: false,
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
@@ -77,12 +81,8 @@ export function createWater(scene, world, sunDir) {
       varying vec3 vWorld;
       varying vec3 vFlow;
 
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float vnoise(vec2 p) {
-        vec2 i = floor(p), f = fract(p);
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-      }
+      ${NOISE_GLSL}
+      #define vnoise texNoise
       // Altura de las olas (suma de ondas) para sacar la normal. En los ríos
       // el dibujo se desplaza con la corriente; en los lagos hay menos oleaje.
       float waves(vec2 p) {
@@ -91,8 +91,12 @@ export function createWater(scene, world, sunDir) {
         h += sin(dot(p, vec2(0.12, 0.05)) + time * 1.1) * 0.35;
         h += sin(dot(p, vec2(-0.07, 0.15)) + time * 1.4) * 0.25;
         h += sin(dot(p, vec2(0.31, -0.22)) + time * 2.1) * 0.10;
+      #ifdef LITE
+        h += sin(dot(p, vec2(0.9, 0.7)) - time * 1.7) * 0.06;
+      #else
         h += (vnoise(p * 0.35 + vec2(time * 0.35, time * 0.2)) - 0.5) * 0.35;
         h += (vnoise(p * 1.1 - vec2(time * 0.5, -time * 0.3)) - 0.5) * 0.12;
+      #endif
         return h * vFlow.z;
       }
 
@@ -123,7 +127,11 @@ export function createWater(scene, world, sunDir) {
         col += sunColor * pow(max(dot(R, normalize(sunDir)), 0.0), 18.0) * 0.08;
         // Espuma en la orilla
         float foamLine = 1.0 - smoothstep(0.0, 1.3, depth + sin(time * 1.6 + p.x * 0.05 + p.y * 0.04) * 0.25);
+      #ifdef LITE
+        float foamNoise = 0.55 + 0.25 * sin(p.x * 1.3 + time * 0.8) * sin(p.y * 1.1 - time * 0.6);
+      #else
         float foamNoise = vnoise(p * 1.6 + vec2(time * 0.6, time * 0.4));
+      #endif
         float foam = foamLine * smoothstep(0.35, 0.75, foamNoise + foamLine * 0.45) * (0.3 + 0.7 * vFlow.z);
         col = mix(col, vec3(0.95, 0.98, 1.0), foam * 0.9);
 
@@ -136,6 +144,7 @@ export function createWater(scene, world, sunDir) {
       }`,
   });
   mat.uniforms.heightTex.value = depthTexture(world);
+  mat.uniforms.tNoise = { value: noiseTexture() };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = 0;
   mesh.renderOrder = 1;

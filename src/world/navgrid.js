@@ -143,6 +143,11 @@ export class NavGrid {
     const start = this.nearestFree(this.idx(sx, sz), 10);
     const goal = this.nearestFree(this.idx(tx, tz), 8);
     if (start < 0 || goal < 0) return null;
+    // Atajo: si hay línea recta libre no hace falta A* (lo más habitual en
+    // campo abierto y lo que más tiempo de CPU ahorra).
+    if (goal === this.idx(tx, tz) && Math.hypot(tx - sx, tz - sz) < 160 && this.lineFree(sx, sz, tx, tz)) {
+      return { pts: [[sx, sz], [tx, tz]], complete: true };
+    }
     const S = this.size;
     const st = ++this.stamp;
     const heap = this.heap;

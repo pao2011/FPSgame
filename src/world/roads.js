@@ -1,35 +1,43 @@
 import * as THREE from 'three';
+import { isMobileQuality } from '../game/models.js';
 import { smoothstep } from '../core/rng.js';
+import { NOISE_GLSL, bindNoise } from './noisetex.js';
 
 // Grano de asfalto, parches y grietas (procedural, coordenadas de mundo).
+// En calidad móvil, versión ligera (menos ruido por píxel, sin grietas).
 function addAsphaltDetail(mat) {
+  if (isMobileQuality()) mat.defines = { ...mat.defines, LITE: '' };
   mat.onBeforeCompile = (sh) => {
+    bindNoise(sh);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vAWorld;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvAWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vAWorld;
-float aHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float aNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(aHash(i), aHash(i + vec2(1.0, 0.0)), u.x), mix(aHash(i + vec2(0.0, 1.0)), aHash(i + vec2(1.0, 1.0)), u.x), u.y);
-}`)
+${NOISE_GLSL}
+#define aNoise texNoise`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 p = vAWorld.xz;
   float camD = length(cameraPosition - vAWorld);
   float fade = 1.0 - smoothstep(40.0, 260.0, camD);
+  vec3 c = diffuseColor.rgb;
+#ifdef LITE
+  float grain = aNoise(p * 3.1);
+  float aPatch = smoothstep(0.62, 0.66, aNoise(p * 0.11 + 7.3));
+  c *= mix(1.0, 0.86 + grain * 0.26, fade);
+  c = mix(c, c * 0.8, aPatch * 0.7);
+#else
   float grain = aNoise(p * 7.0) * 0.55 + aNoise(p * 2.3) * 0.45;
   float aPatch = smoothstep(0.62, 0.66, aNoise(p * 0.11 + 7.3));
   float crack = 1.0 - smoothstep(0.0, 0.012, abs(aNoise(p * 0.5) - 0.5));
   crack *= smoothstep(0.45, 0.6, aNoise(p * 0.07 + 3.0));
-  vec3 c = diffuseColor.rgb;
   c *= 0.9 + aNoise(p * 0.05) * 0.18;
   c *= mix(1.0, 0.86 + grain * 0.26, fade);
   c = mix(c, c * 0.8, aPatch * 0.7);
   c = mix(c, c * 0.62, crack * (1.0 - smoothstep(10.0, 70.0, camD)));
+#endif
   diffuseColor.rgb = c;
 }`);
   };

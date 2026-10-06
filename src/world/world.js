@@ -16,6 +16,8 @@ import { createLobbyIsland } from './lobby.js';
 import { Hydro } from './hydro.js';
 import { Site, CELL, buildSite, buildHalos } from './underground.js';
 import { HALF, ISLAND_RADIUS } from './constants.js';
+import { LodSet } from './lod.js';
+import { modelQuality } from '../game/models.js';
 
 const POI_NAMES = {
   port: ['Puerto Pez', 'Bahía Brillante', 'Muelle Marinero', 'Cala Corsaria', 'Dársena Dorada'],
@@ -81,6 +83,7 @@ export class World {
     this.ladders = [];
     this.doors = [];
     this.landmarks = []; // lugares destacados con nombre (mapa)
+    this.lod = new LodSet(opts.lod || modelQuality());
     this.hydro = new Hydro(); // ríos y lagos
     this.sites = []; // cuevas y trincheras
     this.generate();
@@ -109,6 +112,7 @@ export class World {
     this.terrain.roadNet = this.roads;
     this.terrain.sites = this.sites;
     this.scene.add(this.terrain.build());
+    for (const t of this.terrain.tiles) this.lod.add(t.mesh, 'terrain', t.cx, t.cz, t.r);
     this.scene.add(this.roads.buildMesh(this.terrain));
     this.buildStructures();
     this.nature = createNature(this, this.rng);
@@ -1224,8 +1228,11 @@ export class World {
     this.buildFootbridge(geo);
     for (const d of this.dummySpots) d.y = this.terrain.heightAt(d.x, d.z);
     for (const c of [...this.carSpots, ...this.wreckSpots]) c.y = this.terrain.heightAt(c.x, c.z);
-    this.buildingMesh = geo.build();
+    // En parcelas de 120 m: sólo se dibujan las que están a la vista y cerca
+    const { group, chunks } = geo.buildChunks(120);
+    this.buildingMesh = group;
     this.buildingMesh.name = 'buildings';
+    for (const c of chunks) this.lod.add(c.mesh, 'building', c.cx, c.cz, c.r);
     this.scene.add(this.buildingMesh);
     if (glow.pos.length) {
       this.glowMesh = glow.build(new THREE.MeshBasicMaterial({ vertexColors: true }));
@@ -1234,7 +1241,7 @@ export class World {
       this.scene.add(this.glowMesh);
     }
     if (caps.pos.length) {
-      const m = caps.build(this.terrain.mesh.material);
+      const m = caps.build(this.terrain.material);
       m.castShadow = false;
       m.name = 'underground-caps';
       this.scene.add(m);
@@ -1393,6 +1400,8 @@ export class World {
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     const cm = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.92, emissive: 0x666666 });
     this.clouds = new THREE.Mesh(geo, cm);
+    geo.computeBoundingSphere();
+    this.clouds.frustumCulled = false;
     this.scene.add(this.clouds);
   }
 

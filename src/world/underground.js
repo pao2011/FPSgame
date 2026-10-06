@@ -679,19 +679,18 @@ export function buildHalos(sites) {
   return p;
 }
 
-// Luces dinámicas: un puñado de PointLight que se asignan a las fuentes de
-// luz subterráneas más cercanas a la cámara (en calidad baja/móvil sólo se
-// usa la luz horneada).
+// Luces dinámicas: un puñado de luces (virtuales, ver game/lightpool.js)
+// que se asignan a las fuentes de luz subterráneas más cercanas a la cámara
+// (sin luces, en calidad baja/móvil, sólo se usa la luz horneada).
 export class UndergroundFx {
-  constructor(scene, sites, quality) {
+  constructor(sites, lights) {
     this.sources = sites.flatMap((s) => s.lights.filter((L) => L.power > 0));
     this.pool = [];
     this.pickT = 0;
     this.t = 0;
-    if (!this.sources.length || quality === 'baja' || quality === 'movil') return;
-    for (let k = 0; k < 3; k++) {
-      const L = new THREE.PointLight(0xffffff, 0, 13, 2);
-      scene.add(L);
+    if (!this.sources.length || !lights?.size) return;
+    for (let k = 0; k < Math.min(3, lights.size); k++) {
+      const L = lights.add(new THREE.PointLight(0xffffff, 0, 13, 2), 1);
       this.pool.push({ L, src: null });
     }
   }

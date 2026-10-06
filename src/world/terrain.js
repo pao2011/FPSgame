@@ -1,17 +1,21 @@
 import * as THREE from 'three';
 import { MAP_SIZE, HALF, LOBBY } from './constants.js';
 import { smoothstep } from '../core/rng.js';
-import { usesPBR } from '../game/models.js';
+import { usesPBR, isMobileQuality } from '../game/models.js';
+import { NOISE_GLSL, bindNoise } from './noisetex.js';
 
 const tmpColor = new THREE.Color();
 
 // Variación de color con ruido en el shader del terreno: rompe la
 // uniformidad de los colores por vértice (matas de hierba, tierra, vetas).
 // hd (calidad alta): además, microrrelieve en la iluminación (normales con
-// ruido fino) y más detalle de color de cerca.
+// ruido fino) y más detalle de color de cerca. En calidad móvil, versión
+// ligera: dos ruidos por píxel en vez de cuatro.
 export function addGroundDetail(mat, hd = false) {
+  if (isMobileQuality()) mat.defines = { ...mat.defines, LITE: '' };
   mat.customProgramCacheKey = () => (hd ? 'groundHD' : 'ground');
   mat.onBeforeCompile = (sh) => {
+    bindNoise(sh);
     if (hd) sh.fragmentShader = '#define GROUND_HD\n' + sh.fragmentShader;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vGWorld;\nvarying vec3 vGNormal;')
@@ -20,12 +24,8 @@ export function addGroundDetail(mat, hd = false) {
       .replace('#include <common>', `#include <common>
 varying vec3 vGWorld;
 varying vec3 vGNormal;
-float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float gNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), u.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
+${NOISE_GLSL}
+#define gNoise texNoise
 // Ruido en los tres planos: no se estira en las laderas empinadas
 float gN3(vec3 p) { return (gNoise(p.xz) + gNoise(p.zy + 17.0) + gNoise(p.xy + 31.0)) * 0.3333; }
 float gDetail(vec3 p) { return gN3(p * 0.9) * 0.55 + gN3(p * 2.3) * 0.3 + gN3(p * 5.7) * 0.15; }`)
@@ -52,11 +52,16 @@ float gDetail(vec3 p) { return gN3(p * 0.9) * 0.55 + gN3(p * 2.3) * 0.3 + gN3(p 
   vec2 gp = vGWorld.xz;
   float camD = length(cameraPosition - vGWorld);
   float fade = 1.0 - smoothstep(120.0, 600.0, camD);
+#ifdef LITE
+  float big = gNoise(gp * 0.05);
+  float fine = gNoise(gp * 1.1);
+#else
   float big = gNoise(gp * 0.035) * 0.6 + gNoise(gp * 0.09) * 0.4;
 #ifdef GROUND_HD
   float fine = gN3(vGWorld * 0.7) * 0.5 + gN3(vGWorld * 2.3) * 0.5;
 #else
   float fine = gNoise(gp * 0.7) * 0.5 + gNoise(gp * 2.3) * 0.5;
+#endif
 #endif
   float green = diffuseColor.g - max(diffuseColor.r, diffuseColor.b);
   float grassy = smoothstep(0.0, 0.08, green);
@@ -226,29 +231,70 @@ export class Terrain {
         colors[idx * 3 + 2] = tmpColor.b;
       }
     }
-    const indices = new Uint32Array(N * N * 6);
-    let k = 0;
-    for (let j = 0; j < N; j++) {
-      for (let i = 0; i < N; i++) {
-        const a = j * V + i; // (i, j)
-        const b = (j + 1) * V + i; // (i, j+1)
-        const c = j * V + i + 1; // (i+1, j)
-        const d = (j + 1) * V + i + 1; // (i+1, j+1)
-        indices[k++] = a; indices[k++] = b; indices[k++] = c;
-        indices[k++] = c; indices[k++] = b; indices[k++] = d;
+    // La malla se divide en TILES×TILES parcelas que comparten los vértices:
+    // cada parcela tiene su propio índice y su esfera envolvente, así three.js
+    // descarta las que quedan fuera de cámara (y las lejanas, ver world/lod.js).
+    const posAttr = new THREE.BufferAttribute(positions, 3);
+    const colAttr = new THREE.BufferAttribute(colors, 3);
+    const full = new THREE.BufferGeometry();
+    full.setAttribute('position', posAttr);
+    {
+      // Normales con la malla completa (sin costuras entre parcelas)
+      const all = new Uint32Array(N * N * 6);
+      let k = 0;
+      for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
+          const a = j * V + i, b = (j + 1) * V + i, c = j * V + i + 1, d = (j + 1) * V + i + 1;
+          all[k++] = a; all[k++] = b; all[k++] = c;
+          all[k++] = c; all[k++] = b; all[k++] = d;
+        }
       }
+      full.setIndex(new THREE.BufferAttribute(all, 1));
+      full.computeVertexNormals();
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geo.setIndex(new THREE.BufferAttribute(indices, 1));
-    geo.computeVertexNormals();
-    geo.computeBoundingSphere();
+    const norAttr = full.getAttribute('normal');
     const mat = usesPBR() ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }) : new THREE.MeshLambertMaterial({ vertexColors: true });
     addGroundDetail(mat, this.hd);
-    this.mesh = new THREE.Mesh(geo, mat);
-    this.mesh.receiveShadow = true;
-    this.mesh.name = 'terrain';
+    const group = new THREE.Group();
+    group.name = 'terrain';
+    group.matrixAutoUpdate = false;
+    this.tiles = [];
+    const TILES = 8;
+    const T = N / TILES;
+    for (let tj = 0; tj < TILES; tj++) {
+      for (let ti = 0; ti < TILES; ti++) {
+        const idx = new Uint32Array(T * T * 6);
+        let k = 0, minH = Infinity, maxH2 = -Infinity;
+        for (let j = tj * T; j < (tj + 1) * T; j++) {
+          for (let i = ti * T; i < (ti + 1) * T; i++) {
+            const a = j * V + i, b = (j + 1) * V + i, c = j * V + i + 1, d = (j + 1) * V + i + 1;
+            idx[k++] = a; idx[k++] = b; idx[k++] = c;
+            idx[k++] = c; idx[k++] = b; idx[k++] = d;
+            const h = heights[a];
+            if (h < minH) minH = h;
+            if (h > maxH2) maxH2 = h;
+          }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', posAttr);
+        g.setAttribute('normal', norAttr);
+        g.setAttribute('color', colAttr);
+        g.setIndex(new THREE.BufferAttribute(idx, 1));
+        const x0 = -HALF + ti * T * this.cell, z0 = -HALF + tj * T * this.cell, size = T * this.cell;
+        const cx = x0 + size / 2, cz = z0 + size / 2, cy = (minH + maxH2) / 2;
+        g.boundingBox = new THREE.Box3(new THREE.Vector3(x0, minH, z0), new THREE.Vector3(x0 + size, maxH2, z0 + size));
+        g.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), Math.hypot(size / 2, size / 2, (maxH2 - minH) / 2) + 1);
+        const tile = new THREE.Mesh(g, mat);
+        tile.receiveShadow = true;
+        tile.matrixAutoUpdate = false;
+        tile.name = 'terrain-tile';
+        group.add(tile);
+        this.tiles.push({ mesh: tile, cx, cz, r: size * 0.71 });
+      }
+    }
+    full.dispose();
+    this.mesh = group;
+    this.material = mat;
     return this.mesh;
   }
 

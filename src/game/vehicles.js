@@ -428,9 +428,10 @@ export class Vehicles {
 
   update(dt, input) {
     const cam = this.game.camera.position;
+    const d2 = this.game.propDist(260) ** 2;
     for (const v of this.list) {
       if (v.dead) continue;
-      const near = v.pos.distanceToSquared(cam) < 260 * 260;
+      const near = v.pos.distanceToSquared(cam) < d2;
       v.root.visible = near;
       if (v.remoteDriver) {
         v.followNet(dt);

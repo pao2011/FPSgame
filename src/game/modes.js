@@ -153,9 +153,22 @@ export const DEFAULT_SETTINGS = {
   touchOpacity: 0.85,
   touchFullscreen: true,
   vibration: true,
-  resScale: 70, // % de resolución en calidad «móvil»
-  autoRes: true, // resolución dinámica en calidad «móvil»
+  resScale: 85, // % de resolución en calidad «móvil»
+  autoRes: true, // resolución dinámica (todas las calidades)
+  ao: true, // oclusión ambiental en calidad alta
+  gfxV: 2, // versión de los ajustes gráficos (migraciones en loadSettings)
   fpsCap: 0, // 0 = sin límite · 30 = ahorro de batería
+  viewDist: 1, // distancia de visión: 0.7 corta · 1 normal · 1.3 lejana
+  gyro: 'off', // apuntar con el giroscopio: off | ads (al apuntar) | always
+  gyroSens: 1,
+  autoFire: false, // disparo automático con la mira sobre un enemigo
+  touchAimAssist: true, // asistencia de apuntado táctil
+  touchAssistStrength: 0.7,
+  autoSprint: false, // correr al empujar el joystick hacia delante
+  doubleTapPing: true, // doble toque para poner un marcador
+  hapticEvents: true, // vibrar al acertar, eliminar, recibir daño…
+  lowBatterySaver: true, // 30 FPS con la batería baja
+  showDeviceStatus: true, // batería y hora en el HUD
 };
 
 // Primera vez en un móvil o tableta: ajustes pensados para rendimiento.
@@ -175,6 +188,12 @@ export function loadSettings() {
     if (raw) {
       const s = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
       s.online = { ...DEFAULT_SETTINGS.online, ...s.online };
+      // v2 de gráficos: la resolución por defecto de la calidad Móvil pasa
+      // del 70 % (se veía pixelado) al 85 % con antialiasing
+      if ((s.gfxV | 0) < 2) {
+        if (s.resScale <= 70) s.resScale = 85;
+        s.gfxV = 2;
+      }
       if (!MODES[s.mode]) s.mode = s.mode === 'practice' ? 'creative' : 'solo';
       return s;
     }

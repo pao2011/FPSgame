@@ -58,8 +58,11 @@ export class Explosives {
       this.fireballs.push({ mesh: m, flash, t: 0, max: 0.45, r: 1 });
     }
     this.fbIdx = 0;
-    this.light = new THREE.PointLight(0xffa040, 0, 40, 2);
-    this.scene.add(this.light);
+    // Luces virtuales: la escena tiene un número fijo de luces reales que se
+    // reparten entre los efectos (ver lightpool.js)
+    this.light = game.lights.add(new THREE.PointLight(0xffa040, 0, 40, 2), 3);
+    this.fireLight = game.lights.add(new THREE.PointLight(0xff7a20, 0, 20, 2), 1);
+    this.fireZone = null;
     this.lightT = 0;
 
     const smokeMat = new THREE.SpriteMaterial({ map: getSmokeTexture(), color: 0x777777, transparent: true, depthWrite: false });
@@ -577,9 +580,10 @@ export class Explosives {
         this.scene.add(s);
         z.parts.push(s);
       }
-      z.light = new THREE.PointLight(0xff7a20, 60, radius * 4, 2);
-      z.light.position.copy(pos).setY(pos.y + 1);
-      this.scene.add(z.light);
+      // La luz del fuego (una sola, compartida) ilumina el incendio más reciente
+      this.fireLight.position.copy(pos).setY(pos.y + 1);
+      this.fireLight.distance = radius * 4;
+      this.fireZone = z;
     }
     this.zones.push(z);
     return z;
@@ -587,7 +591,10 @@ export class Explosives {
 
   _removeZone(z) {
     for (const s of z.parts) this.scene.remove(s);
-    if (z.light) this.scene.remove(z.light);
+    if (this.fireZone === z) {
+      this.fireZone = null;
+      this.fireLight.intensity = 0;
+    }
   }
 
   _fade(z) {
@@ -616,7 +623,7 @@ export class Explosives {
       s.position.y = z.pos.y + s.userData.base.y + 0.3 * f;
       s.material.opacity = a;
     }
-    z.light.intensity = 60 * a * (0.8 + 0.2 * Math.sin(g.time * 20));
+    if (this.fireZone === z) this.fireLight.intensity = 60 * a * (0.8 + 0.2 * Math.sin(g.time * 20));
     if (Math.random() < dt * 6) this.puff(tmpA.copy(z.pos).setY(z.pos.y + 1), 1.2, 0x333333, 1.4, 0.45, tmpN.set(0, 1.4, 0), z.radius);
     // Daño cada medio segundo (autoridad de quien lo lanzó)
     z.tick -= dt;
