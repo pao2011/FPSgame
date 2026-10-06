@@ -141,7 +141,7 @@ export class Game {
     const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: gfx.msaa && !gfx.post, powerPreference: 'high-performance' }));
     // Resolución dinámica: baja si no se llega a los FPS de la pantalla.
     this.dynRes = 1;
-    this.perf = { t: 0, n: 0, good: 0, hold: 0, pending: null, hz: 60, hzT: 0, hzN: 0 };
+    this.perf = { t: 0, n: 0, good: 0, hold: 0, base: null, noUp: 0, hz: 60, hzT: 0, hzN: 0 };
     renderer.setPixelRatio(this.pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = gfx.shadow > 0;
@@ -465,23 +465,29 @@ export class Game {
       this.aoPass.enabled = false;
       this.hud?.toast('Rendimiento: se ha quitado la oclusión ambiental para ganar FPS');
     }
-    if (pf.pending) {
-      // ¿Sirvió la última bajada?
-      const p = pf.pending;
-      pf.pending = null;
-      if (fps < p.fps * 1.05 && fps < target * 0.9) {
-        this.dynRes = p.prev;
+    // Con vsync los FPS saltan a escalones (60 → 30 → 20): bajar la
+    // resolución un poco puede no cambiar nada hasta cruzar el umbral. Por
+    // eso no se juzga cada paso, sino el descenso entero: si al llegar al
+    // mínimo no se ha ganado nada, el límite no es la gráfica y se deshace.
+    if (pf.base != null && this.dynRes <= g.minRes + 0.001) {
+      const base = pf.base;
+      pf.base = null;
+      if (fps < base * 1.1 && fps < target * 0.9) {
+        this.dynRes = 1;
         pf.hold = 20; // 30 s sin volver a intentarlo
         this.applyPixelRatio();
         return;
       }
     }
     if (fps < target * 0.88 && this.dynRes > g.minRes + 0.001 && pf.hold === 0) {
+      if (pf.base == null) pf.base = fps;
       this.dynRes = Math.max(g.minRes, this.dynRes - (fps < target * 0.7 ? 0.15 : 0.08));
-      pf.pending = { fps, prev };
       pf.good = 0;
-    } else if (fps >= target * 0.96 && this.dynRes < 1) {
-      if (++pf.good >= 4) {
+      pf.noUp = 6; // tras bajar, no se sube enseguida (evita 60 ↔ 30)
+    } else if (fps >= target * 0.96) {
+      pf.base = null;
+      if (pf.noUp > 0) pf.noUp--;
+      else if (this.dynRes < 1 && ++pf.good >= 4) {
         pf.good = 0;
         this.dynRes = Math.min(1, this.dynRes + 0.05);
       }
