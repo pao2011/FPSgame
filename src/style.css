@@ -287,8 +287,10 @@ button:active {
 /* Mira telescópica */
 #scope {
   display: none;
-  position: absolute;
+  position: fixed;
   inset: 0;
+  z-index: 8;
+  pointer-events: none;
 }
 
 #scope .lens {
@@ -2638,11 +2640,6 @@ body {
 
 body.touch #touch-ui {
   display: block;
-}
-
-/* Con la mira telescópica, los botones por encima del negro de la mira */
-body.touch.scoped #touch-ui {
-  z-index: 11;
 }
 
 #touch-ui[data-mode='off'] {

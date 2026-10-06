@@ -333,12 +333,6 @@ export class HUD {
   setScope(on) {
     this.scoped = on;
     this.set('scope', this.el.scope, 'display', on ? 'block' : 'none');
-    // En táctil los botones van por encima de la mira telescópica (si no, el
-    // negro de alrededor tapa el botón de dejar de apuntar)
-    if (this.last.scopeBody !== on) {
-      this.last.scopeBody = on;
-      document.body.classList.toggle('scoped', on);
-    }
   }
 
   setPrompt(text) {
