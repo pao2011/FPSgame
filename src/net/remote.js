@@ -27,7 +27,7 @@ export function heldFromCode(code) {
 }
 
 // Banderas del estado
-export const F_CROUCH = 1, F_KNOCKED = 2, F_ALIVE = 4, F_SPRINT = 8, F_SWING = 16;
+export const F_CROUCH = 1, F_KNOCKED = 2, F_ALIVE = 4, F_SPRINT = 8, F_SWING = 16, F_ZIP = 32, F_SLIDE = 64;
 
 // Personaje controlado por otro ordenador (otro jugador o un bot del
 // anfitrión). No tiene física propia: interpola los estados recibidos.
@@ -71,6 +71,8 @@ export class RemotePlayer extends Character {
     this.crouching = !!(f & F_CROUCH);
     this.knocked = !!(f & F_KNOCKED);
     this.sprinting = !!(f & F_SPRINT);
+    this.zip = f & F_ZIP ? true : null; // (sólo para la pose: colgado de la tirolesa)
+    this.sliding = !!(f & F_SLIDE);
     if (f & F_SWING && this.swingT <= 0) this.swingT = 0.55;
     if (this.knocked) this.knockHp = s.hp;
     else this.health = s.hp;

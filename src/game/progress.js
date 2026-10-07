@@ -88,6 +88,8 @@ function fresh() {
     modes: {}, // estadísticas por modo: { solo: { matches, wins, kills } }
     arena: { points: 0, matches: 0, best: 0 },
     cup: { week: '', games: [] }, // Copa semanal: puntos de hasta 5 partidas de Arena
+    streak: { wins: 0, top5: 0 }, // rachas (multiplicador de XP)
+    crown: 0, // victorias coronadas seguidas (0 = sin corona para la próxima partida)
   };
 }
 
@@ -115,6 +117,7 @@ export class Progress {
     out.modes = { ...(d.modes || {}) };
     out.arena = { ...f.arena, ...(d.arena || {}) };
     out.cup = { ...f.cup, ...(d.cup || {}) };
+    out.streak = { ...f.streak, ...(d.streak || {}) };
     this.data = out;
     this.refreshChallenges();
     if (save) this.save(false);
@@ -201,6 +204,13 @@ export class Progress {
 
   get tierXp() {
     return this.data.xp % PASS.xpPerTier;
+  }
+
+  // Multiplicador de XP por rachas: +15 % por cada partida seguida en el
+  // top 5 (hasta 5) y +25 % por cada victoria seguida a partir de la segunda.
+  get xpMult() {
+    const st = this.data.streak || { wins: 0, top5: 0 };
+    return 1 + 0.15 * Math.min(5, st.top5) + (st.wins >= 2 ? 0.25 * Math.min(4, st.wins - 1) : 0);
   }
 
   owns(type, id) {
@@ -290,12 +300,34 @@ export class Progress {
     if (r.win) add('¡Victoria!', r.respawn ? 300 : 500);
     else if (!r.respawn && r.place && r.place <= 5) add(`Top 5 (puesto #${r.place})`, 200);
     else if (!r.respawn && r.place && r.place <= 10) add(`Top 10 (puesto #${r.place})`, 100);
+    if (r.crownWin) add(`👑 Victoria coronada ×${r.crownWin}`, 250 + 150 * Math.min(5, r.crownWin - 1));
     let total = lines.reduce((a, l) => a + l.xp, 0);
     if (r.online) {
       const bonus = Math.round(total * 0.25);
       lines.push({ label: 'Bonus online (+25 %)', xp: bonus });
       total += bonus;
     }
+    // Rachas: se actualizan con esta partida y multiplican la XP
+    const st = (this.data.streak ||= { wins: 0, top5: 0 });
+    if (!r.respawn && r.mode !== 'creative') {
+      const top5 = r.win || (r.place && r.place <= 5);
+      st.top5 = top5 ? st.top5 + 1 : 0;
+      st.wins = r.win ? st.wins + 1 : 0;
+    }
+    const mult = this.xpMult;
+    if (mult > 1.001) {
+      const bonus = Math.round(total * (mult - 1));
+      const why = st.wins >= 2 ? `${st.wins} victorias seguidas` : `${st.top5} top 5 seguidos`;
+      lines.push({ label: `Multiplicador ×${mult.toFixed(2)} (${why})`, xp: bonus });
+      total += bonus;
+    }
+    // Monedas de la partida (se gastan en la tienda)
+    let coins = 5 + r.kills * 2 + (r.win ? 25 : r.place && r.place <= 5 ? 10 : r.place && r.place <= 10 ? 5 : 0) + (r.crownWin ? 15 * Math.min(5, r.crownWin) : 0);
+    if (r.respawn) coins = Math.round(coins / 2);
+    coins = Math.round(coins * mult);
+    this.data.tokens += coins;
+    // Corona para la próxima partida: se gana al ganar y se pierde al perder
+    if (!r.respawn) this.data.crown = r.win ? Math.max(1, r.crownWin || 1) : 0;
 
     s.matches++;
     s.kills += r.kills;
@@ -352,7 +384,7 @@ export class Progress {
     }
     const rewards = this.addXp(total);
     this.save();
-    return { lines, total, levelBefore, level: this.level, rewards, achievements: ach, challenges: chDone, arena };
+    return { lines, total, levelBefore, level: this.level, rewards, achievements: ach, challenges: chDone, arena, coins, mult, crown: this.data.crown, streak: { ...st } };
   }
 
   // Estadísticas sueltas fuera de una partida (p. ej. el modo creativo).

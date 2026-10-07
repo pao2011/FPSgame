@@ -2,6 +2,7 @@
 // arrastrar a la derecha para mirar y botones de acción. Escriben en el mismo
 // objeto Input que el teclado y el ratón (ver src/core/input.js).
 
+import { MAP_SIZE, HALF } from '../world/constants.js';
 import { MobileExtras } from './mobile.js';
 
 const svg = (body, vb = '0 0 24 24') => `<svg viewBox="${vb}" aria-hidden="true">${body}</svg>`;
@@ -22,6 +23,8 @@ const ICONS = {
   close: svg('<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'),
   inv: svg('<path d="M8 7V5a4 4 0 0 1 8 0v2h3l1 14H4L5 7zm2 0h4V5a2 2 0 0 0-4 0z" fill="currentColor"/>'),
   heal: svg('<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="currentColor"/>'),
+  thanks: svg('<path d="M3 11h4v9H3zm5 9V11l4-7c1.2 0 2 .9 2 2v3h5.5a1.5 1.5 0 0 1 1.5 1.7l-1.2 7.6A2 2 0 0 1 17.8 20z" fill="currentColor"/>'),
+  emote: svg('<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="1.4" fill="currentColor"/><circle cx="15" cy="10" r="1.4" fill="currentColor"/><path d="M7.5 14a5 5 0 0 0 9 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
   use: svg('<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V3a1.5 1.5 0 0 1 3 0v7h.5V5a1.5 1.5 0 0 1 3 0v9c0 4-2.5 7-6.5 7-3 0-4.6-1.6-6-3.7L4 13.5a1.4 1.4 0 0 1 2.2-1.7z" fill="currentColor"/>'),
 };
 
@@ -42,6 +45,8 @@ const BUTTONS = [
   { id: 'chat' },
   { id: 'inv', key: 'Tab' },
   { id: 'heal', label: 'CURAR' },
+  { id: 'thanks', label: 'GRACIAS' }, // al conductor del autobús
+  { id: 'emote', key: 'KeyN' }, // rueda de gestos y grafitis
 ];
 
 // Disposiciones predefinidas (Opciones → Móvil y táctil). Posición del centro
@@ -427,8 +432,8 @@ export class TouchControls {
       clearTimeout(hold);
       if (start && !start.moved && start.onMap && e.type === 'pointerup' && pts.size === 0) {
         const r = cv.getBoundingClientRect();
-        const x = ((e.clientX - r.left) / r.width) * 1600 - 800, zz = ((e.clientY - r.top) / r.height) * 1600 - 800;
-        if (Math.abs(x) <= 800 && Math.abs(zz) <= 800) {
+        const x = ((e.clientX - r.left) / r.width) * MAP_SIZE - HALF, zz = ((e.clientY - r.top) / r.height) * MAP_SIZE - HALF;
+        if (Math.abs(x) <= HALF && Math.abs(zz) <= HALF) {
           g.waypoint = { x, z: zz };
           g.audio.ping();
           this.vibrate(12);
@@ -609,6 +614,11 @@ export class TouchControls {
       g.combat.quickHeal();
       return;
     }
+    if (act === 'thanks') {
+      g.thankDriver();
+      this.haptic?.('ping');
+      return;
+    }
     if (act === 'aim' && (g.build.busy || g.creative?.busy || this.holdingC4())) {
       input.tap('mouse2'); // construyendo: material · editando: reiniciar · creativo: cancelar · C4: detonar
       return;
@@ -683,7 +693,7 @@ export class TouchControls {
       this.state.online = online;
       this.root.classList.toggle('online', online);
     }
-    const jumpLabel = st === 'bus' ? 'SALTAR' : st === 'air' ? (p.mode === 'glide' ? '' : 'PLANEAR') : st === 'car' ? 'FRENO' : '';
+    const jumpLabel = st === 'bus' ? 'SALTAR' : st === 'air' ? (p.mode === 'glide' ? (p.canCloseGlider ? 'CERRAR' : '') : 'PLANEAR') : st === 'car' ? 'FRENO' : '';
     if (jumpLabel !== this.state.jumpLabel) {
       this.state.jumpLabel = jumpLabel;
       this.btn.jump.querySelector('span').textContent = jumpLabel;
@@ -732,6 +742,11 @@ export class TouchControls {
     if (canHeal !== this.state.canHeal) {
       this.state.canHeal = canHeal;
       this.root.classList.toggle('can-heal', canHeal);
+    }
+    const thanked = !!g.bus.thanked;
+    if (thanked !== this.state.thanked) {
+      this.state.thanked = thanked;
+      this.root.classList.toggle('thanked', thanked);
     }
     const noBuild = !g.mode.build;
     if (noBuild !== this.state.noBuild) {

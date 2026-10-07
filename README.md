@@ -4,6 +4,51 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Jefes, bóvedas y botín especial:** 👹 **tres jefes nuevos** en las
+ciudades (👠 Reina del Asfalto, 🎖️ Capitán Tormenta y 🔧 El Ingeniero, cada
+uno con escolta) que sueltan un **arma mítica**, una **cura**, la **tarjeta de
+la bóveda de su ciudad** y un **medallón de batalla** (Coraza −20 % de daño,
+Velocidad +15 %, Furia +20 % de daño o Vigor: regenera escudo). Con la tarjeta
+en la mano, una **flecha en pantalla y en la brújula señala su bóveda**.
+Arreglado el **Guardián de la Bóveda**, que no aparecía (la Isla de Inicio se
+llevaba a los jefes al autobús). 🦙 **Llamas de botín** escondidas (mantén E),
+📦 **suministros que caen del cielo** con globo y columna de humo, 👑
+**corona**: la ganas al ganar, empiezas la siguiente partida con ella, se cae
+al suelo si te eliminan y si sigues ganando la racha de **victorias
+coronadas** sube. 🪙 **Monedas en cada partida** para la tienda y
+**multiplicador de XP** por rachas (top 5 y victorias seguidas).
+**Movimiento:** 🧗 **parkour** (salta hacia un muro de hasta 2,8 m para
+trepar, o hacia una valla o una **ventana para atravesarla**), 🪠
+**lanzasopapas** (dispara una ventosa y tira de ti), 🪂 **abrir y cerrar el
+planeador** con Espacio mientras quede altura, 🏊 **natación mejorada**
+(brazadas, salpicaduras, nadar más rápido corriendo y **bucear** agachado).
+😀 **Rueda de gestos** (mantén N) con 6 gestos nuevos y 🎨 **grafitis** para
+pintar paredes. **Todo funciona también en el móvil**: botón de gestos y
+grafitis (😀), botón **GRACIAS** al conductor en el autobús, SALTAR para
+trepar o atravesar ventanas (con el joystick hacia delante) y para
+abrir/**CERRAR** el planeador, AGACHARSE para deslizarte, bucear o soltarte
+de la tirolesa, joystick atrás para dar la vuelta en la tirolesa y USAR
+(mantener) para abrir llamas y suministros.
+
+**Isla más densa, montañas y tirolesas:** 🗺️ **mapa más compacto y lleno**
+(la isla pasa de 740 a 592 m de radio y entre las zonas hay **puestos
+avanzados**: cabañas, ruinas, torres de vigilancia, almacenes de contenedores,
+campamentos y graneros, más **coberturas** por todo el campo: sacos terreros,
+cajas y coches abandonados), ⛰️ **cordilleras de verdad** (crestas afiladas,
+mesetas, barrancos y **cumbres nevadas**, con el gran lago en un valle), 🚡
+**tirolesas** para cruzar la isla volando (E para engancharte, Espacio para
+saltar, S para dar la vuelta; salen en el mapa como líneas amarillas), 🏃
+**correr por defecto** (Shift para andar) con balanceo de cámara y 🛝
+**deslizarse** (agáchate corriendo; cuesta abajo se gana velocidad). 🔫
+**Balas mejoradas**: trazadoras más rápidas y visibles de lejos, **silbido**
+cuando una bala te pasa cerca, impactos según el material (tierra, metal con
+chispas, madera, piedra y **salpicaduras en el agua**) y destello azul/blanco
+al acertar. Arreglado: los disparos de los bots ya no parecen venir **del
+cielo** (sus «ojos» se iban subiendo al bajar cuestas) y sus trazadoras salen
+del cañón del arma. Además, **pantalla de carga ilustrada con progreso real**,
+pantalla de carga antes de cada partida y **animación de inicio** (vuelo sobre
+la isla con el logo; se salta con cualquier tecla o en Opciones).
+
 **Isla de la Bóveda:** 🏝️ un **gran lago en el centro con una isla** donde
 espera el 💀 **Guardián de la Bóveda** con sus secuaces; al morir suelta una
 💳 **tarjeta** que abre la 🔒 **bóveda** (cofres seguros y armas
@@ -89,7 +134,7 @@ reflejos y espuma en la orilla, terreno con más detalle y menús nuevos.
 Dúos, Tríos, Escuadras, 1v1 Práctica, Duelo por equipos, Construcción cero,
 Práctica libre y Creativo), **bots con
 IA** (navegan por el mapa, saquean, construyen, se curan, se reaniman y
-trabajan en equipo), una isla de 1,6 km con **carreteras y pueblos ordenados
+trabajan en equipo), una isla de 1,3 km con **carreteras y pueblos ordenados
 por calles** y muchos tipos de estructuras (casas, tiendas, gasolineras,
 iglesias, rascacielos, fábrica, puerto con muelle y grúa, base militar,
 estadio, granjas, faro, antena de radio, depósitos de agua, búnkeres,

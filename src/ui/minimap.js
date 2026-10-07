@@ -72,6 +72,25 @@ export class MapRenderer {
       ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
       ctx.strokeRect(x0, z0, x1 - x0, z1 - z0);
     }
+    // Tirolesas: línea discontinua amarilla con un punto en cada poste
+    ctx.save();
+    ctx.setLineDash([9, 6]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255, 214, 64, 0.95)';
+    ctx.fillStyle = '#ffd640';
+    for (const z of this.world.ziplines || []) {
+      const [ax, ay] = this.toPx(z.a.x, z.a.z), [bx, by] = this.toPx(z.b.x, z.b.z);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      for (const [x, y] of [[ax, ay], [bx, by]]) {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
     // Cuevas y trincheras: los pasillos excavados en oscuro
     for (const s of this.world.sites || []) {
       ctx.fillStyle = s.kind === 'cave' ? 'rgba(52,46,58,0.9)' : 'rgba(92,70,44,0.95)';
@@ -238,14 +257,25 @@ export class MapRenderer {
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     }
-    // Bóveda de la isla central y su tarjeta
-    if (game.vault?.v) {
-      const v = game.vault;
+    // Bóvedas (la de la tarjeta que llevas en la mano, resaltada), botín
+    // especial (llamas y suministros) y la corona
+    {
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(v.open ? '🔓' : '🔒', ox + v.v.x * scale, oy + v.v.z * scale);
-      if (v.card) ctx.fillText('💳', ox + v.card.pos.x * scale, oy + v.card.pos.z * scale);
+      const tgt = game.vault?.target?.();
+      for (const vt of game.vault?.list || []) {
+        const x = ox + vt.v.x * scale, y = oy + vt.v.z * scale;
+        if (vt === tgt) {
+          ctx.strokeStyle = '#ffd34d';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(x, y, 11, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillText(vt.open ? '🔓' : '🔒', x, y);
+      }
+      for (const m of game.specials?.mapMarks?.() || []) ctx.fillText(m.icon, ox + m.x * scale, oy + m.z * scale);
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     }
@@ -300,11 +330,14 @@ export class MapRenderer {
     this.drawStormOverlay(ctx, game.storm, scale, ox, oy, w, h);
     if (game.state === 'playing') this.drawSafePath(ctx, game, scale, ox, oy);
     if (game.bus.active || game.player.mode === 'bus') this.drawBusPath(ctx, game.bus, scale, ox, oy);
-    // nombres de zonas
+    // nombres de zonas (letra según el tamaño del lienzo: en los mapas
+    // pequeños, como el de la pantalla de carga, no se amontonan)
     ctx.textAlign = 'center';
+    const fk = Math.max(0.68, Math.min(1.2, w / 640));
+    const big = `bold ${Math.round(15 * fk)}px "Lilita One", "Arial Black", sans-serif`;
     for (const poi of this.world.pois) {
       const x = ox + poi.x * scale, y = oy + poi.z * scale;
-      ctx.font = 'bold 15px "Lilita One", "Arial Black", sans-serif';
+      ctx.font = big;
       ctx.lineWidth = 4;
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
       ctx.strokeText(poi.name.toUpperCase(), x, y);
@@ -316,7 +349,7 @@ export class MapRenderer {
       const x = ox + lm.x * scale, y = oy + lm.z * scale;
       if (lm.major) {
         // Isla central: como una zona (en grande)
-        ctx.font = 'bold 15px "Lilita One", "Arial Black", sans-serif';
+        ctx.font = big;
         ctx.lineWidth = 4;
         ctx.strokeStyle = 'rgba(0,0,0,0.75)';
         ctx.strokeText(lm.name.toUpperCase(), x, y + 18);
@@ -324,7 +357,7 @@ export class MapRenderer {
         ctx.fillText(lm.name.toUpperCase(), x, y + 18);
         continue;
       }
-      ctx.font = 'bold 11px "Inter", sans-serif';
+      ctx.font = `bold ${Math.round(11 * fk)}px "Inter", sans-serif`;
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
       ctx.strokeText(lm.name, x, y + 14);

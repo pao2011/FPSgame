@@ -116,7 +116,7 @@ export const DEFAULT_SETTINGS = {
   // Combate y movimiento
   toggleAds: false,
   toggleCrouch: false,
-  sprintDefault: false,
+  sprintDefault: true, // correr siempre (Shift para andar)
   autoReload: true,
   autoPickupWeapons: true,
   autoSortConsumables: true,
@@ -125,6 +125,8 @@ export const DEFAULT_SETTINGS = {
   crosshairColor: '#ffffff',
   hudScale: 1,
   showHints: true,
+  intro: true, // animación de inicio al abrir el juego
+  headBob: true, // balanceo de la cámara al correr
   skipLobby: false,
   binds: null,
   // Accesibilidad
@@ -157,6 +159,7 @@ export const DEFAULT_SETTINGS = {
   autoRes: true, // resolución dinámica (todas las calidades)
   ao: true, // oclusión ambiental en calidad alta
   gfxV: 2, // versión de los ajustes gráficos (migraciones en loadSettings)
+  moveV: 1, // versión de los ajustes de movimiento (migraciones en loadSettings)
   fpsCap: 0, // 0 = sin límite · 30 = ahorro de batería
   viewDist: 1, // distancia de visión: 0.7 corta · 1 normal · 1.3 lejana
   gyro: 'off', // apuntar con el giroscopio: off | ads (al apuntar) | always
@@ -193,6 +196,11 @@ export function loadSettings() {
       if ((s.gfxV | 0) < 2) {
         if (s.resScale <= 70) s.resScale = 85;
         s.gfxV = 2;
+      }
+      // v1 de movimiento: correr pasa a ser lo normal (Shift para andar)
+      if ((s.moveV | 0) < 1) {
+        s.sprintDefault = true;
+        s.moveV = 1;
       }
       if (!MODES[s.mode]) s.mode = s.mode === 'practice' ? 'creative' : 'solo';
       return s;

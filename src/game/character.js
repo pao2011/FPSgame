@@ -91,11 +91,29 @@ export class Character {
     this.launched = false; // lanzado por una explosión (sin daño al caer)
     this.padLaunch = false; // plataforma de salto (abre el planeador)
     this.regen = null; // curación progresiva (Zumo Slurp)
+    this.zip = null; // tirolesa en la que va colgado
+    this.grapple = null; // tirón del lanzasopapas
+    this.medals = null; // medallones activos { armor, speed, fury, vigor }
+    this.gliderUsed = false;
+    this.parkour = null; // trepando / saltando una valla (jugador)
+    this.climbing = false;
+    this.dive = 0; // metros buceando bajo la superficie
+    this.zipCd = 0;
+    this.sliding = false; // deslizándose por el suelo
+    this.slideT = 0;
+    this.slideCd = 0;
   }
 
   // Temporizadores comunes y curación progresiva.
   tickCommon(dt) {
+    // Suavizado de la cámara al subir/bajar escalones. Sólo el jugador lo
+    // amortiguaba: en los bots se acumulaba al bajar cuestas y sus «ojos»
+    // (de donde salen los disparos) acababan metros por encima de la cabeza.
+    if (!this.isPlayer) this.eyeOffset = 0;
+    else this.eyeOffset = clamp(this.eyeOffset, -1.2, 1.2);
     this.noFallT = Math.max(0, this.noFallT - dt);
+    this.zipCd = Math.max(0, this.zipCd - dt);
+    this.slideCd = Math.max(0, this.slideCd - dt);
     this.launchT = Math.max(0, this.launchT - dt);
     const r = this.regen;
     if (r && this.alive && !this.knocked) {
@@ -226,12 +244,18 @@ export class Character {
     }
     this.swimming = false;
     // Mar, lagos y ríos: cada uno con su nivel de agua
-    const swimY = (this.game.world.waterLevelAt?.(this.pos.x, this.pos.z) ?? WATER_LEVEL) - SWIM_DEPTH;
+    // (buceando, dive baja el punto de flotación; se sigue nadando mientras
+    // se esté por debajo del nivel normal de nado)
+    const surfY = (this.game.world.waterLevelAt?.(this.pos.x, this.pos.z) ?? WATER_LEVEL) - SWIM_DEPTH;
+    const swimY = surfY - (this.dive || 0);
     if (this.mode === 'ground' && this.pos.y < swimY) {
       this.pos.y = swimY;
       if (this.vel.y < 0) this.vel.y = 0;
       this.onGround = true;
       this.swimming = true;
+    } else if (this.mode === 'ground' && this.dive > 0 && this.pos.y < surfY + 0.05) {
+      this.swimming = true;
+      if (this.vel.y < -3) this.vel.y = -3; // se hunde despacio
     }
     // Límite del mundo (incluye la isla de inicio, fuera del mapa)
     const lim = HALF + 560;
@@ -314,6 +338,18 @@ export class Character {
     return best === -Infinity ? null : best;
   }
 
+  // Boca del cañón del arma que lleva en la mano (para las trazadoras). Si
+  // el modelo no está a la vista, un punto a la altura del hombro derecho.
+  gunMuzzle(out, eye, dir) {
+    const m = this.model.root.visible ? this.model.hand.children[0]?.userData.muzzle : null;
+    if (m) {
+      m.getWorldPosition(out);
+      if (out.distanceToSquared(eye) < 1.6 * 1.6) return out;
+    }
+    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    return out.set(eye.x + dir.x * 0.6 + rx * 0.18, eye.y + dir.y * 0.6 - 0.25, eye.z + dir.z * 0.6 + rz * 0.18);
+  }
+
   // ------------------------------------------------------------ IMPACTOS
   // Raycast contra la cabeza y el cuerpo (cajas alineadas a ejes).
   raycastHit(o, dir, maxT) {
@@ -335,6 +371,7 @@ export class Character {
   damage(amount, type, attacker = null) {
     if (!this.alive || amount <= 0) return false;
     if (this.dmgTaken) amount *= this.dmgTaken; // jefe: aguanta más
+    if (this.medals?.armor && type !== 'storm') amount *= 0.8; // medallón de coraza
     if (attacker && attacker !== this && attacker.team === this.team) return false;
     // Isla de inicio y modo dios (creativo): sin daño
     if (this.game.phase === 'lobby' || (this.isPlayer && this.game.godMode)) return false;
@@ -367,6 +404,11 @@ export class Character {
 
   knock(type, attacker) {
     this.knocked = true;
+    this.zip = null;
+    this.sliding = false;
+    this.grapple = null;
+    this.parkour = null;
+    this.climbing = false;
     this.knockHp = 100;
     this.knocker = attacker;
     this.crouching = true;
@@ -470,6 +512,64 @@ export class Character {
       m.legL.rotation.set(0.3 - this.diveAmount * 0.2, 0, -0.25);
       m.legR.rotation.set(0.3 - this.diveAmount * 0.2, 0, 0.25);
       joints(-0.5 + this.diveAmount * 0.4, -0.5 + this.diveAmount * 0.4, 0.3, 0.3);
+      return;
+    }
+    if (this.climbing) {
+      // Trepando o saltando una valla: brazos hacia delante y arriba
+      m.body.rotation.x = -0.35;
+      m.armL.rotation.set(2.4, 0, -0.2);
+      m.armR.rotation.set(2.4, 0, 0.2);
+      m.legL.rotation.set(0.9, 0, 0);
+      m.legR.rotation.set(0.2, 0, 0);
+      joints(-1.2, -0.5, 0.4, 0.4);
+      return;
+    }
+    if (this.swimming && this.mode === 'ground' && !this.vehicle) {
+      // Nadando a crol: cuerpo tumbado, brazadas alternas y patada
+      const hs = this.hSpeed;
+      this.swimPhase = (this.swimPhase || 0) + dt * (2.5 + hs * 0.9);
+      const t = this.swimPhase;
+      const moving = hs > 0.6;
+      m.body.rotation.x = moving ? -1.25 : -0.25;
+      m.body.position.y = moving ? 0.95 : 0.1;
+      m.armL.rotation.set(moving ? Math.PI + Math.sin(t) * 1.6 : 0.8 + Math.sin(t) * 0.5, 0, -0.25);
+      m.armR.rotation.set(moving ? Math.PI - Math.sin(t) * 1.6 : 0.8 - Math.sin(t) * 0.5, 0, 0.25);
+      m.legL.rotation.set(Math.sin(t * 2.2) * 0.35, 0, -0.08);
+      m.legR.rotation.set(-Math.sin(t * 2.2) * 0.35, 0, 0.08);
+      m.head.rotation.x = moving ? 0.9 : 0;
+      joints(-0.25, -0.25, 0.3, 0.3);
+      // Estela y salpicaduras cerca de la cámara
+      const g = this.game;
+      this.splashT = (this.splashT || 0) - dt;
+      if (moving && this.splashT <= 0 && !this.dive && this.pos.distanceToSquared(g.camera.position) < 60 * 60) {
+        this.splashT = 0.18;
+        const wl = g.world.waterLevelAt?.(this.pos.x, this.pos.z) ?? 0;
+        const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+        const v = (this._sp ||= new THREE.Vector3()).set(this.pos.x + fx * 0.6 + (Math.random() - 0.5) * 0.6, wl + 0.05, this.pos.z + fz * 0.6);
+        g.effects.puff(v, 0xeaf6ff, 0.3 + Math.random() * 0.2, 0.6, (this._sv ||= new THREE.Vector3()).set(0, 1.2, 0), 0.6);
+      }
+      return;
+    }
+    if (this.zip) {
+      // Colgado de la tirolesa: brazos arriba agarrando la polea
+      const t = (this.zipS || 0) * 0.35;
+      m.body.rotation.x = -0.08 + Math.sin(t) * 0.04;
+      m.armL.rotation.set(0.1, 0, -2.95);
+      m.armR.rotation.set(0.1, 0, 2.95);
+      m.legL.rotation.set(0.35 + Math.sin(t * 1.3) * 0.1, 0, -0.05);
+      m.legR.rotation.set(0.15 - Math.sin(t * 1.3) * 0.1, 0, 0.05);
+      joints(-0.6, -0.35, 0.15, 0.15);
+      return;
+    }
+    if (this.sliding) {
+      // Deslizándose: echado hacia atrás, una pierna estirada delante
+      m.body.rotation.x = 0.62;
+      m.body.position.y = -0.62;
+      m.legL.rotation.set(1.5, 0, 0.12);
+      m.legR.rotation.set(0.95, 0, -0.12);
+      m.armL.rotation.set(0.3, 0, -0.9);
+      m.armR.rotation.set(1.0, 0, 0.2);
+      joints(-0.1, -1.1, 0.3, 0.6);
       return;
     }
     if (this.mode === 'glide') {
@@ -658,6 +758,76 @@ export class Character {
         joints(-1.2, 0, 0, 0);
         if (t > 3) this.emote = null;
         break;
+      case 'laugh': {
+        // Doblado de risa, con los brazos en la barriga
+        const k = Math.abs(s(t * 9));
+        m.body.rotation.x = 0.25 + k * 0.12;
+        m.head.rotation.x = -0.35 + k * 0.15;
+        m.armL.rotation.set(0.9, 0, -0.3);
+        m.armR.rotation.set(0.9, 0, 0.3);
+        m.body.position.y = k * 0.03;
+        joints(-0.2, -0.2, 1.6, 1.6);
+        if (t > 2.6) this.emote = null;
+        break;
+      }
+      case 'sit': {
+        // Sentado en el suelo con las piernas estiradas (hasta moverse)
+        const k = Math.min(1, t * 3);
+        m.body.position.y = -0.72 * k;
+        m.body.rotation.x = 0.15 * k;
+        m.legL.rotation.set(1.5 * k, 0, -0.1);
+        m.legR.rotation.set(1.5 * k, 0, 0.1);
+        m.armL.rotation.set(-0.4 * k, 0, -0.35 * k);
+        m.armR.rotation.set(-0.4 * k, 0, 0.35 * k);
+        m.head.rotation.y = s(t * 0.7) * 0.3;
+        joints(0, 0, 0.2, 0.2);
+        break;
+      }
+      case 'salute': {
+        const k = Math.min(1, t * 4);
+        m.armR.rotation.set(0.3 * k, 0, 2.2 * k);
+        m.armL.rotation.set(0, 0, 0.05);
+        m.body.rotation.x = -0.05 * k;
+        joints(0, 0, 0, 2.2 * k);
+        if (t > 2.2) this.emote = null;
+        break;
+      }
+      case 'floss': {
+        // Hilo dental: brazos de lado a lado por delante y por detrás
+        const b = t * 8;
+        const sw = s(b);
+        m.body.rotation.z = s(b) * 0.12;
+        m.body.position.x = -sw * 0.05;
+        m.armL.rotation.set(Math.sign(c(b)) * 0.5, 0, -0.5 + sw * 0.5);
+        m.armR.rotation.set(-Math.sign(c(b)) * 0.5, 0, 0.5 + sw * 0.5);
+        m.legL.rotation.set(0, 0, sw * 0.1);
+        m.legR.rotation.set(0, 0, sw * 0.1);
+        joints(0, 0, 0.1, 0.1);
+        break;
+      }
+      case 'guitar': {
+        const b = t * 10;
+        m.body.rotation.x = -0.12 + s(t * 2) * 0.06;
+        m.head.rotation.x = s(t * 5) * 0.2;
+        m.armL.rotation.set(1.0, 0.4, -0.7);
+        m.armR.rotation.set(0.6 + s(b) * 0.25, 0, 0.25);
+        m.legL.rotation.set(-0.15, 0, -0.2);
+        m.legR.rotation.set(0.25, 0, 0.2);
+        m.body.position.y = Math.abs(s(t * 5)) * 0.04;
+        joints(-0.3, -0.5, 1.3, 1.1 + s(b) * 0.2);
+        if (t > 4) this.emote = null;
+        break;
+      }
+      case 'dab': {
+        const k = Math.min(1, t * 6);
+        m.armL.rotation.set(0, 0, -2.3 * k);
+        m.armR.rotation.set(1.2 * k, 0, 0.9 * k);
+        m.head.rotation.set(0.5 * k, 0.5 * k, 0);
+        m.body.rotation.y = -0.2 * k;
+        joints(0, 0, 0.1, 2.0 * k);
+        if (t > 1.6) this.emote = null;
+        break;
+      }
       case 'flex':
       default: {
         const k = Math.min(1, t * 3);

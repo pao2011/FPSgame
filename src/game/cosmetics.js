@@ -87,6 +87,12 @@ export const EMOTES = {
   flexiones: { name: 'Flexiones', rarity: 'raro', desc: 'Entrena entre partida y partida.', anim: 'pushups' },
   giro: { name: 'Giro Loco', rarity: 'epico', desc: 'Da vueltas hasta marearte.', anim: 'spin' },
   victoria: { name: 'Pose de Campeón', rarity: 'legendario', desc: 'Para después de la Victoria Magistral.', anim: 'flex' },
+  risa: { name: 'Carcajada', rarity: 'comun', desc: '¡Ja, ja, ja!', anim: 'laugh', free: true },
+  sentarse: { name: 'A Descansar', rarity: 'comun', desc: 'Siéntate a esperar a la tormenta.', anim: 'sit', free: true },
+  militar: { name: 'Saludo Militar', rarity: 'comun', desc: '¡A sus órdenes!', anim: 'salute', free: true },
+  hilo: { name: 'Hilo Dental', rarity: 'raro', desc: 'El clásico de los bailes.', anim: 'floss' },
+  guitarra: { name: 'Guitarra Invisible', rarity: 'epico', desc: 'Un solo legendario sin guitarra.', anim: 'guitar' },
+  dab: { name: 'Dab', rarity: 'raro', desc: 'Para rematar una buena jugada.', anim: 'dab' },
 };
 
 // Pantallas de carga (fondo de la espera de las partidas).
@@ -198,6 +204,9 @@ export const SHOP = [
   { type: 'trail', id: 'fuego', price: 700 },
   { type: 'emote', id: 'victoria', price: 800 },
   { type: 'emote', id: 'robot', price: 400 },
+  { type: 'emote', id: 'hilo', price: 500 },
+  { type: 'emote', id: 'guitarra', price: 600 },
+  { type: 'emote', id: 'dab', price: 300 },
   { type: 'screen', id: 'castillo', price: 300 },
 ];
 

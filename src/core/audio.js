@@ -449,6 +449,107 @@ class AudioSys {
     this._burst(0.25, { freq: 500, endFreq: 250, type: 'bandpass', gain: 0.25, q: 2 });
   }
 
+  // Tirolesa: chasquido metálico al engancharse/soltarse y zumbido de la polea.
+  zipClack() {
+    if (!this.ctx) return;
+    this._tone(1400, 0.06, { type: 'square', gain: 0.06, slide: 0.6 });
+    this._burst(0.08, { freq: 3200, type: 'bandpass', gain: 0.18, q: 4 });
+    this._tone(380, 0.12, { type: 'triangle', gain: 0.1, delay: 0.03 });
+  }
+
+  // Parkour: agarrarse a un borde / saltar una valla
+  vault(kind) {
+    if (!this.ctx) return;
+    this._burst(0.12, { freq: 700, type: 'bandpass', gain: 0.22, q: 1.5 });
+    if (kind === 'climb') this._burst(0.18, { freq: 300, endFreq: 900, type: 'bandpass', gain: 0.16, delay: 0.12 });
+  }
+
+  // Spray de grafiti: siseo
+  spray() {
+    if (!this.ctx) return;
+    this._burst(0.5, { freq: 5000, type: 'highpass', gain: 0.14 });
+    this._burst(0.1, { freq: 900, type: 'bandpass', gain: 0.1, q: 4 });
+  }
+
+  // Lanzasopapas: «pop» de la ventosa (y chasquido si se pega)
+  grapple(hit) {
+    if (!this.ctx) return;
+    this._tone(300, 0.12, { type: 'triangle', gain: 0.18, slide: 2.2 });
+    this._burst(0.12, { freq: 1500, endFreq: 400, type: 'bandpass', gain: 0.2 });
+    if (hit) this._tone(180, 0.1, { type: 'sine', gain: 0.25, delay: 0.12, slide: 0.5 });
+  }
+
+  setZip(v) {
+    if (!this.ctx) return;
+    if (!this.zipGain) {
+      const c = this.ctx;
+      const s = c.createBufferSource();
+      s.buffer = this.noise;
+      s.loop = true;
+      this.zipFilter = c.createBiquadFilter();
+      this.zipFilter.type = 'bandpass';
+      this.zipFilter.Q.value = 6;
+      this.zipFilter.frequency.value = 1800;
+      this.zipOsc = c.createOscillator();
+      this.zipOsc.type = 'sawtooth';
+      this.zipOsc.frequency.value = 90;
+      const og = c.createGain();
+      og.gain.value = 0.25;
+      this.zipGain = c.createGain();
+      this.zipGain.gain.value = 0;
+      s.connect(this.zipFilter).connect(this.zipGain);
+      this.zipOsc.connect(og).connect(this.zipGain);
+      this.zipGain.connect(this.master);
+      s.start();
+      this.zipOsc.start();
+    }
+    this.zipGain.gain.setTargetAtTime(v * 0.16, this.t, 0.08);
+    this.zipFilter.frequency.setTargetAtTime(1200 + v * 2600, this.t, 0.1);
+    this.zipOsc.frequency.setTargetAtTime(60 + v * 140, this.t, 0.1);
+  }
+
+  // Deslizarse por el suelo: roce de tierra que se apaga.
+  slide(volume = 1) {
+    if (!this.ctx) return;
+    this._burst(0.55, { freq: 900, endFreq: 260, type: 'lowpass', gain: 0.32 * volume });
+    this._burst(0.35, { freq: 2600, endFreq: 1200, type: 'bandpass', gain: 0.08 * volume, q: 1.5 });
+  }
+
+  // Bala que pasa rozando: chasquido supersónico + silbido, desde su lado.
+  whiz(volume = 1, pos = null) {
+    if (!this.ctx || !this._room(volume)) return;
+    this._out = this._at(pos);
+    this._burst(0.03, { freq: 5200, type: 'highpass', gain: 0.35 * volume });
+    this._burst(0.16, { freq: 4200, endFreq: 900, type: 'bandpass', gain: 0.22 * volume, q: 2.5, delay: 0.01 });
+    this._out = null;
+  }
+
+  // Impacto de bala según el material (tierra, madera, piedra, metal, agua).
+  ricochet(mat = 'stone', volume = 1, pos = null) {
+    if (!this.ctx || volume < 0.03 || !this._room(volume * 0.6)) return;
+    this._out = this._at(pos);
+    const v = volume;
+    switch (mat) {
+      case 'metal':
+        this._tone(2400 + Math.random() * 1200, 0.18, { type: 'sine', gain: 0.06 * v, slide: 0.55 });
+        this._burst(0.05, { freq: 4200, type: 'highpass', gain: 0.18 * v });
+        break;
+      case 'wood':
+        this._burst(0.07, { freq: 700, type: 'bandpass', gain: 0.25 * v, q: 2 });
+        break;
+      case 'water':
+        this._burst(0.22, { freq: 1400, endFreq: 500, type: 'bandpass', gain: 0.2 * v, q: 1 });
+        break;
+      case 'dirt':
+        this._burst(0.09, { freq: 500, gain: 0.25 * v });
+        break;
+      default:
+        this._burst(0.05, { freq: 2600, type: 'highpass', gain: 0.16 * v });
+        if (Math.random() < 0.25) this._tone(3000 + Math.random() * 1500, 0.22, { type: 'sine', gain: 0.035 * v, slide: 0.5, delay: 0.02 });
+    }
+    this._out = null;
+  }
+
   setWind(v) {
     if (!this.ctx) return;
     this.windGain.gain.setTargetAtTime(v * 0.5, this.t, 0.15);

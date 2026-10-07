@@ -1,3 +1,4 @@
+import { MAP_SIZE, HALF } from '../world/constants.js';
 import * as THREE from 'three';
 import { WEAPONS, CONSUMABLES, THROWABLES, AMMO, RARITIES, MATERIALS, BUILD_COST, itemRarity } from '../game/items.js';
 import { PIECES, MAT_ORDER, WALL_PRESETS } from '../game/build.js';
@@ -108,7 +109,7 @@ export class HUD {
     const fc = this.el.fullmapCanvas;
     const toWorld = (e) => {
       const r = fc.getBoundingClientRect();
-      return [((e.clientX - r.left) / r.width) * 1600 - 800, ((e.clientY - r.top) / r.height) * 1600 - 800];
+      return [((e.clientX - r.left) / r.width) * MAP_SIZE - HALF, ((e.clientY - r.top) / r.height) * MAP_SIZE - HALF];
     };
     fc.addEventListener('click', (e) => {
       if (game.touch) return; // en táctil lo gestiona src/ui/touch.js (bindMap)
@@ -137,6 +138,11 @@ export class HUD {
     const g = this.game;
     const list = g.pings.map((pg) => ({ pos: pg.pos, cls: pg.mine ? 'mine' : 'mate' }));
     if (g.waypoint) list.push({ pos: g.waypoint, cls: 'wp' });
+    // Con una tarjeta en la mano: su bóveda (también con una marca en pantalla)
+    const vt = g.vault?.target?.();
+    if (vt) list.push({ pos: vt.center, cls: 'vault' });
+    this.updateVaultMark(vt, p);
+    for (const m of g.specials?.compassMarks?.() || []) list.push(m);
     if (this.soundMarks?.length) list.push(...this.soundMarks);
     let html = '';
     for (const m of list) {
@@ -150,6 +156,66 @@ export class HUD {
       else html += `<span class="cmark ${m.cls}" style="left:${200 + rel * 4}px">▼<small>${d} m</small></span>`;
     }
     this.set('marks', this.el.marks, 'html', html);
+  }
+
+  // Marca en pantalla sobre la bóveda de la tarjeta que llevas en la mano
+  // (en el borde, con una flecha, si queda fuera de la vista).
+  updateVaultMark(vt, p) {
+    let el = this.vaultMark;
+    if (!vt) {
+      if (el) el.style.display = 'none';
+      return;
+    }
+    if (!el) {
+      el = this.vaultMark = document.createElement('div');
+      el.id = 'vault-mark';
+      document.getElementById('hud').appendChild(el);
+    }
+    const cam = this.game.camera;
+    const v = (this._vv ||= vt.center.clone()).copy(vt.center);
+    v.y += 4;
+    v.project(cam);
+    const behind = v.z > 1;
+    let x = v.x, y = v.y;
+    if (behind) {
+      x = -x;
+      y = -y;
+    }
+    const off = behind || Math.abs(x) > 0.92 || Math.abs(y) > 0.85;
+    if (off) {
+      const k = Math.max(Math.abs(x) / 0.92, Math.abs(y) / 0.85, 1e-3);
+      x /= k;
+      y /= k;
+    }
+    const d = Math.round(p.pos.distanceTo(vt.center));
+    const html = `<b>${off ? '➤' : '🔒'}</b><span>${vt.name} · ${d} m</span>`;
+    if (el.dataset.html !== html) {
+      el.dataset.html = html;
+      el.innerHTML = html;
+    }
+    el.style.display = 'block';
+    el.classList.toggle('off', off);
+    el.style.left = `${(x * 0.5 + 0.5) * innerWidth}px`;
+    el.style.top = `${(-y * 0.5 + 0.5) * innerHeight}px`;
+    el.firstChild.style.transform = off ? `rotate(${Math.atan2(-y, x)}rad)` : '';
+  }
+
+  // Medallones activos (junto a la salud).
+  updateMedals(p) {
+    const icons = { armor: '🛡️', speed: '⚡', fury: '🔥', vigor: '💚' };
+    const names = { armor: 'Coraza', speed: 'Velocidad', fury: 'Furia', vigor: 'Vigor' };
+    const list = Object.keys(p.medals || {});
+    const html = list.map((k) => `<span title="Medallón de ${names[k]}">${icons[k]}</span>`).join('') + (p.crowned ? '<span class="crown" title="Llevas la corona">👑</span>' : '');
+    let el = this.medalsEl;
+    if (!el) {
+      el = this.medalsEl = document.createElement('div');
+      el.id = 'medals';
+      document.getElementById('bottom-left').prepend(el);
+    }
+    if (el.dataset.html !== html) {
+      el.dataset.html = html;
+      el.innerHTML = html;
+    }
   }
 
   fps(dt) {
@@ -333,12 +399,6 @@ export class HUD {
   setScope(on) {
     this.scoped = on;
     this.set('scope', this.el.scope, 'display', on ? 'block' : 'none');
-    // En táctil los botones van por encima de la mira telescópica (si no, el
-    // negro de alrededor tapa el botón de dejar de apuntar)
-    if (this.last.scopeBody !== on) {
-      this.last.scopeBody = on;
-      document.body.classList.toggle('scoped', on);
-    }
   }
 
   setPrompt(text) {
@@ -372,6 +432,7 @@ export class HUD {
     this.updateTeam();
     this.set('sh', e.shFill, 'width', `${p.shield}%`);
     this.set('shv', e.shVal, 'text', `${Math.ceil(p.shield)}`);
+    this.updateMedals(p);
 
     // Inventario
     for (let i = 0; i < 6; i++) {

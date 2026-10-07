@@ -226,7 +226,7 @@ export class Combat {
     this.updateProjectiles(dt);
     this.updatePads(dt);
     this.throwCd = Math.max(0, this.throwCd - dt);
-    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.busy || g.creative?.busy || p.knocked || g.spectating) {
+    if (p.mode !== 'ground' || !p.alive || p.vehicle || g.build.busy || g.creative?.busy || p.knocked || g.spectating || g.emoteWheel?.open) {
       this.viewmodel.visible = false;
       this.adsBlend = 0;
       g.hud.setScope(false);
@@ -397,7 +397,7 @@ export class Combat {
       const end = hit ? hit.point : origin.clone().addScaledVector(d, def.range);
       g.effects.tracer(muzzle, end, 0xfff1b0, def.pellets ? 0.015 : 0.022);
       ends.push(end);
-      if (hit) this.collectHit(hit, def, item, hits);
+      if (hit) this.collectHit(hit, def, item, hits, origin);
     }
     this.applyHits(hits);
     if (!def.explosive) g.net?.shotFx(p, def.sound, muzzle, ends);
@@ -444,8 +444,8 @@ export class Combat {
     ends.push(e);
   }
 
-  collectHit(hit, def, item, hits) {
-    const base = def.damage[item.rarity];
+  collectHit(hit, def, item, hits, origin = null) {
+    const base = def.damage[item.rarity] * (this.player.medals?.fury ? 1.2 : 1);
     if (hit.kind === 'dummy' || hit.kind === 'character') {
       let dmg = base * (hit.head ? def.headMult : 1);
       if (def.falloff) {
@@ -459,7 +459,7 @@ export class Combat {
       hits.set(target, e);
       return;
     }
-    this.game.effects.impact(hit.point, hit.normal, hit.kind === 'terrain' ? 0xb59a6a : 0xffd27a);
+    this.game.effects.bulletImpact(origin || this.game.aimOrigin, hit);
     const data = hit.box?.data;
     if (data?.type === 'build') this.game.build.damage(data.piece, base);
     else if (data?.type === 'car') data.ref.damage(base * 0.6);
@@ -469,6 +469,7 @@ export class Combat {
   applyHits(hits) {
     const g = this.game;
     for (const [target, e] of hits) {
+      const hadShield = e.kind !== 'dummy' && target.shield > 0;
       let killed;
       if (e.kind === 'dummy') killed = g.dummies.damage(target, e.dmg, e.head, e.point);
       else killed = this.damageCharacter(target, e.dmg, e.head, e.point, 'bullet');
@@ -476,6 +477,7 @@ export class Combat {
       if (e.head && e.kind !== 'dummy') g.player.stats.heads++;
       g.hud.hitMarker(e.head, killed);
       g.audio.hit(e.head);
+      if (e.kind !== 'dummy') g.effects.hitSpark(e.point, hadShield, e.head);
     }
   }
 
@@ -500,7 +502,7 @@ export class Combat {
       if (hit) {
         g.effects.tracer(prev, hit.point, 0xffffff, 0.04, 0.12);
         const hits = new Map();
-        this.collectHit(hit, pr.def, pr.item, hits);
+        this.collectHit(hit, pr.def, pr.item, hits, prev);
         this.applyHits(hits);
         this.projectiles.splice(i, 1);
         continue;
@@ -556,6 +558,20 @@ export class Combat {
     const quick = this.quickHealPending === this.player.selected;
     const start = (input.hit('fire') || quick) && this.swapT <= 0;
     if (!quick || this.swapT <= 0) this.quickHealPending = false;
+    // Lanzasopapas: cada disparo gasta una carga y tira de ti hasta la ventosa
+    if (def.grapple) {
+      if (start && !p.grapple && this.cooldown <= 0) {
+        this.cooldown = 0.35;
+        this.kick = 1;
+        if (p.fireGrapple(g.aimOrigin, g.aimDir, g.aimSkip)) this.consumeOne(item);
+      }
+      return;
+    }
+    // Tarjeta de bóveda: se lleva encima (la flecha del HUD señala su bóveda)
+    if (def.card !== undefined) {
+      if (start) g.hud.toast(`💳 ${def.name}: sigue la flecha hasta su bóveda y pulsa ${g.touch ? 'USAR' : g.key('interact')} en la puerta`);
+      return;
+    }
     // Plataforma de salto: un clic la coloca en el suelo
     if (def.deploy) {
       if (start && this.deployPad()) this.consumeOne(item);
@@ -566,6 +582,10 @@ export class Combat {
       const shieldFull = !def.shield || p.shield >= def.cap;
       if (def.over && p.health >= 100 && p.shield >= 100) {
         g.hud.toast('Ya tienes la salud y el escudo al máximo');
+        return;
+      }
+      if (def.medal && p.medals?.[def.medal]) {
+        g.hud.toast('Ya tienes ese medallón activo');
         return;
       }
       if (def.heal && def.shield && healFull && shieldFull) {
@@ -587,6 +607,7 @@ export class Combat {
       this.useT -= dt;
       g.hud.setProgress(1 - this.useT / def.use, `Usando: ${def.name}`);
       if (this.useT <= 0) {
+        if (def.medal) p.addMedal(def.medal);
         if (def.heal) p.health = Math.min(def.cap, p.health + def.heal);
         if (def.shield) p.shield = Math.min(def.cap, p.shield + def.shield);
         if (def.over) p.regen = { left: def.over.total, rate: def.over.rate };

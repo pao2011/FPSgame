@@ -1,6 +1,7 @@
 // Consejos de la pantalla de carga y de la espera de la partida online, y
 // la pantalla de emparejamiento (mapa + jugadores + consejos).
 import { SCREENS } from '../game/cosmetics.js';
+import { loadingScene } from './loading.js';
 
 // Fondo de la pantalla de carga elegida en la taquilla.
 export function screenBg(id) {
@@ -25,6 +26,10 @@ export const TIPS = [
   'Los bots oyen tus disparos: dispara sólo cuando merezca la pena.',
   'Coger altura con construcciones te da ventaja, pero un explosivo puede tirarlo todo.',
   'Puedes personalizar todos los controles en Opciones → Controles.',
+  'Corriendo, agáchate para deslizarte: cuesta abajo ganas velocidad y puedes saltar sin perder el impulso.',
+  'Las tirolesas (líneas amarillas en el mapa) cruzan la isla en segundos: E para engancharte, Espacio para saltar.',
+  'Si oyes el silbido de una bala, te están disparando: busca cobertura detrás de sacos, cajas o coches.',
+  'Desde las cimas nevadas se ve medio mapa, pero también te ven a ti.',
 ];
 
 export function randomTip(prev = '') {
@@ -47,7 +52,7 @@ export class MatchLoader {
     const g = this.game;
     const humans = info.ents.filter((e) => !e.bot);
     const bots = info.ents.length - humans.length;
-    this.el.innerHTML = `<div class="ml-box">
+    this.el.innerHTML = `<div class="ml-art">${loadingScene()}</div><div class="ml-box">
       <div class="ml-map"><canvas width="360" height="360"></canvas></div>
       <div class="ml-side">
         <div class="ml-title">${modeName || 'Partida online'}</div>
@@ -71,6 +76,38 @@ export class MatchLoader {
     this.el.style.display = 'flex';
   }
 
+  // Pantalla de carga de una partida local: ilustración animada, mapa de la
+  // isla, modo, consejos y barra de progreso.
+  showLocal(modeName, sub = '') {
+    const g = this.game;
+    clearTimeout(this.hideT);
+    this.el.classList.remove('out');
+    this.el.innerHTML = `<div class="ml-art">${loadingScene()}</div><div class="ml-box">
+      <div class="ml-map"><canvas width="360" height="360"></canvas></div>
+      <div class="ml-side">
+        <div class="ml-title">${modeName}</div>
+        <div class="ml-sub">${sub}</div>
+        <div class="ml-status"><span class="spin"></span><span class="ml-st">Preparando la partida…</span></div>
+        <div class="ml-bar"><div></div></div>
+        <div class="ml-tip"><small>CONSEJO</small><p></p></div>
+      </div></div>`;
+    try {
+      g.mapRenderer.drawFull(this.el.querySelector('canvas').getContext('2d'), 360, 360, g);
+    } catch {
+      /* sin mapa */
+    }
+    this.el.querySelector('.ml-tip p').textContent = randomTip();
+    this.el.style.background = screenBg(g.settings.outfit?.screen);
+    this.el.style.display = 'flex';
+    this.shownAt = performance.now();
+    this.setProgress(0.08);
+  }
+
+  setProgress(f) {
+    const b = this.el.querySelector('.ml-bar div');
+    if (b) b.style.width = `${Math.round(f * 100)}%`;
+  }
+
   status(text) {
     const st = this.el.querySelector('.ml-st');
     if (st) st.textContent = text;
@@ -81,7 +118,8 @@ export class MatchLoader {
     this.timer = null;
     if (this.el.style.display === 'none') return;
     this.el.classList.add('out');
-    setTimeout(() => {
+    clearTimeout(this.hideT);
+    this.hideT = setTimeout(() => {
       this.el.style.display = 'none';
       this.el.classList.remove('out');
     }, 350);
