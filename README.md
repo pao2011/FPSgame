@@ -23,8 +23,12 @@ trepar, o hacia una valla o una **ventana para atravesarla**), 🪠
 planeador** con Espacio mientras quede altura, 🏊 **natación mejorada**
 (brazadas, salpicaduras, nadar más rápido corriendo y **bucear** agachado).
 😀 **Rueda de gestos** (mantén N) con 6 gestos nuevos y 🎨 **grafitis** para
-pintar paredes; en móvil, botones de gestos y de **dar las gracias al
-conductor**.
+pintar paredes. **Todo funciona también en el móvil**: botón de gestos y
+grafitis (😀), botón **GRACIAS** al conductor en el autobús, SALTAR para
+trepar o atravesar ventanas (con el joystick hacia delante) y para
+abrir/**CERRAR** el planeador, AGACHARSE para deslizarte, bucear o soltarte
+de la tirolesa, joystick atrás para dar la vuelta en la tirolesa y USAR
+(mantener) para abrir llamas y suministros.
 
 **Isla más densa, montañas y tirolesas:** 🗺️ **mapa más compacto y lleno**
 (la isla pasa de 740 a 592 m de radio y entre las zonas hay **puestos

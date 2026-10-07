@@ -569,7 +569,7 @@ export class Combat {
     }
     // Tarjeta de bóveda: se lleva encima (la flecha del HUD señala su bóveda)
     if (def.card !== undefined) {
-      if (start) g.hud.toast(`💳 ${def.name}: sigue la flecha hasta su bóveda y pulsa ${g.key('interact')} en la puerta`);
+      if (start) g.hud.toast(`💳 ${def.name}: sigue la flecha hasta su bóveda y pulsa ${g.touch ? 'USAR' : g.key('interact')} en la puerta`);
       return;
     }
     // Plataforma de salto: un clic la coloca en el suelo

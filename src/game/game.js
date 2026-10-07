@@ -1904,7 +1904,9 @@ export class Game {
       return;
     }
     if (p.zip) {
-      this.hud.setPrompt(`<kbd>${this.key('jump')}</kbd> Saltar · <kbd>${this.key('crouch')}</kbd> Soltarse · <kbd>${this.key('back')}</kbd> Dar la vuelta`);
+      // (en táctil no se muestra: el botón USAR no hace nada en la tirolesa)
+      if (this.touch) this.hud.setPrompt(null);
+      else this.hud.setPrompt(`<kbd>${this.key('jump')}</kbd> Saltar · <kbd>${this.key('crouch')}</kbd> Soltarse · <kbd>${this.key('back')}</kbd> Dar la vuelta`);
       return;
     }
     if (this.build.editing) {

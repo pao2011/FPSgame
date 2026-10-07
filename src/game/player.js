@@ -601,6 +601,8 @@ export class Player extends Character {
     this.sprinting = false;
     this.autorun = false;
     this.game.audio.zipClack();
+    this.zipBackHeld = true; // (que el joystick ya echado atrás no dé la vuelta al engancharse)
+    if (this.game.touch) this.game.hud.toast('Tirolesa · SALTAR: saltar · AGACHARSE: soltarte · joystick atrás: dar la vuelta');
   }
 
   updateZip(dt, input) {
@@ -610,8 +612,12 @@ export class Player extends Character {
     const up = zT.y * this.zipDir;
     const target = clamp(23 - up * 22, 15, 30);
     this.zipSpeed += (target - this.zipSpeed) * Math.min(1, dt * 1.4);
-    // Atrás: frena y da la vuelta
-    if (input.hit('back') && this.zipSpeed < 30) {
+    // Atrás (o el joystick táctil hacia atrás): frena y da la vuelta
+    const ax = input.axis;
+    const backTouch = ax?.active && ax.y < -0.7;
+    const backHit = input.hit('back') || (backTouch && !this.zipBackHeld);
+    this.zipBackHeld = backTouch;
+    if (backHit && this.zipSpeed < 30) {
       this.zipDir = -this.zipDir;
       this.zipSpeed = 4;
     }

@@ -59,7 +59,7 @@ export class EmoteWheel {
           return `<button class="ew-item${it.ring ? '' : ' spray'}" data-i="${off + k}" style="transform:translate(${x}px,${y}px)" title="${it.name}">${inner}</button>`;
         })
         .join('');
-    this.el.innerHTML = `<div class="ew-ring">${place(emotes, R1, 0)}${place(sprays, R2, emotes.length)}<div class="ew-label">${this.touch ? 'Toca un gesto o un grafiti' : 'Mueve el ratón y suelta N'}</div></div>`;
+    this.el.innerHTML = `<div class="ew-ring">${place(emotes, R1, 0)}${place(sprays, R2, emotes.length)}<div class="ew-label">${this.touch ? 'Toca un gesto o un grafiti · fuera para cerrar' : 'Mueve el ratón y suelta N'}</div></div>`;
     this.btns = [...this.el.querySelectorAll('.ew-item')];
     this.label = this.el.querySelector('.ew-label');
     this.el.style.display = 'flex';
