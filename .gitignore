@@ -6,5 +6,3 @@ IslaRoyale*.apk
 android/keystore.properties
 *.jks
 *.keystore
-.env
-.env.local

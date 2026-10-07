@@ -245,16 +245,11 @@ export class Menu {
           <div class="heat-legend"><span><i style="background:#5ad1ff"></i>Aterrizajes</span><span><i style="background:#ff5a4a"></i>Eliminaciones</span></div></div>
         <div class="end-hint" id="end-hint"></div>
       </div>`;
-    // (cada pocas partidas, un anuncio entre partidas: nunca con «Quitar anuncios»)
-    $('again-btn').addEventListener('click', async () => {
-      await this.game.money?.afterMatch();
+    $('again-btn').addEventListener('click', () => {
       if (this.endOnline) this.game.quitToMenu();
       else this.game.startMatch(this.s.mode);
     });
-    $('menu-btn').addEventListener('click', async () => {
-      await this.game.money?.afterMatch();
-      this.game.quitToMenu();
-    });
+    $('menu-btn').addEventListener('click', () => this.game.quitToMenu());
     $('spectate-btn').addEventListener('click', () => this.game.viewer.open('live'));
     $('replay-btn').addEventListener('click', () => this.game.viewer.open('replay'));
     $('heat-btn').addEventListener('click', () => {
@@ -718,16 +713,6 @@ export class Menu {
 
   showEnd(win, cause, stats, online = false, xp = null) {
     $('end-xp').innerHTML = this.prog.endHTML(xp);
-    // Duplicar las monedas de la partida viendo un anuncio (una vez)
-    $('end-xp').querySelector('[data-double]')?.addEventListener('click', async (e) => {
-      const b = e.currentTarget;
-      b.disabled = true;
-      if (await this.game.money.showReward()) {
-        this.game.progress.data.tokens += xp.coins;
-        this.game.progress.save();
-        b.textContent = `✓ +${xp.coins} monedas más`;
-      } else b.disabled = false;
-    });
     this.endOnline = online;
     $('again-btn').textContent = online ? 'VOLVER AL GRUPO' : 'JUGAR OTRA VEZ';
     $('menu-btn').style.display = online ? 'none' : '';

@@ -9,7 +9,6 @@ import {
 import { rewardText, challengeDef, ARENA_DIVS, arenaDiv } from '../game/progress.js';
 import { MODES } from '../game/modes.js';
 import { esc } from './online.js';
-import { MONEY } from '../monetization/config.js';
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 const TYPE_LIST = Object.fromEntries(Object.entries(COSMETIC_TYPES).map(([k, v]) => [k, v.list]));
@@ -260,7 +259,7 @@ export class ProgressionUI {
         </div>
         <div class="pass-tokens">🪙 <b>${pr.tokens}</b><small>tokens</small></div>
         ${pr.premium ? '<div class="premium-badge">⭐ PREMIUM</div>'
-          : `<div class="buy-pass-box">${this.passMoneyButton()}<button class="buy-pass ${this.confirmBuy === 'pass' ? 'confirm' : ''}" data-buy-pass>${this.confirmBuy === 'pass' ? `¿Confirmar? ${PASS.price} 🪙` : `⭐ Pase premium · ${PASS.price} 🪙`}</button></div>`}
+          : `<button class="buy-pass ${this.confirmBuy === 'pass' ? 'confirm' : ''}" data-buy-pass>${this.confirmBuy === 'pass' ? `¿Confirmar? ${PASS.price} 🪙` : `⭐ Pase premium · ${PASS.price} 🪙`}</button>`}
       </div>
       <div class="pass-track">${labels}${cols}</div>
       <div class="pass-info">${chal}${stats}</div>
@@ -277,63 +276,9 @@ export class ProgressionUI {
         <div><h3>Logros <small>${pr.data.achievements.length}/${ACHIEVEMENTS.length}</small></h3><div class="ach-list">${ach}</div></div>
       </div>`;
     el.querySelector('[data-buy-pass]')?.addEventListener('click', () => this.buy({ type: 'pass', price: PASS.price }, 'pass', el));
-    el.querySelector('[data-buy-pass-money]')?.addEventListener('click', () => this.game.money.buy(MONEY.products.pass));
     const track = el.querySelector('.pass-track');
     const cur = track.querySelector(`.tier[data-tier="${tier}"]`);
     if (cur) track.scrollLeft = Math.max(0, cur.offsetLeft - 200);
-  }
-
-  // Pase premium con dinero (app de Android con Google Play)
-  passMoneyButton() {
-    const m = this.game.money;
-    const id = MONEY.products.pass;
-    if (!m?.canBuy(id)) return '';
-    return `<button class="buy-pass money" data-buy-pass-money ${m.busy ? 'disabled' : ''}>⭐ Pase premium · ${esc(m.price(id))}</button>`;
-  }
-
-  // «Apoya el juego»: anuncio con recompensa, quitar anuncios, donaciones.
-  supportHTML() {
-    const m = this.game.money;
-    if (!m) return '';
-    const pr = this.progress;
-    const P = MONEY.products;
-    const cards = [];
-    if (m.adsOk || m.noAds) {
-      const left = m.rewardsLeft;
-      cards.push(`<div class="sup-card ad">
-        <div class="sup-ico">📺</div><b>${m.noAds ? 'Recompensa diaria' : 'Mira un anuncio'}</b>
-        <small>+${MONEY.reward.tokens} tokens · te quedan ${left} hoy</small>
-        <button data-sup="reward" ${!m.canReward ? 'disabled' : ''}>${m.busy ? 'CARGANDO…' : left ? (m.noAds ? 'RECOGER' : 'VER ANUNCIO') : 'MAÑANA MÁS'}</button></div>`);
-    }
-    if (m.native && m.canBuy(P.noads) || pr.data.noAds) {
-      cards.push(`<div class="sup-card noads ${pr.data.noAds ? 'owned' : ''}">
-        <div class="sup-ico">🚫</div><b>Quitar anuncios</b>
-        <small>Sin anuncios entre partidas y recompensas sin ver anuncios</small>
-        <button data-sup="noads" ${pr.data.noAds || m.busy ? 'disabled' : ''}>${pr.data.noAds ? 'ACTIVO' : esc(m.price(P.noads))}</button></div>`);
-    }
-    if (m.canDonate) {
-      const tips = m.native
-        ? P.tips.filter((id) => m.canBuy(id)).map((id) => `<button data-tip="${id}" ${m.busy ? 'disabled' : ''}>💖 ${esc(m.price(id))}</button>`).join('')
-        : '<button data-sup="donate">💖 DONAR</button>';
-      cards.push(`<div class="sup-card donate">
-        <div class="sup-ico">💖</div><b>Donar</b>
-        <small>Ayuda a que el juego siga creciendo (no da ventajas)</small><div class="tips">${tips}</div></div>`);
-    }
-    if (!cards.length) return '';
-    return `<div class="support"><h3>Apoya el juego</h3><div class="sup-grid">${cards.join('')}</div>
-      ${m.native && m.billing ? '<button class="secondary restore" data-sup="restore">Restaurar compras</button>' : ''}</div>`;
-  }
-
-  bindSupport(el) {
-    const m = this.game.money;
-    el.querySelectorAll('[data-sup]').forEach((b) => b.addEventListener('click', () => {
-      const k = b.dataset.sup;
-      if (k === 'reward') m.rewardTokens();
-      else if (k === 'noads') m.buy(MONEY.products.noads);
-      else if (k === 'donate') m.donateWeb();
-      else if (k === 'restore') m.restore();
-    }));
-    el.querySelectorAll('[data-tip]').forEach((b) => b.addEventListener('click', () => m.buy(b.dataset.tip)));
   }
 
   buy(item, confirmKey, el) {
@@ -366,8 +311,7 @@ export class ProgressionUI {
         return `<div class="shop-card pass-card ${pr.premium ? 'owned' : ''}">
           <div class="shop-img pass-img">⭐<span>PASE<br>PREMIUM</span></div>
           <b>Pase de batalla premium</b><small>${esc(PASS.name)} · 3 skins, accesorios, camuflajes y tokens</small>
-          <button data-shop="${i}" class="${this.confirmBuy === key ? 'confirm' : ''}" ${pr.premium ? 'disabled' : ''}>${pr.premium ? 'LO TIENES' : this.confirmBuy === key ? '¿CONFIRMAR?' : `🪙 ${it.price}`}</button>
-          ${pr.premium ? '' : this.passMoneyButton()}</div>`;
+          <button data-shop="${i}" class="${this.confirmBuy === key ? 'confirm' : ''}" ${pr.premium ? 'disabled' : ''}>${pr.premium ? 'LO TIENES' : this.confirmBuy === key ? '¿CONFIRMAR?' : `🪙 ${it.price}`}</button></div>`;
       }
       const c = cosmetic(it.type, it.id);
       const owned = pr.owns(it.type, it.id);
@@ -379,10 +323,7 @@ export class ProgressionUI {
     el.innerHTML = `
       <div class="shop-head"><h2>Tienda</h2><div class="pass-tokens">🪙 <b>${pr.tokens}</b><small>tokens</small></div></div>
       <p class="lead">Consigue tokens subiendo de nivel el pase de batalla y gástalos en skins, accesorios o el pase premium.</p>
-      ${this.supportHTML()}
       <div class="shop-grid">${cards}</div>`;
-    this.bindSupport(el);
-    el.querySelector('[data-buy-pass-money]')?.addEventListener('click', () => this.game.money.buy(MONEY.products.pass));
     el.querySelectorAll('[data-shop]').forEach((b) => b.addEventListener('click', () => {
       const i = Number(b.dataset.shop);
       this.buy(SHOP[i], `shop${i}`, el);
@@ -473,7 +414,7 @@ export class ProgressionUI {
     const rewards = res.rewards.map((r) => `<span class="rw">${r.type === 'tokens' ? '🪙' : '🎁'} ${esc(rewardText(r))}</span>`).join('');
     return `<div class="xp-summary">
       <div class="xp-total">+${res.total} XP <small>Pase de batalla</small></div>
-      ${res.coins ? `<div class="coins-total">🪙 +${res.coins} monedas <small>para la tienda</small>${this.game.money?.canReward ? ` <button class="double-coins" data-double>📺 ${this.game.money.noAds ? 'Duplicar' : 'Duplicar con un anuncio'} (+${res.coins})</button>` : ''}</div>` : ''}
+      ${res.coins ? `<div class="coins-total">🪙 +${res.coins} monedas <small>para la tienda</small></div>` : ''}
       ${res.crown ? `<div class="crown-next">👑 Empiezas la próxima partida con la corona${res.crown > 1 ? ` (racha ×${res.crown})` : ''}: si te eliminan, se cae al suelo</div>` : ''}
       <div class="xp-lines">${res.lines.map((l) => `<div><span>${esc(l.label)}</span><b>+${l.xp}</b></div>`).join('')}</div>
       ${up ? `<div class="lvl-up">⬆ ¡NIVEL ${res.level}!</div>` : `<div class="lvl-now">Nivel ${res.level} · ${this.progress.tierXp}/${PASS.xpPerTier} XP</div>`}

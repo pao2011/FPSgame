@@ -4,12 +4,6 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
-**Apoya el juego:** 📺 **anuncios con recompensa** (+30 tokens, hasta 6 al
-día, y **duplicar las monedas** de la partida), un anuncio entre partidas
-cada 3, ⭐ **pase de batalla premium** también con dinero (Google Play), 🚫
-**Quitar anuncios** y 💖 **donaciones**. Cómo configurarlo (AdMob, productos
-de Google Play, enlace de donaciones) en [`movil/README.md`](movil/README.md#monetización-anuncios-pase-premium-y-donaciones).
-
 **Jefes, bóvedas y botín especial:** 👹 **tres jefes nuevos** en las
 ciudades (👠 Reina del Asfalto, 🎖️ Capitán Tormenta y 🔧 El Ingeniero, cada
 uno con escolta) que sueltan un **arma mítica**, una **cura**, la **tarjeta de

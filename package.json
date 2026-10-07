@@ -21,10 +21,8 @@
     "arte": "node movil/arte/generar-arte.mjs"
   },
   "dependencies": {
-    "@capacitor-community/admob": "^8.2.1",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.2",
-    "@capgo/native-purchases": "^8.8.2",
     "three": "^0.186.1",
     "ws": "^8.22.0"
   },

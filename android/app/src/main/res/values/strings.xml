@@ -4,7 +4,4 @@
     <string name="title_activity_main">Isla Royale</string>
     <string name="package_name">com.islaroyale.juego</string>
     <string name="custom_url_scheme">com.islaroyale.juego</string>
-    <!-- ID de APLICACIÓN de AdMob (AdMob → Aplicaciones → Configuración).
-         Este es el de PRUEBA de Google: cámbialo por el tuyo antes de publicar. -->
-    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
 </resources>

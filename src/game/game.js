@@ -57,7 +57,6 @@ import { OnlineMatch } from '../net/match.js';
 import { ISLAND_RADIUS, MAP_SEED } from '../world/constants.js';
 import { findZipline } from '../world/ziplines.js';
 import { Specials } from './specials.js';
-import { Money } from '../monetization/money.js';
 import { Sprays } from './sprays.js';
 import { EmoteWheel } from '../ui/emotewheel.js';
 
@@ -306,11 +305,6 @@ export class Game {
     if (this.settings.outfit) this.player.setOutfit(this.settings.outfit);
 
     this.menu = new Menu(this);
-    // Anuncios, compras y donaciones (se inicializa en main.js, sin esperar)
-    this.money = new Money(this);
-    this.money.onChange(() => {
-      if (this.state === 'menu' && (this.menu.panel === 'shop' || this.menu.panel === 'pass')) this.menu.show(this.menu.panel);
-    });
     this.creativePanel = new CreativePanel(this);
     this.inventory = new InventoryPanel(this);
     this.a11y = new Accessibility(this);

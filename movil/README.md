@@ -121,45 +121,6 @@ política de privacidad ([`tienda/FICHA.md`](tienda/FICHA.md)).
 
 ---
 
-## Monetización: anuncios, pase premium y donaciones
-
-El juego ya trae anuncios con recompensa, un anuncio entre partidas (cada 3),
-el pase de batalla premium con dinero, «Quitar anuncios» y donaciones. Hasta
-que pongas tus IDs, la app muestra **anuncios de prueba de Google** (no se
-cobra nada) y las compras no aparecen. Para activarlo de verdad:
-
-1. **AdMob** (<https://admob.google.com>): crea la app y dos bloques de
-   anuncios: **Bonificado** e **Intersticial**.
-   - El **ID de aplicación** (`ca-app-pub-…~…`) va en
-     `android/app/src/main/res/values/strings.xml` (`admob_app_id`).
-   - Los **IDs de los bloques** (`ca-app-pub-…/…`) van como secretos del
-     repositorio (Settings → Secrets and variables → Actions):
-     `VITE_ADMOB_REWARDED`, `VITE_ADMOB_INTERSTITIAL` y
-     `VITE_ADMOB_TESTING` = `0` (anuncios reales). Si compilas en tu
-     ordenador, ponlos en un archivo `.env` en la raíz del proyecto.
-2. **Google Play Console** → Monetizar → Productos → **Productos integrados
-   en la aplicación**: crea estos productos con estos IDs exactos y actívalos:
-   | ID | Qué es | Tipo |
-   |---|---|---|
-   | `pase_premium_t1` | Pase de batalla premium (temporada 1) | Pago único |
-   | `quitar_anuncios` | Quitar anuncios | Pago único |
-   | `propina_1`, `propina_3`, `propina_5` | Donaciones | Se pueden comprar varias veces |
-
-   Los precios los pones en Play Console y el juego los muestra en tu moneda.
-   Las compras sólo funcionan con la app instalada **desde Google Play**
-   (aunque sea en una prueba interna), no con la APK descargada de GitHub.
-3. **Donaciones en la web** (opcional): secreto `VITE_DONATE_URL` con tu
-   enlace de Ko-fi, PayPal.me, etc. En la app de Android las donaciones van
-   por Google Play (Google no permite enlaces de pago externos).
-4. **Anuncios en la web** (opcional): necesitas una cuenta de AdSense
-   aprobada para juegos («H5 Games Ads»); pon tu `ca-pub-…` en el secreto
-   `VITE_ADSENSE_CLIENT`.
-5. En Play Console declara que la app **contiene anuncios** y actualiza la
-   **Seguridad de los datos** (AdMob usa el ID de publicidad). La política de
-   privacidad de `tienda/politica-privacidad.md` ya lo explica.
-
-La configuración completa está en `src/monetization/config.js`.
-
 ## Jugar con un amigo de PC
 
 El modo online es el mismo en PC y en móvil: **jugáis juntos en la misma

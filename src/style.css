@@ -4411,30 +4411,3 @@ body.touch #fullmap-canvas { transform-origin: 50% 50%; touch-action: none; }
 
 /* Buceando: pantalla teñida de azul */
 body.underwater #app::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 30%, rgba(40, 140, 200, 0.25), rgba(5, 40, 80, 0.55)); z-index: 1; }
-
-/* Apoya el juego: anuncios con recompensa, quitar anuncios y donaciones */
-.support { margin: 4px 0 18px; }
-.support h3 { margin: 0 0 8px; }
-.sup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-.sup-card {
-  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
-  padding: 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.07); border: 2px solid rgba(255, 255, 255, 0.12);
-}
-.sup-card.ad { border-color: rgba(90, 200, 255, 0.5); }
-.sup-card.noads { border-color: rgba(255, 120, 90, 0.5); }
-.sup-card.donate { border-color: rgba(255, 110, 180, 0.5); }
-.sup-card.owned { opacity: 0.75; }
-.sup-ico { font-size: 30px; }
-.sup-card small { opacity: 0.8; min-height: 2.4em; }
-.sup-card .tips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-.support .restore { margin-top: 8px; font-size: 12px; padding: 6px 12px; }
-.buy-pass-box { display: flex; flex-direction: column; gap: 6px; }
-.buy-pass.money { background: linear-gradient(180deg, #5fe05a, #2fa84f); color: #06210b; }
-.pass-card .buy-pass.money { margin-top: 6px; width: 100%; font-size: 13px; }
-.double-coins { margin-left: 8px; font-size: 13px; padding: 4px 10px; vertical-align: middle; }
-#fake-ad { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.88); }
-#fake-ad .fa-box { width: min(420px, calc(100vw - 32px)); padding: 24px; border-radius: 16px; background: #fff; color: #111; text-align: center; display: flex; flex-direction: column; gap: 10px; }
-#fake-ad small { letter-spacing: 3px; font-weight: 800; color: #888; }
-#fake-ad .fa-t { font: 900 42px var(--display); color: #2f6fd6; }
-.sup-card button, .sup-card .tips button { font-size: 14px; padding: 8px 14px; width: auto; min-width: 120px; margin: 4px 0 0; letter-spacing: 1px; }
-.sup-card .tips button { min-width: 0; }
