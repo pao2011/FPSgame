@@ -88,6 +88,8 @@ export class World {
     this.hydro = new Hydro(); // ríos y lagos
     this.sites = []; // cuevas y trincheras
     this.ziplines = []; // tirolesas
+    this.vaults = []; // bóvedas (0: isla central; 1-3: ciudades de los jefes)
+    this.bossPois = []; // { vaultId, poi }
     // deferred: quien crea el mundo recorre generateSteps() poco a poco (la
     // pantalla de carga muestra el progreso); si no, se genera de golpe.
     if (!opts.deferred) for (const _ of this.generateSteps());
@@ -101,6 +103,7 @@ export class World {
       // se colocan después, lejos del agua.
       this.planCentralLake();
       this.placePOIs();
+      this.assignBosses();
       for (const poi of this.pois) this.layoutPOI(poi);
       yield ['Trazando ríos y carreteras…', 0.05];
       this.planWater();
@@ -250,6 +253,39 @@ export class World {
     }
   }
 
+  // Tres zonas con jefe y bóveda (cada una se abre con la tarjeta de su jefe).
+  assignBosses() {
+    const prefs = [['city', 'apartments', 'town'], ['military', 'industrial', 'town'], ['industrial', 'apartments', 'farm', 'town']];
+    prefs.forEach((types, i) => {
+      for (const t of types) {
+        const poi = this.pois.find((p) => p.type === t && !p.boss);
+        if (!poi) continue;
+        poi.boss = { vaultId: i + 1 };
+        this.bossPois.push({ vaultId: i + 1, poi });
+        break;
+      }
+    });
+  }
+
+  // Bóveda de una zona con jefe: en una diagonal (entre calles), con la
+  // puerta hacia el centro de la zona. Se reserva antes que el resto.
+  reserveVault(poi, at) {
+    // (a 18 m del centro en diagonal no la pisa ninguna calle de ningún tipo de zona)
+    for (const d of [18, 20, 16]) {
+      for (const [su, sv] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        const [x, z] = at(su * d, sv * d);
+        const rot = rotFacing(poi.x - x, poi.z - z);
+        const plan = this.plan('vault', x, z, rot, 12, 16, { poi, chests: 3, chestChance: 1, vaultId: poi.boss.vaultId, onRoad: true });
+        if (this.tryPlan(plan, 1)) {
+          // (el plano mide 16 de fondo por los sacos terreros; la bóveda en sí, 10)
+          poi.boss.vault = plan;
+          return plan;
+        }
+      }
+    }
+    return null;
+  }
+
   // Calle recta dentro de una zona (alineada a un eje). Devuelve sus extremos.
   street(poi, axis, offset, halfLen, width = 8) {
     const pts = [];
@@ -320,6 +356,7 @@ export class World {
       }
       this.dummySpots.push({ x: at(0, 10)[0], z: at(0, 10)[1] });
     };
+    if (poi.boss) this.reserveVault(poi, at);
 
     switch (poi.type) {
       case 'town': {
@@ -784,7 +821,7 @@ export class World {
     }
     const rot = rotFacing(dx, dz);
     const vx = L.x - dx * 3, vz = L.z - dz * 3;
-    const vault = this.plan('vault', vx, vz, rot, 12, 10, { island: true, chests: 3, chestChance: 1 });
+    const vault = this.plan('vault', vx, vz, rot, 12, 10, { island: true, chests: 3, chestChance: 1, vaultId: 0 });
     this.plans.push(vault);
     this.occ.add(vx - vault.fw / 2 - 1, vz - vault.fd / 2 - 1, vx + vault.fw / 2 + 1, vz + vault.fd / 2 + 1, vault);
     I.vaultPlan = vault;
@@ -1415,10 +1452,17 @@ export class World {
       for (const c of cands) {
         c.chance = chance;
         // Los cofres de la bóveda siempre están (detrás de la puerta blindada)
-        if (p.kind === 'vault') c.forced = c.vault = true;
+        if (p.kind === 'vault') {
+          c.forced = c.vault = true;
+          c.vaultId = p.vaultId ?? 0;
+        }
         this.chestSpots.push(c);
       }
-      if (p.kind === 'vault') this.vault = { x: p.x, z: p.z, rot: p.rot, door: p.door, fw: p.fw, fd: p.fd };
+      if (p.kind === 'vault') {
+        const v = { id: p.vaultId ?? 0, x: p.x, z: p.z, rot: p.rot, door: p.door, fw: p.fw, fd: p.fd, name: p.poi ? p.poi.name : 'Isla de la Bóveda' };
+        this.vaults.push(v);
+        if (v.id === 0) this.vault = v;
+      }
       this.lootSpots.push(...ctx.lootSpots);
       this.ammoSpots.push(...ctx.ammoSpots);
       this.ladders.push(...ctx.ladders);

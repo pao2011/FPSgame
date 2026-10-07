@@ -414,6 +414,8 @@ export class ProgressionUI {
     const rewards = res.rewards.map((r) => `<span class="rw">${r.type === 'tokens' ? '🪙' : '🎁'} ${esc(rewardText(r))}</span>`).join('');
     return `<div class="xp-summary">
       <div class="xp-total">+${res.total} XP <small>Pase de batalla</small></div>
+      ${res.coins ? `<div class="coins-total">🪙 +${res.coins} monedas <small>para la tienda</small></div>` : ''}
+      ${res.crown ? `<div class="crown-next">👑 Empiezas la próxima partida con la corona${res.crown > 1 ? ` (racha ×${res.crown})` : ''}: si te eliminan, se cae al suelo</div>` : ''}
       <div class="xp-lines">${res.lines.map((l) => `<div><span>${esc(l.label)}</span><b>+${l.xp}</b></div>`).join('')}</div>
       ${up ? `<div class="lvl-up">⬆ ¡NIVEL ${res.level}!</div>` : `<div class="lvl-now">Nivel ${res.level} · ${this.progress.tierXp}/${PASS.xpPerTier} XP</div>`}
       ${rewards ? `<div class="rewards">${rewards}</div>` : ''}

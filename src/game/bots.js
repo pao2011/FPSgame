@@ -155,6 +155,11 @@ class Bot extends Character {
     // Marcas de jefe/secuaz (los bots se reutilizan entre partidas)
     this.boss = false;
     this.bossKind = null;
+    this.bossDef = null;
+    if (this.bossOutfit) {
+      this.bossOutfit = false;
+      this.setOutfit(randomOutfit());
+    }
     this.home = null;
     this.dmgTaken = 0;
     this.rumor = null; // último tiroteo oído a lo lejos

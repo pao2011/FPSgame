@@ -2545,6 +2545,24 @@ button.x:hover {
 .cmark.mine { color: #ffd34d; }
 .cmark.mate { color: #3fa9ff; }
 .cmark.wp { color: #ff4d6d; }
+.cmark.vault { color: #ffd34d; font-size: 18px; text-shadow: 0 0 8px rgba(255, 211, 77, 0.8); }
+.cmark.drop { font-size: 15px; top: 14px; }
+#vault-mark {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+  color: #ffd34d;
+  font-weight: 800;
+  text-shadow: 0 2px 6px #000;
+  z-index: 5;
+}
+#vault-mark b { display: block; font-size: 26px; line-height: 1; }
+#vault-mark span { font-size: 12px; white-space: nowrap; }
+#vault-mark.off b { color: #ffd34d; }
+#medals { display: flex; gap: 4px; margin-bottom: 4px; font-size: 18px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); }
+#medals .crown { animation: crownGlow 1.6s ease-in-out infinite alternate; }
+@keyframes crownGlow { from { filter: drop-shadow(0 0 2px #ffd34d); } to { filter: drop-shadow(0 0 8px #ffd34d); } }
 
 #ammo .mag.low { color: #ff6b6b; }
 
@@ -2922,7 +2940,7 @@ body.touch #touch-ui {
 #touch-ui[data-mode='dead'] .t-btn:not(.t-pause),
 #touch-ui[data-mode='dead'] .t-joy,
 #touch-ui[data-mode='knocked'] .t-btn:not(.t-pause):not(.t-cam),
-#touch-ui[data-mode='bus'] .t-btn:not(.t-pause):not(.t-jump),
+#touch-ui[data-mode='bus'] .t-btn:not(.t-pause):not(.t-jump):not(.t-thanks),
 #touch-ui[data-mode='bus'] .t-joy,
 #touch-ui[data-mode='air'] .t-btn:not(.t-pause):not(.t-jump):not(.t-cam),
 #touch-ui[data-mode='car'] .t-btn:not(.t-pause):not(.t-jump):not(.t-use):not(.t-cam),
@@ -4354,3 +4372,42 @@ body.touch #fullmap-canvas { transform-origin: 50% 50%; touch-action: none; }
   font-weight: 800;
   cursor: pointer;
 }
+
+/* Monedas y corona en la pantalla final */
+.coins-total { font-family: var(--display); font-size: 20px; color: #ffd34d; margin: 2px 0 6px; }
+.coins-total small, .xp-total small { font-family: Inter, sans-serif; font-size: 12px; opacity: 0.75; }
+.crown-next { margin: 6px 0; padding: 6px 10px; border-radius: 8px; background: rgba(255, 211, 77, 0.15); color: #ffe9a8; font-weight: 700; font-size: 13px; }
+
+/* Botón de dar las gracias al conductor (sólo en el autobús) y de gestos */
+.t-thanks {
+  --s: 64px;
+  right: calc(150px * var(--tsz) + var(--sr));
+  bottom: calc(40px * var(--tsz) + var(--sb));
+  background: radial-gradient(circle at 50% 35%, rgba(90, 210, 120, 0.7), rgba(20, 110, 50, 0.7));
+  display: none !important;
+}
+#touch-ui[data-mode='bus']:not(.thanked) .t-thanks { display: flex !important; animation: use-pop 0.3s ease-out; }
+.t-emote {
+  --s: 46px;
+  left: calc(146px * var(--tsz) + var(--sl));
+  top: calc(152px + var(--st));
+}
+#touch-ui:not([data-mode='ground']) .t-emote { display: none; }
+
+/* Rueda de gestos y grafitis */
+#emote-wheel { position: fixed; inset: 0; z-index: 70; align-items: center; justify-content: center; background: radial-gradient(circle, rgba(5, 10, 25, 0.25), rgba(5, 10, 25, 0.55)); }
+#emote-wheel .ew-ring { position: relative; width: 0; height: 0; }
+#emote-wheel .ew-ring::before { content: ''; position: absolute; left: -190px; top: -190px; width: 380px; height: 380px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); background: rgba(10, 20, 45, 0.55); }
+.ew-item {
+  position: absolute; left: -30px; top: -30px; width: 60px; height: 60px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45); background: rgba(20, 35, 70, 0.85); color: #fff; font-size: 28px;
+  display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; transition: background 0.1s, box-shadow 0.1s;
+}
+.ew-item.spray { width: 52px; height: 52px; left: -26px; top: -26px; background: rgba(40, 20, 70, 0.85); }
+.ew-item img { width: 82%; height: 82%; object-fit: contain; }
+.ew-item.sel, .ew-item:hover { background: #ffd34d; color: #2b1d00; box-shadow: 0 0 18px rgba(255, 211, 77, 0.8); border-color: #fff; }
+.ew-label { position: absolute; left: -120px; width: 240px; top: 205px; text-align: center; font-weight: 800; text-shadow: 0 2px 6px #000; }
+@media (max-height: 460px) { #emote-wheel .ew-ring { transform: scale(0.75); } }
+
+/* Buceando: pantalla teñida de azul */
+body.underwater #app::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 30%, rgba(40, 140, 200, 0.25), rgba(5, 40, 80, 0.55)); z-index: 1; }

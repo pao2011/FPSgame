@@ -4,7 +4,7 @@ import { OnlineUI } from './online.js';
 import { ProgressionUI } from './progression.js';
 import { makeCharacter } from '../game/models.js';
 import { ACTIONS, keyName, defaultBinds } from '../core/binds.js';
-import { MAP_NAME } from '../world/constants.js';
+import { MAP_NAME, MAP_SIZE, HALF } from '../world/constants.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -685,7 +685,7 @@ export class Menu {
     ctx.drawImage(g.mapRenderer.base, 0, 0, w, h);
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(0, 0, w, h);
-    const toPx = (x, z) => [((x + 800) / 1600) * w, ((z + 800) / 1600) * h];
+    const toPx = (x, z) => [((x + HALF) / MAP_SIZE) * w, ((z + HALF) / MAP_SIZE) * h];
     ctx.globalCompositeOperation = 'lighter';
     const blob = (x, z, col, r) => {
       const [px, py] = toPx(x, z);

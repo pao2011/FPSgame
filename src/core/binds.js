@@ -36,7 +36,7 @@ export const ACTIONS = [
 
   { group: 'Interfaz', id: 'map', name: 'Mapa', keys: ['KeyM', ''] },
   { group: 'Interfaz', id: 'voice', name: 'Hablar (chat de voz online)', keys: ['KeyY', ''] },
-  { group: 'Interfaz', id: 'emote', name: 'Gesto (el que lleves en la taquilla)', keys: ['KeyN', ''] },
+  { group: 'Interfaz', id: 'emote', name: 'Gestos y grafitis (mantener: rueda · toque: gesto de la taquilla)', keys: ['KeyN', ''] },
   { group: 'Interfaz', id: 'inventory', name: 'Inventario (arrastrar y soltar)', keys: ['Tab', 'KeyI'] },
   { group: 'Interfaz', id: 'camera', name: 'Cámara 1ª / 3ª persona', keys: ['KeyV', ''] },
   { group: 'Interfaz', id: 'ping', name: 'Marcar ubicación', keys: ['Mouse1', 'KeyT'] },

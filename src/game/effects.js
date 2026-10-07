@@ -375,6 +375,46 @@ export class Effects {
     }
   }
 
+  // Cuerda del lanzasopapas (from = mano, to = ventosa); null la oculta.
+  rope(from, to) {
+    if (!this.ropeMesh) {
+      const g = new THREE.CylinderGeometry(0.025, 0.025, 1, 5, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2);
+      this.ropeMesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xe8e0c8 }));
+      this.ropeMesh.frustumCulled = false;
+      this.scene.add(this.ropeMesh);
+    }
+    const m = this.ropeMesh;
+    if (!from) {
+      m.visible = false;
+      if (this.plungerMesh) this.plungerMesh.visible = false;
+      return;
+    }
+    m.visible = true;
+    m.position.copy(from);
+    m.lookAt(to);
+    m.scale.set(1, 1, from.distanceTo(to));
+    this.ropeAt = this.game.time;
+  }
+
+  // Ventosa pegada donde ha impactado el lanzasopapas.
+  plunger(point, normal) {
+    if (!this.plungerMesh) {
+      const g = new THREE.Group();
+      const cup = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x8a1a1a }));
+      g.add(cup);
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 6), new THREE.MeshLambertMaterial({ color: 0xc8a070 }));
+      stick.position.y = 0.25;
+      g.add(stick);
+      this.plungerMesh = g;
+      this.scene.add(g);
+    }
+    const g = this.plungerMesh;
+    g.visible = true;
+    g.position.copy(point);
+    g.quaternion.setFromUnitVectors(UP, normal || UP);
+    this.puff(point, 0xdddddd, 0.3, 0.5, null, 0.4);
+  }
+
   // Bala enemiga que pasa cerca de la cámara: silbido y un leve temblor.
   // from→to es el recorrido de la bala.
   nearMiss(from, to, shooter) {
@@ -502,6 +542,8 @@ export class Effects {
   }
 
   update(dt) {
+    // La cuerda se oculta sola si nadie la ha actualizado (tirón cortado)
+    if (this.ropeMesh?.visible && this.game.time - (this.ropeAt || 0) > 0.15) this.rope(null);
     if (this.booms?.length) {
       for (let i = this.booms.length - 1; i >= 0; i--) {
         const b = this.booms[i];

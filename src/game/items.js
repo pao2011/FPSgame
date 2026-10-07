@@ -160,7 +160,20 @@ export const CONSUMABLES = {
   flopper: { name: 'Pez saltarín', max: 4, pickup: 1, use: 1, heal: 40, cap: 100, rarity: 2 },
   slurp: { name: 'Zumo Slurp', max: 2, pickup: 1, use: 2, over: { total: 75, rate: 15 }, cap: 100, rarity: 3 },
   launchpad: { name: 'Plataforma de salto', max: 1, pickup: 1, use: 0, deploy: true, rarity: 3 },
+  // Lanzasopapas: dispara una ventosa con cuerda y tira de ti hasta ella (cargas)
+  grappler: { name: 'Lanzasopapas', max: 15, pickup: 10, use: 0, grapple: true, rarity: 3 },
+  // Tarjetas de las bóvedas (card = id de la bóveda que abren)
+  card0: { name: 'Tarjeta dorada', max: 1, pickup: 1, use: 0, card: 0, rarity: 5, color: 0xffc83d },
+  card1: { name: 'Tarjeta roja', max: 1, pickup: 1, use: 0, card: 1, rarity: 4, color: 0xe0443a },
+  card2: { name: 'Tarjeta azul', max: 1, pickup: 1, use: 0, card: 2, rarity: 4, color: 0x3a8dff },
+  card3: { name: 'Tarjeta verde', max: 1, pickup: 1, use: 0, card: 3, rarity: 4, color: 0x3ac25a },
+  // Medallones de batalla: al usarlos mejoran una característica (toda la vida)
+  medal_armor: { name: 'Medallón de Coraza', max: 1, pickup: 1, use: 1.2, medal: 'armor', rarity: 5, color: 0x9aa8b8, desc: '-20 % de daño recibido' },
+  medal_speed: { name: 'Medallón de Velocidad', max: 1, pickup: 1, use: 1.2, medal: 'speed', rarity: 5, color: 0x4fd2ff, desc: '+15 % de velocidad' },
+  medal_fury: { name: 'Medallón de Furia', max: 1, pickup: 1, use: 1.2, medal: 'fury', rarity: 5, color: 0xff5a3a, desc: '+20 % de daño con armas' },
+  medal_vigor: { name: 'Medallón de Vigor', max: 1, pickup: 1, use: 1.2, medal: 'vigor', rarity: 5, color: 0x5ee05a, desc: 'Regenera escudo sin parar' },
 };
+export const MEDALS = ['medal_armor', 'medal_speed', 'medal_fury', 'medal_vigor'];
 
 // Objetos arrojadizos (se lanzan con clic izquierdo; el C4 se detona con el
 // derecho). fuse: s hasta explotar (desde que se lanza o desde que se pega).
@@ -250,7 +263,7 @@ function ammoFor(type, mult = 1) {
 }
 
 function rollConsumable(rng) {
-  const type = pickKey(rng, { bandage: 35, smallshield: 30, medkit: 15, shieldpot: 20, chugjug: 3, flopper: 9, slurp: 6, launchpad: 3 });
+  const type = pickKey(rng, { bandage: 35, smallshield: 30, medkit: 15, shieldpot: 20, chugjug: 3, flopper: 9, slurp: 6, launchpad: 3, grappler: 5 });
   return { kind: 'consumable', type, count: CONSUMABLES[type].pickup };
 }
 
@@ -295,7 +308,7 @@ export function catalog() {
     const w = WEAPONS[type];
     for (let r = w.minR ?? 0; r <= (w.maxR ?? MYTHIC); r++) out.push(makeWeapon(type, r));
   }
-  for (const type in CONSUMABLES) out.push({ kind: 'consumable', type, count: CONSUMABLES[type].max });
+  for (const type in CONSUMABLES) if (CONSUMABLES[type].card === undefined) out.push({ kind: 'consumable', type, count: CONSUMABLES[type].max });
   for (const type in THROWABLES) out.push({ kind: 'throwable', type, count: THROWABLES[type].max });
   for (const a in AMMO) out.push({ kind: 'ammo', ammo: a, count: a === 'rockets' ? 20 : 120 });
   for (const m in MATERIALS) out.push({ kind: 'material', mat: m, count: 500 });

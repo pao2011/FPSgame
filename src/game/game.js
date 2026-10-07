@@ -56,6 +56,9 @@ import { NetClient } from '../net/client.js';
 import { OnlineMatch } from '../net/match.js';
 import { ISLAND_RADIUS, MAP_SEED } from '../world/constants.js';
 import { findZipline } from '../world/ziplines.js';
+import { Specials } from './specials.js';
+import { Sprays } from './sprays.js';
+import { EmoteWheel } from '../ui/emotewheel.js';
 
 const SKY_COLOR = SKY.horizon;
 const tmpV = new THREE.Vector3();
@@ -308,6 +311,9 @@ export class Game {
     this.loader = new MatchLoader(this);
     this.npcs = new NPCs(this);
     this.vault = new Vault(this);
+    this.specials = new Specials(this);
+    this.sprays = new Sprays(this);
+    this.emoteWheel = new EmoteWheel(this);
     this.reboot = new RebootVans(this);
     this.mapDoors = new MapDoors(this);
     this.replay = new Replay(this);
@@ -700,7 +706,6 @@ export class Game {
     this.botDiff = this.settings.difficulty;
     this.bots.reset(nb, teams, this.settings.difficulty);
     this.chars = [this.player, ...this.bots.list];
-    this.npcs.startBoss(mode);
     this.beginMatch({});
     if (mode.creative) {
       const p = this.player;
@@ -827,6 +832,9 @@ export class Game {
     this.weather.start(o.stormRng, mode);
     this.npcs.reset(mode, !!o.online);
     this.vault.reset();
+    this.specials.clear();
+    this.sprays.clear();
+    this.emoteWheel.close();
     this.reboot.reset();
     this.mapDoors.reset();
     this.storm.reset(mode.arena ? 'duel' : mode.respawn ? 'rumble' : 'br', o.stormRng);
@@ -988,6 +996,9 @@ export class Game {
     p.pitch = -0.35;
     this.matchTime = 0;
     this.audio.busHorn?.();
+    // Jefes, botín especial (llamas, suministros) y la corona: ya en la isla
+    this.npcs.startBoss(this.mode);
+    this.specials?.start(this.mode);
     // Algunos bots dan las gracias al conductor
     this.thanksQueue = this.bots.list.filter(() => random.chance(0.25)).map((b) => ({ b, t: random.float(1, 9) }));
     this.thanksT = 0;
@@ -1073,6 +1084,7 @@ export class Game {
     this.bus.active = false;
     this.bus.model.visible = false;
     this.bots.reset(0, [], 'normal');
+    this.specials.clear();
     this.explosives.reset();
     this.chars = [this.player];
     this.player.model.root.visible = false;
@@ -1089,6 +1101,7 @@ export class Game {
       kills: p.stats.kills, damage: p.stats.damage, chests: p.stats.chests, built: p.stats.built, edits: p.stats.edits,
       heads: p.stats.heads, time: this.matchTime, place, win, online: !!this.net, respawn: !!this.mode.respawn,
       distance: Math.round(p.stats.distance || 0), emotes: p.stats.emotes || 0, mode: this.mode.id, quests: p.stats.quests || 0,
+      crownWin: win ? this.specials?.crownWin() || 0 : 0,
     });
     return res;
   }
@@ -1599,7 +1612,7 @@ export class Game {
       if (this.build.editing) mult = st.editSensitivity ?? 1;
       else if (this.build.active) mult = st.buildSensitivity ?? 1;
       else if (this.combat.adsBlend > 0.5) mult = this.hud.scoped ? st.scopeSensitivity ?? 0.6 : st.adsSensitivity ?? 0.8;
-      if (this.creativePanel.open) mult = 0;
+      if (this.creativePanel.open || this.emoteWheel.open) mult = 0;
       const sens = 0.0022 * zoom * st.sensitivity * mult;
       const tsens = 0.0048 * zoom * (st.touchSens || 1) * mult;
       const inv = st.invertY ? -1 : 1;
@@ -1656,6 +1669,8 @@ export class Game {
     if (this.state === 'playing') {
       this.npcs.update(dt);
       this.vault.update(dt, this.time);
+      this.specials.update(dt);
+      this.sprays.update(dt);
       this.reboot.update(dt);
     }
     if (this.state === 'playing') this.weather.update(dt);
@@ -1675,13 +1690,12 @@ export class Game {
     const p = this.player;
     if (input.hit('map')) this.hud.toggleMap();
     if (input.hit('inventory')) this.inventory.toggle();
-    if (input.hit('emote') && !p.emote && !this.build.active) {
-      const id = p.outfit?.emote || 'baile';
-      if (p.startEmote(id)) {
-        p.stats.emotes = (p.stats.emotes || 0) + 1;
-        this.net?.sendEmote(p, id);
-      }
-    } else if (p.emote && (input.held('forward') || input.held('back') || input.held('left') || input.held('right') || input.hit('jump') || input.held('fire') || input.held('ads') || input.axis.active || this.build.active)) {
+    // Rueda de gestos y grafitis (mantener N; en táctil, el botón de gestos)
+    if (input.hit('emote') && !this.emoteWheel.open) this.emoteWheel.show();
+    else if (this.emoteWheel.open && !this.touch && !input.held('emote')) this.emoteWheel.release();
+    if (this.emoteWheel.open && (p.mode !== 'ground' || !p.alive || p.knocked)) this.emoteWheel.close();
+    this.emoteWheel.update(input);
+    if (p.emote && (input.held('forward') || input.held('back') || input.held('left') || input.held('right') || input.hit('jump') || input.held('fire') || input.held('ads') || input.axis.active || this.build.active)) {
       p.stopEmote();
       this.net?.sendEmote(p, '');
     }
@@ -1875,7 +1889,12 @@ export class Game {
   updateInteraction(input, dt) {
     const p = this.player;
     if (p.mode !== 'ground' || !p.alive || p.knocked) {
-      this.hud.setPrompt(null);
+      // En el aire: abrir/cerrar el planeador
+      const J = `<kbd>${this.key('jump')}</kbd>`;
+      if (this.touch) this.hud.setPrompt(null); // (en táctil lo dice el botón de saltar)
+      else if (p.alive && p.mode === 'glide' && p.canCloseGlider) this.hud.setPrompt(`${J} Cerrar el planeador`);
+      else if (p.alive && p.mode === 'freefall' && p.gliderUsed && p.altitude > 6) this.hud.setPrompt(`${J} Abrir el planeador`);
+      else this.hud.setPrompt(null);
       return;
     }
     const E = `<kbd>${this.key('interact')}</kbd>`;
@@ -1943,6 +1962,7 @@ export class Game {
     }
 
     if (this.reboot.interact(input, dt, E)) return;
+    if ((!target || target.score < 1.2) && this.specials.interact(input, E, dt)) return;
     if ((!target || target.score < 1.2) && this.vault.interact(input, E)) return;
     const npc = !target || target.score < 1.2 ? this.npcs.findNear(p.pos) : null;
     if (npc) {
@@ -2123,6 +2143,11 @@ export class Game {
     const k = (this.weather?.active ? this.weather.fogMul ?? 1 : 1) * this.gfx.fog * Math.min(1, 0.5 + 0.5 * view);
     fog.near = near * k;
     fog.far = far * k;
+    if (this.underwater) {
+      fog.color.setHex(0x1d5f86);
+      fog.near = near;
+      fog.far = far;
+    }
     const cam = this.camera.position;
     this.world.lod.update(dt, cam, fog.far, this.world.terrain.heightAt(cam.x, cam.z), false, view);
   }
@@ -2233,6 +2258,19 @@ export class Game {
       cam.rotation.x += (Math.random() - 0.5) * k;
       cam.rotation.y += (Math.random() - 0.5) * k;
     }
+    // Bajo el agua (buceando): niebla azul cerrada y pantalla teñida
+    const wl = this.world.waterLevelAt?.(cam.position.x, cam.position.z) ?? 0;
+    const under = cam.position.y < wl - 0.05 && this.state === 'playing';
+    if (under !== this.underwater) {
+      this.underwater = under;
+      document.body.classList.toggle('underwater', under);
+      if (under) {
+        this.fogColor = this.scene.fog.color.getHex();
+        this.scene.fog.color.setHex(0x1d5f86);
+      } else if (this.fogColor !== undefined) this.scene.fog.color.setHex(this.fogColor);
+    }
+    if (under) this.setFog(1, 38);
+    if (p.grapple) cam.fov += (fov + 10 - cam.fov) * Math.min(1, dt * 6);
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     this.storm.updateVisual(cam.position);

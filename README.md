@@ -4,6 +4,28 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Jefes, bóvedas y botín especial:** 👹 **tres jefes nuevos** en las
+ciudades (👠 Reina del Asfalto, 🎖️ Capitán Tormenta y 🔧 El Ingeniero, cada
+uno con escolta) que sueltan un **arma mítica**, una **cura**, la **tarjeta de
+la bóveda de su ciudad** y un **medallón de batalla** (Coraza −20 % de daño,
+Velocidad +15 %, Furia +20 % de daño o Vigor: regenera escudo). Con la tarjeta
+en la mano, una **flecha en pantalla y en la brújula señala su bóveda**.
+Arreglado el **Guardián de la Bóveda**, que no aparecía (la Isla de Inicio se
+llevaba a los jefes al autobús). 🦙 **Llamas de botín** escondidas (mantén E),
+📦 **suministros que caen del cielo** con globo y columna de humo, 👑
+**corona**: la ganas al ganar, empiezas la siguiente partida con ella, se cae
+al suelo si te eliminan y si sigues ganando la racha de **victorias
+coronadas** sube. 🪙 **Monedas en cada partida** para la tienda y
+**multiplicador de XP** por rachas (top 5 y victorias seguidas).
+**Movimiento:** 🧗 **parkour** (salta hacia un muro de hasta 2,8 m para
+trepar, o hacia una valla o una **ventana para atravesarla**), 🪠
+**lanzasopapas** (dispara una ventosa y tira de ti), 🪂 **abrir y cerrar el
+planeador** con Espacio mientras quede altura, 🏊 **natación mejorada**
+(brazadas, salpicaduras, nadar más rápido corriendo y **bucear** agachado).
+😀 **Rueda de gestos** (mantén N) con 6 gestos nuevos y 🎨 **grafitis** para
+pintar paredes; en móvil, botones de gestos y de **dar las gracias al
+conductor**.
+
 **Isla más densa, montañas y tirolesas:** 🗺️ **mapa más compacto y lleno**
 (la isla pasa de 740 a 592 m de radio y entre las zonas hay **puestos
 avanzados**: cabañas, ruinas, torres de vigilancia, almacenes de contenedores,

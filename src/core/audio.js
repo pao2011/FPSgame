@@ -457,6 +457,28 @@ class AudioSys {
     this._tone(380, 0.12, { type: 'triangle', gain: 0.1, delay: 0.03 });
   }
 
+  // Parkour: agarrarse a un borde / saltar una valla
+  vault(kind) {
+    if (!this.ctx) return;
+    this._burst(0.12, { freq: 700, type: 'bandpass', gain: 0.22, q: 1.5 });
+    if (kind === 'climb') this._burst(0.18, { freq: 300, endFreq: 900, type: 'bandpass', gain: 0.16, delay: 0.12 });
+  }
+
+  // Spray de grafiti: siseo
+  spray() {
+    if (!this.ctx) return;
+    this._burst(0.5, { freq: 5000, type: 'highpass', gain: 0.14 });
+    this._burst(0.1, { freq: 900, type: 'bandpass', gain: 0.1, q: 4 });
+  }
+
+  // Lanzasopapas: «pop» de la ventosa (y chasquido si se pega)
+  grapple(hit) {
+    if (!this.ctx) return;
+    this._tone(300, 0.12, { type: 'triangle', gain: 0.18, slide: 2.2 });
+    this._burst(0.12, { freq: 1500, endFreq: 400, type: 'bandpass', gain: 0.2 });
+    if (hit) this._tone(180, 0.1, { type: 'sine', gain: 0.25, delay: 0.12, slide: 0.5 });
+  }
+
   setZip(v) {
     if (!this.ctx) return;
     if (!this.zipGain) {

@@ -257,14 +257,25 @@ export class MapRenderer {
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     }
-    // Bóveda de la isla central y su tarjeta
-    if (game.vault?.v) {
-      const v = game.vault;
+    // Bóvedas (la de la tarjeta que llevas en la mano, resaltada), botín
+    // especial (llamas y suministros) y la corona
+    {
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(v.open ? '🔓' : '🔒', ox + v.v.x * scale, oy + v.v.z * scale);
-      if (v.card) ctx.fillText('💳', ox + v.card.pos.x * scale, oy + v.card.pos.z * scale);
+      const tgt = game.vault?.target?.();
+      for (const vt of game.vault?.list || []) {
+        const x = ox + vt.v.x * scale, y = oy + vt.v.z * scale;
+        if (vt === tgt) {
+          ctx.strokeStyle = '#ffd34d';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(x, y, 11, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillText(vt.open ? '🔓' : '🔒', x, y);
+      }
+      for (const m of game.specials?.mapMarks?.() || []) ctx.fillText(m.icon, ox + m.x * scale, oy + m.z * scale);
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     }

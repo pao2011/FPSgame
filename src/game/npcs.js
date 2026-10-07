@@ -28,6 +28,26 @@ const STOCK = [
   [['sniper', 4, 450], ['burst', 3, 260], ['pistol', 4, 150]],
   [['heavyar', 4, 420], ['tactical', 3, 280], ['revolver', 3, 180]],
 ];
+// Jefes de las ciudades con bóveda (world.bossPois): cada uno suelta un
+// arma mítica, una cura, la tarjeta de su bóveda y un medallón de batalla.
+export const CITY_BOSSES = {
+  1: {
+    name: '👠 Reina del Asfalto', mythic: ['burst', 'Rifle de ráfagas'], heal: { type: 'slurp', count: 2 }, medal: 'medal_speed',
+    outfit: { skin: 0xf0c8a0, shirt: 0xd6206a, pants: 0x1b1b22, hair: 0xf2f2f2, acc: 'gafas' },
+    weapons: [['burst', 5], ['smg', 4], ['shotgun', 4]],
+  },
+  2: {
+    name: '🎖️ Capitán Tormenta', mythic: ['heavyar', 'Fusil pesado'], heal: { type: 'medkit', count: 3 }, medal: 'medal_armor',
+    outfit: { skin: 0xa86f48, shirt: 0x4a5a2a, pants: 0x3a4a22, hair: 0x1a1a1a, acc: 'vikingo' },
+    weapons: [['heavyar', 5], ['tactical', 4], ['rocket', 3]],
+  },
+  3: {
+    name: '🔧 El Ingeniero', mythic: ['tactical', 'Escopeta táctica'], heal: { type: 'chugjug', count: 1 }, medal: 'medal_fury',
+    outfit: { skin: 0xe0b48a, shirt: 0xff7a1a, pants: 0x2b3a5a, hair: 0x7a3a1a, acc: 'auriculares' },
+    weapons: [['tactical', 5], ['minigun', 4], ['glauncher', 3]],
+  },
+};
+
 const QUESTS = [
   { kind: 'relics', goal: 3, gold: 300, text: 'Encuentra 3 fragmentos de reliquia en' },
   { kind: 'kills', goal: 2, gold: 250, text: 'Elimina a 2 rivales' },
@@ -124,11 +144,62 @@ export class NPCs {
     this.guardian = null;
   }
 
-  // Tras crear los bots de la partida (sólo contra bots, battle royale).
+  // Al despegar el autobús (sólo contra bots, battle royale). Antes se
+  // creaban al empezar la partida y la Isla de Inicio se los llevaba con el
+  // resto de bots (por eso el Guardián de la Bóveda no aparecía).
   startBoss(mode) {
     if (this.game.net || mode.respawn || mode.creative || mode.noBots) return;
     if (this.list.length) this.spawnBoss();
     this.spawnGuardian();
+    this.spawnCityBosses();
+  }
+
+  // Coloca un jefe o secuaz de pie en (x, z), quieto en su zona.
+  addBoss(x, z, diff, loadout, home, extra) {
+    const g = this.game;
+    const b = g.bots.spawnExtra(99, diff, x, z, loadout);
+    b.pos.set(x, g.world.groundBelow(x, z, 200) + 1, z);
+    b.vel.set(0, 0, 0);
+    b.mode = 'ground';
+    b.boss = true; // no cuenta para el recuento de supervivientes
+    b.home = home;
+    b.bold = 1; // no acuden a tiroteos lejanos
+    b.model.root.visible = true;
+    Object.assign(b, extra);
+    if (extra.outfit) {
+      b.setOutfit(extra.outfit);
+      b.bossOutfit = true;
+    }
+    if (!g.chars.includes(b)) g.chars.push(b);
+    return b;
+  }
+
+  // Jefe delante de la bóveda de su ciudad, con tres secuaces.
+  spawnCityBosses() {
+    const g = this.game;
+    this.cityBosses = [];
+    for (const { vaultId, poi } of g.world.bossPois) {
+      const def = CITY_BOSSES[vaultId];
+      const vt = g.vault.byId(vaultId);
+      if (!def || !vt) continue;
+      const f = vt.v.door.front;
+      const dx = f.x - vt.v.x, dz = f.z - vt.v.z, dl = Math.hypot(dx, dz) || 1;
+      const bx = f.x + (dx / dl) * 5, bz = f.z + (dz / dl) * 5;
+      const home = { x: bx, z: bz, r: 30 };
+      const boss = this.addBoss(bx, bz, 'dificil', {
+        weapons: def.weapons.map(([t, r]) => makeWeapon(t, r)),
+        heals: { shieldpot: 2, medkit: 1 },
+      }, home, { bossKind: 'city', bossDef: def, vaultId, name: def.name, dmgTaken: 0.4, shield: 100, outfit: def.outfit });
+      this.cityBosses.push(boss);
+      const pool = ['ar', 'smg', 'shotgun', 'pistol'];
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + 0.5;
+        this.addBoss(bx + Math.cos(a) * 9, bz + Math.sin(a) * 9, 'normal', {
+          weapons: [makeWeapon(pool[(i + vaultId) % pool.length], 1 + (i % 3))],
+          heals: { bandage: 2, smallshield: 1 },
+        }, home, { bossKind: 'minion', name: `Escolta de ${poi.name}` });
+      }
+    }
   }
 
   // Guardián de la Bóveda (isla del lago central) con sus secuaces. Al morir
@@ -137,17 +208,7 @@ export class NPCs {
     const g = this.game;
     const I = g.world.island;
     if (!I?.boss) return;
-    const add = (x, z, diff, loadout, extra) => {
-      const b = g.bots.spawnExtra(99, diff, x, z, loadout);
-      b.pos.set(x, g.world.groundBelow(x, z, 200) + 1, z);
-      b.vel.set(0, 0, 0);
-      b.mode = 'ground';
-      b.boss = true; // no cuenta para el recuento de supervivientes
-      b.home = { x: I.x, z: I.z, r: I.R * 0.8 };
-      Object.assign(b, extra);
-      if (!g.chars.includes(b)) g.chars.push(b);
-      return b;
-    };
+    const add = (x, z, diff, loadout, extra) => this.addBoss(x, z, diff, loadout, { x: I.x, z: I.z, r: I.R * 0.8 }, extra);
     this.guardian = add(I.boss.x, I.boss.z, 'dificil', {
       weapons: [makeWeapon('heavyar', 5), makeWeapon('tactical', 4), makeWeapon('glauncher', 4)],
       heals: { shieldpot: 2, medkit: 2 },
@@ -281,11 +342,25 @@ export class NPCs {
     }
     if (victim.bossKind === 'guardian') {
       // Suelta la tarjeta de la bóveda (y algo de botín)
-      g.vault?.dropCard(victim.pos);
+      g.vault?.dropCard(victim.pos, 0);
       g.pickups.spawn({ kind: 'consumable', type: 'shieldpot', count: 2 }, victim.pos.clone().setY(victim.pos.y + 0.8), new THREE.Vector3(1.5, 4, 0));
+      g.pickups.spawn({ kind: 'consumable', type: 'medal_vigor', count: 1 }, victim.pos.clone().setY(victim.pos.y + 0.8), new THREE.Vector3(-1.5, 4, 1));
       if (killer === g.player) this.addGold(400, '¡Has derrotado al Guardián de la Bóveda!');
       g.hud.killFeed('💀 <b>El Guardián de la Bóveda</b> ha caído: ¡ha soltado la tarjeta!', false);
       this.guardian = null;
+    }
+    if (victim.bossKind === 'city') {
+      // Arma mítica, cura, tarjeta de su bóveda y medallón de batalla
+      const def = victim.bossDef;
+      const at = victim.pos.clone().setY(victim.pos.y + 0.8);
+      g.pickups.burst([
+        makeWeapon(def.mythic[0], 5),
+        { ...def.heal, kind: 'consumable' },
+        { kind: 'consumable', type: `card${victim.vaultId}`, count: 1 },
+        { kind: 'consumable', type: def.medal, count: 1 },
+      ], at);
+      if (killer === g.player) this.addGold(450, `¡Has derrotado a ${def.name}!`);
+      g.hud.killFeed(`${def.name.split(' ')[0]} <b>${def.name.slice(def.name.indexOf(' ') + 1)}</b> ha caído: ¡suelta un arma mítica, su tarjeta y un medallón!`, false);
     }
     if (victim.bossKind === 'king') {
       // Botín del jefe: arma mítica y un saco de oro
@@ -335,12 +410,24 @@ export class NPCs {
         if (r.q.state === 'active') g.hud.toast(`💎 Fragmento de reliquia ${r.q.v}/${r.q.goal}`);
       }
     }
-    // Los jefes y los secuaces no se alejan de su sitio (castillo, isla)
+    // Los jefes y los secuaces no se alejan de su sitio (castillo, isla,
+    // bóveda): si persiguen a alguien demasiado lejos, lo dejan y vuelven
     for (const b of g.bots.list) {
-      if (!b.home || !b.alive || b.mode !== 'ground' || b.target) continue;
-      if (Math.hypot(b.pos.x - b.home.x, b.pos.z - b.home.z) > b.home.r) {
+      if (!b.home || !b.alive || b.mode !== 'ground') continue;
+      const d = Math.hypot(b.pos.x - b.home.x, b.pos.z - b.home.z);
+      const leash = b.home.r * 1.8;
+      if (b.target && d > leash) {
+        const td = Math.hypot(b.target.pos.x - b.home.x, b.target.pos.z - b.home.z);
+        if (td > leash) {
+          b.memory.delete(b.target);
+          b.target = null;
+          b.targetVisible = false;
+        }
+      }
+      if (!b.target && d > b.home.r) {
         b.goal = new THREE.Vector3(b.home.x, b.pos.y, b.home.z);
         b.task = 'rotate';
+        b.rumor = null;
       }
     }
   }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { RARITIES, AMMO } from './items.js';
+import { RARITIES, AMMO, CONSUMABLES } from './items.js';
 import { CAMOS, PICKAXES, GLIDERS, BAGS } from './cosmetics.js';
 
 // Modelos low-poly construidos con primitivas. En calidad normal/alta se usan
@@ -599,6 +599,39 @@ function makeConsumableModel(type) {
       box(g, 0.08, 0.05, 0.14, 0x2a2c30, 0, 0.08, 0.02);
       box(g, 0.16, 0.05, 0.05, 0x2a2c30, 0, 0.08, -0.06);
       break;
+    }
+    case 'grappler': {
+      // Pistola roja con una ventosa de goma en la boca
+      box(g, 0.09, 0.1, 0.36, 0xd63a2f, 0, 0, -0.02);
+      box(g, 0.07, 0.14, 0.07, 0x2a2c30, 0, -0.1, 0.08);
+      box(g, 0.05, 0.05, 0.1, 0xf2c230, 0, 0.07, 0.02);
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.14, 6).rotateX(Math.PI / 2), mat(0xc8a070));
+      stick.position.set(0, 0, -0.26);
+      g.add(stick);
+      const cup = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2).rotateX(-Math.PI / 2), mat(0x8a1a1a));
+      cup.position.set(0, 0, -0.33);
+      g.add(cup);
+      g.userData.muzzle = new THREE.Object3D();
+      g.userData.muzzle.position.set(0, 0, -0.38);
+      g.add(g.userData.muzzle);
+      break;
+    }
+    default: {
+      const def = CONSUMABLES[type];
+      if (def?.card !== undefined) {
+        // Tarjeta de bóveda: rectángulo de su color con chip y banda
+        box(g, 0.32, 0.2, 0.02, def.color, 0, 0, 0, { emissive: def.color, emissiveIntensity: 0.25 });
+        box(g, 0.08, 0.06, 0.025, 0xf2c230, -0.08, 0.03, 0);
+        box(g, 0.32, 0.03, 0.025, 0x1b1b22, 0, -0.06, 0);
+      } else if (def?.medal) {
+        // Medallón: disco dorado con una gema del color de su característica
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.03, 20).rotateX(Math.PI / 2), mat(0xf2c230, { emissive: 0x6b4a00, phong: true, shininess: 90 }));
+        g.add(disc);
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), mat(def.color, { emissive: def.color, phong: true, shininess: 100 }));
+        gem.position.z = 0.03;
+        g.add(gem);
+        box(g, 0.03, 0.08, 0.02, 0xd8b030, 0, 0.14, 0);
+      }
     }
   }
   return g;
