@@ -25,6 +25,7 @@ async function boot() {
   await frame();
   game.warmShaders();
   setupPlatform(game);
+  game.money.init().catch((e) => console.warn('Monetización:', e));
   // Recarga para cambiar de isla (creativo ⇄ normal): empezar la partida elegida
   const q = new URLSearchParams(location.search);
   const auto = q.get('auto');

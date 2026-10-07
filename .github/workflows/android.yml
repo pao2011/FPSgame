@@ -54,6 +54,13 @@ jobs:
         run: npm install
 
       - name: Compilar el juego y copiarlo al proyecto Android
+        # IDs de anuncios y donaciones (opcionales: sin ellos, anuncios de prueba)
+        env:
+          VITE_ADMOB_REWARDED: ${{ secrets.VITE_ADMOB_REWARDED }}
+          VITE_ADMOB_INTERSTITIAL: ${{ secrets.VITE_ADMOB_INTERSTITIAL }}
+          VITE_ADMOB_TESTING: ${{ secrets.VITE_ADMOB_TESTING }}
+          VITE_DONATE_URL: ${{ secrets.VITE_DONATE_URL }}
+          VITE_ADSENSE_CLIENT: ${{ secrets.VITE_ADSENSE_CLIENT }}
         run: npm run build:android
 
       # Firma opcional para la Play Store: añade estos secretos en
