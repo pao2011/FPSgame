@@ -55,6 +55,7 @@ import { clamp, random, RNG } from '../core/rng.js';
 import { NetClient } from '../net/client.js';
 import { OnlineMatch } from '../net/match.js';
 import { ISLAND_RADIUS, MAP_SEED } from '../world/constants.js';
+import { findZipline } from '../world/ziplines.js';
 
 const SKY_COLOR = SKY.horizon;
 const tmpV = new THREE.Vector3();
@@ -203,18 +204,40 @@ export class Game {
     this.scene.add(sun, sun.target);
     this.setupPost();
 
+  }
+
+  // Segunda parte del arranque: genera la isla por pasos (con progreso en la
+  // pantalla de carga) y crea todos los sistemas del juego.
+  // progress(texto, fracción 0..1) se llama antes de cada paso pesado.
+  async init(progress = () => {}) {
+    const params = new URLSearchParams(location.search);
+    const gfx = this.gfx;
+    // Deja que el navegador pinte la pantalla de carga entre paso y paso
+    const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+    let lastYield = 0;
+    const step = async (text, f) => {
+      progress(text, f);
+      // (sin ceder en cada paso pequeño: cuesta un fotograma cada vez)
+      if (performance.now() - lastYield > 60) {
+        await frame();
+        lastYield = performance.now();
+      }
+    };
     // ------------------------------------------------------------ MUNDO
     // Mapa único: siempre la misma isla (también en online). El modo
     // creativo usa su propia isla plana (sandbox, no es un mapa de partida).
     this.seed = MAP_SEED;
     // Calidad alta: terreno HD (malla de 2 m con relieve fino)
-    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1', hd: this.quality === 'alta', lod: gfx.lod });
+    this.world = new World(this.scene, this.seed, { creative: params.get('creativo') === '1', hd: this.quality === 'alta', lod: gfx.lod, deferred: true });
+    for (const [text, f] of this.world.generateSteps()) await step(text, f * 0.78);
+    await step('Haciendo crecer el césped…', 0.8);
     this.grass = new Grass(this.scene, this.world, this.quality, gfx.grass);
     // Luces dinámicas de cuevas y trincheras (cerca de la cámara)
     this.underFx = new UndergroundFx(this.world.sites, gfx.caveLights ? this.lights : null);
     this.grass.onAutoOff = () => this.hud?.toast('Rendimiento: se ha quitado el césped para ganar FPS');
     this.weather = new Weather(this);
 
+    await step('Preparando armas y efectos…', 0.83);
     this.input = new Input(this.canvas);
     this.gamepad = new GamepadInput(this);
     this.touch = null;
@@ -240,7 +263,9 @@ export class Game {
     this.progress = new Progress(this);
     this.creative = new Creative(this);
     this.containers.reset();
+    await step('Enseñando el mapa a los bots…', 0.86);
     this.nav = new NavGrid(this.world);
+    await step('Dibujando el mapa…', 0.9);
     this.mapRenderer = new MapRenderer(this.world);
     this.hud = new HUD(this);
 
@@ -619,9 +644,35 @@ export class Game {
 
   // ------------------------------------------------------------ PARTIDA
   // Partida local contra bots.
-  startMatch(modeId = this.settings.mode) {
+  startMatch(modeId = this.settings.mode, instant = false) {
     const mode = MODES[modeId] || MODES.solo;
     this.settings.mode = mode.id;
+    // Pantalla de carga: se muestra, se prepara la partida detrás y se quita
+    // (mínimo ~1,5 s para que dé tiempo a leer el consejo)
+    if (!instant && !!mode.creative === this.world.creative && !this.loadingMatch) {
+      this.loadingMatch = true;
+      // El ratón y la pantalla completa necesitan el clic del jugador: ahora
+      this.touch?.fullscreen();
+      this.input.lock();
+      const L = this.loader;
+      L.showLocal(mode.name, mode.creative ? 'Isla creativa' : this.settings.skipLobby || mode.noBus ? 'Isla Royale' : 'Isla de Inicio → Isla Royale');
+      const t0 = performance.now();
+      requestAnimationFrame(() =>
+        setTimeout(() => {
+          L.setProgress(0.45);
+          L.status('Repartiendo el botín y despertando a los bots…');
+          try {
+            this.startMatch(modeId, true);
+          } finally {
+            this.loadingMatch = false;
+          }
+          L.setProgress(1);
+          L.status('¡A la isla!');
+          setTimeout(() => L.hide(), Math.max(250, 1500 - (performance.now() - t0)));
+        }, 60),
+      );
+      return;
+    }
     // El creativo usa su propia isla (plana): hay que recargar para cambiar de isla
     if (!!mode.creative !== this.world.creative) {
       this.applySettings();
@@ -1502,7 +1553,7 @@ export class Game {
     this.underFx.update(dt, this.camera.position);
     this.sky.material.uniforms.time.value = t;
     if (this.state === 'menu') {
-      this.updateMenuCamera(t);
+      this.updateMenuCamera(t, dt);
       this.updateDrawDistance(dt);
       this.music?.update(this);
       this.world.clouds.rotation.y = t * 0.003;
@@ -1833,6 +1884,10 @@ export class Game {
       if (input.hit('interact')) this.vehicles.exit(p);
       return;
     }
+    if (p.zip) {
+      this.hud.setPrompt(`<kbd>${this.key('jump')}</kbd> Saltar · <kbd>${this.key('crouch')}</kbd> Soltarse · <kbd>${this.key('back')}</kbd> Dar la vuelta`);
+      return;
+    }
     if (this.build.editing) {
       const pc = this.build.editing.piece;
       const presets = pc.type === 'wall' ? ' · 1 puerta · 2 ventana · 3 arco · 4 arco grande · 5 media pared · 6 valla · 7 puerta lateral' : pc.type === 'ramp' ? ' · elige 2 casillas de un lado para girarla' : '';
@@ -1895,6 +1950,18 @@ export class Game {
       this.hud.setPrompt(`${E} ${what} ${npc.name}`);
       if (input.hit('interact')) this.npcDialog.open(npc);
       return;
+    }
+    // Tirolesas: E para engancharse
+    if ((!target || target.score < 1.2) && p.zipCd <= 0 && this.world.ziplines.length) {
+      const zf = findZipline(this.world.ziplines, p.pos, 2.4);
+      if (zf) {
+        this.hud.setPrompt(`${E} Usar la tirolesa`);
+        if (input.hit('interact')) {
+          this.build.setActive(false);
+          p.startZip(zf);
+        }
+        return;
+      }
     }
     if (!target) {
       const car = this.vehicles.findNear(p.pos);
@@ -1999,9 +2066,11 @@ export class Game {
         a.step(this.groundMaterial(c), Math.pow(1 - d / 30, 2) * 1.4, c.pos);
       }
     }
+    a.setZip(p.zip && p.alive ? Math.min(1, p.zipSpeed / 28) : 0);
     if (p.mode === 'freefall') a.setWind(Math.min(1, p.vel.length() / 55));
     else if (p.mode === 'glide') a.setWind(0.3);
     else if (p.mode === 'bus') a.setWind(0.12);
+    else if (p.zip || p.sliding) a.setWind(Math.min(0.45, p.hSpeed / 50));
     else a.setWind(0);
     const near = p.mode === 'ground' && p.alive ? this.containers.nearestChest(p.pos, 20) : null;
     if (near) {
@@ -2014,11 +2083,21 @@ export class Game {
   }
 
   // ---------------------------------------------------------- CÁMARA
-  updateMenuCamera(t) {
-    const a = t * 0.03;
-    this.camera.position.set(Math.cos(a) * 640, 260, Math.sin(a) * 640);
-    this.camera.lookAt(0, 10, 0);
+  // Órbita lenta de la cámara del menú (también es el final de la intro).
+  menuCameraPose(t) {
+    return { a: t * 0.03, r: 540, y: 225, ty: 10 };
+  }
+
+  updateMenuCamera(t, dt = 0) {
     this.setFog(400, 2200);
+    if (this.intro?.active) {
+      this.intro.update(dt);
+      this.focusShadow(new THREE.Vector3(0, 0, 0));
+      return;
+    }
+    const m = this.menuCameraPose(t);
+    this.camera.position.set(Math.cos(m.a) * m.r, m.y, Math.sin(m.a) * m.r);
+    this.camera.lookAt(0, m.ty, 0);
     this.focusShadow(new THREE.Vector3(0, 0, 0));
   }
 
@@ -2104,12 +2183,24 @@ export class Game {
       const item = p.item;
       const adsFov = item && item.kind === 'weapon' && !this.build.active ? this.combat.def(item).adsFov : base;
       fov = base + (adsFov - base) * ads;
-      if (p.sprinting) fov += 6;
+      if (p.sprinting) fov += 7;
+      if (p.sliding) fov += 9;
+      if (p.zip) fov += Math.min(12, p.zipSpeed * 0.45);
       this.setFog(200, 1250);
       if (this.camMode === 'fp' && !this.build.active && !p.emote) {
         cam.position.copy(p.eye);
         this.aimOrigin.copy(cam.position);
         p.model.root.visible = false;
+        // Balanceo de la cabeza al andar y, sobre todo, al correr (sólo la
+        // vista: la puntería sale del punto sin balanceo)
+        const hs = p.hSpeed;
+        if (p.onGround && !p.sliding && hs > 1 && ads < 0.5 && this.settings.headBob !== false) {
+          this.headBob = (this.headBob || 0) + dt * hs * 1.3;
+          const k = Math.min(1, hs / 8.6) * (p.sprinting ? 1 : 0.4) * (1 - ads * 2);
+          cam.position.y += (Math.abs(Math.sin(this.headBob)) * 0.06 - 0.03) * k;
+          cam.position.x += Math.cos(p.yaw) * Math.sin(this.headBob) * 0.03 * k;
+          cam.position.z -= Math.sin(p.yaw) * Math.sin(this.headBob) * 0.03 * k;
+        }
       } else {
         const pivot = p.eye.clone();
         pivot.y += 0.15;
@@ -2132,6 +2223,10 @@ export class Game {
       }
     }
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 12);
+    // Ladeo de la cámara al deslizarse y al ir en tirolesa
+    const roll = p.mode === 'ground' && p.alive ? (p.sliding ? 0.07 : p.zip ? Math.sin(this.time * 2.1) * 0.025 : 0) : 0;
+    this.camRoll = (this.camRoll || 0) + (roll - (this.camRoll || 0)) * Math.min(1, dt * 8);
+    if (Math.abs(this.camRoll) > 1e-4) cam.rotation.z = this.camRoll;
     if (this.camShake > 0) {
       // Temblor de cámara por explosiones cercanas
       const k = this.camShake * this.camShake * 0.05;

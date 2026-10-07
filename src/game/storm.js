@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import { random } from '../core/rng.js';
+import { ISLAND_RADIUS } from '../world/constants.js';
 
 const PHASES = [
   // Las dos primeras fases son algo más cortas y cerradas: los jugadores se
   // juntan antes y hay que andar menos para encontrar pelea.
-  { wait: 75, shrink: 65, radius: 470, dps: 1 },
-  { wait: 60, shrink: 55, radius: 290, dps: 1 },
-  { wait: 60, shrink: 50, radius: 190, dps: 2 },
-  { wait: 50, shrink: 40, radius: 100, dps: 5 },
+  // (radios para la isla compacta de 592 m)
+  { wait: 70, shrink: 60, radius: 390, dps: 1 },
+  { wait: 60, shrink: 50, radius: 245, dps: 1 },
+  { wait: 55, shrink: 45, radius: 160, dps: 2 },
+  { wait: 50, shrink: 40, radius: 90, dps: 5 },
   { wait: 40, shrink: 35, radius: 48, dps: 8 },
   // Zona móvil: durante la espera el círculo entero se desplaza
   { wait: 30, shrink: 30, radius: 18, dps: 10, move: true },
@@ -39,7 +41,7 @@ function stormTexture() {
 }
 
 // Duelo por equipos: se cierra una vez y se queda fija.
-const RUMBLE = [{ wait: 0, shrink: 0, radius: 450, dps: 2 }];
+const RUMBLE = [{ wait: 0, shrink: 0, radius: 380, dps: 2 }];
 // 1v1: arena pequeña y fija.
 const DUEL = [{ wait: 0, shrink: 0, radius: 55, dps: 5 }];
 
@@ -116,7 +118,7 @@ export class Storm {
     const rng = this.rng || random;
     const p = this.phases[this.phase];
     const target = p.radius;
-    const curR = Math.min(this.radius, 640);
+    const curR = Math.min(this.radius, ISLAND_RADIUS * 0.86);
     const maxOff = Math.max(0, curR - target) * 0.8;
     // Zona móvil: primero se elige hacia dónde se desplaza el círculo
     let cx = this.center.x, cz = this.center.y;
@@ -125,7 +127,7 @@ export class Storm {
       for (let i = 0; i < 30; i++) {
         const a = rng.float(0, Math.PI * 2), d = curR * rng.float(1.0, 1.8);
         const x = this.center.x + Math.cos(a) * d, z = this.center.y + Math.sin(a) * d;
-        if ((this.world.isLand(x, z) && Math.hypot(x, z) < 600) || i === 29) {
+        if ((this.world.isLand(x, z) && Math.hypot(x, z) < ISLAND_RADIUS * 0.8) || i === 29) {
           this.drift = { from: this.center.clone(), to: new THREE.Vector2(x, z) };
           cx = x;
           cz = z;

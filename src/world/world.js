@@ -17,6 +17,7 @@ import { Hydro } from './hydro.js';
 import { Site, CELL, buildSite, buildHalos } from './underground.js';
 import { HALF, ISLAND_RADIUS } from './constants.js';
 import { LodSet } from './lod.js';
+import { planZiplines, buildZiplines } from './ziplines.js';
 import { modelQuality } from '../game/models.js';
 
 const POI_NAMES = {
@@ -86,23 +87,33 @@ export class World {
     this.lod = new LodSet(opts.lod || modelQuality());
     this.hydro = new Hydro(); // ríos y lagos
     this.sites = []; // cuevas y trincheras
-    this.generate();
+    this.ziplines = []; // tirolesas
+    // deferred: quien crea el mundo recorre generateSteps() poco a poco (la
+    // pantalla de carga muestra el progreso); si no, se genera de golpe.
+    if (!opts.deferred) for (const _ of this.generateSteps());
   }
 
-  generate() {
+  // Generación por pasos: cada yield es [texto, fracción 0..1].
+  *generateSteps() {
     if (!this.creative) {
+      yield ['Excavando el gran lago…', 0.01];
       // El lago central (con su isla) y el gran río van primero: las zonas
       // se colocan después, lejos del agua.
       this.planCentralLake();
       this.placePOIs();
       for (const poi of this.pois) this.layoutPOI(poi);
+      yield ['Trazando ríos y carreteras…', 0.05];
       this.planWater();
       this.planIsland();
       this.planUnderground();
       this.planRoads();
       this.planRoadside();
+      yield ['Repartiendo puestos y coberturas…', 0.1];
       this.planLandmarks();
+      this.planFill();
+      this.planCover();
     }
+    yield ['Levantando montañas…', 0.14];
     this.terrain.flats = [...this.pois, ...this.pads];
     this.terrain.zones = this.pois;
     this.terrain.hydro = this.hydro.lakes.length || this.hydro.rivers.length ? this.hydro : null;
@@ -111,11 +122,22 @@ export class World {
     this.maxWaterLevel = Math.max(0, ...this.hydro.lakes.map((l) => l.level), ...this.hydro.rivers.map((r) => r.s[0]));
     this.terrain.roadNet = this.roads;
     this.terrain.sites = this.sites;
-    this.scene.add(this.terrain.build());
+    for (const f of this.terrain.buildSteps()) yield ['Levantando montañas…', 0.14 + f * 0.4];
+    this.scene.add(this.terrain.mesh);
     for (const t of this.terrain.tiles) this.lod.add(t.mesh, 'terrain', t.cx, t.cz, t.r);
+    yield ['Asfaltando carreteras…', 0.55];
     this.scene.add(this.roads.buildMesh(this.terrain));
+    yield ['Construyendo pueblos…', 0.6];
     this.buildStructures();
+    if (!this.creative) {
+      yield ['Tendiendo tirolesas…', 0.74];
+      this.ziplines = planZiplines(this, this.rng);
+      const zm = buildZiplines(this, this.ziplines);
+      if (zm) this.scene.add(zm);
+    }
+    yield ['Plantando árboles…', 0.78];
     this.nature = createNature(this, this.rng);
+    yield ['Llenando el mar…', 0.92];
     this.addWater();
     this.addClouds();
     this.lobby = createLobbyIsland(this);
@@ -189,16 +211,16 @@ export class World {
     const names = {};
     for (const k in POI_NAMES) names[k] = rng.shuffle(POI_NAMES[k].slice());
     for (const spec of POI_SPECS) {
-      for (let attempt = 0; attempt < (spec.type === 'port' ? 2000 : 700); attempt++) {
+      for (let attempt = 0; attempt < (spec.type === 'port' ? 2000 : 1400); attempt++) {
         const ang = rng.float(0, Math.PI * 2);
         const coastal = spec.type === 'port';
-        // Zonas algo más juntas hacia el centro: menos caminata entre peleas
-        const dist = coastal ? rng.float(0.62, attempt < 600 ? 0.8 : 0.9) * ISLAND_RADIUS : Math.sqrt(rng.next()) * ISLAND_RADIUS * 0.72;
+        // Zonas juntas (mapa compacto): poco espacio vacío entre peleas
+        const dist = coastal ? rng.float(0.62, attempt < 600 ? 0.8 : 0.9) * ISLAND_RADIUS : Math.sqrt(rng.next()) * ISLAND_RADIUS * (attempt < 700 ? 0.74 : 0.8);
         const x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
-        const gap = attempt < 350 ? 60 : 40;
+        const gap = attempt < 400 ? 26 : attempt < 900 ? 14 : 6;
         if (this.pois.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius + spec.radius + gap)) continue;
         // Lejos del lago central y del gran río
-        if (this.hydro.distanceTo(x, z) < spec.radius * 1.25 + 18) continue;
+        if (this.hydro.distanceTo(x, z) < spec.radius * (attempt < 900 ? 1.2 : 1.05) + 12) continue;
         // Los puertos, repartidos alrededor de la isla
         if (coastal && this.pois.some((p) => p.type === 'port' && Math.abs(Math.atan2(Math.sin(Math.atan2(p.z, p.x) - ang), Math.cos(Math.atan2(p.z, p.x) - ang))) < (attempt < 400 ? 0.9 : 0.6))) continue;
         let seaDir = null;
@@ -215,9 +237,9 @@ export class World {
           }
           if (!seaDir) continue;
         }
-        const f = this.isFlatEnough(x, z, spec.radius * (coastal ? 0.6 : 0.95), attempt < 400 ? 18 : 34);
+        const f = this.isFlatEnough(x, z, spec.radius * (coastal ? 0.6 : 0.95), attempt < 400 ? 18 : attempt < 900 ? 30 : 42);
         if (!f.ok && !coastal) continue;
-        if (!coastal && f.avg > 40) continue;
+        if (!coastal && f.avg > 44) continue;
         this.pois.push({
           name: names[spec.type].shift() || spec.type, type: spec.type, x, z, radius: spec.radius, coastal,
           height: Math.max(3.5, coastal ? Math.max(3.5, this.terrain.rawHeight(x, z)) : f.avg),
@@ -612,7 +634,7 @@ export class World {
     let best = null;
     for (let i = 0; i < 80; i++) {
       const lake = {
-        x: rng.float(-70, 70), z: rng.float(-70, 70), R: 100, island: 40, depth: 5.5,
+        x: rng.float(-50, 50), z: rng.float(-50, 50), R: 86, island: 36, depth: 5.5,
         p1: rng.float(0, Math.PI * 2), p2: rng.float(0, Math.PI * 2), central: true,
       };
       const ring = this.lakeRing(lake);
@@ -664,7 +686,7 @@ export class World {
         if (this.pois.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius * 1.3)) pen += 40;
       }
       // Ríos largos (que crucen parte de la isla) pero sin pasar por las zonas
-      if (d < 900 && d > 120 && (!bestDir || Math.abs(d - 400) + pen < bestDir.cost)) bestDir = { a, cost: Math.abs(d - 400) + pen };
+      if (d < 900 && d > 100 && (!bestDir || Math.abs(d - 320) + pen < bestDir.cost)) bestDir = { a, cost: Math.abs(d - 320) + pen };
     }
     if (!bestDir) return null;
     let a = bestDir.a;
@@ -1022,11 +1044,11 @@ export class World {
     const rng = this.rng;
     let gas = 0;
     for (const { pts, hs } of this.roadEdges || []) {
-      let acc = rng.float(25, 70);
+      let acc = rng.float(15, 40);
       for (let k = 1; k < pts.length - 1; k++) {
         acc -= Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
         if (acc > 0) continue;
-        acc = rng.float(70, 140);
+        acc = rng.float(38, 75);
         const [x, z] = pts[k];
         if (this.pois.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius * 1.4)) continue;
         const tx = pts[k + 1][0] - pts[k - 1][0], tz = pts[k + 1][1] - pts[k - 1][1];
@@ -1035,7 +1057,7 @@ export class World {
         const nx = (-tz / tl) * side, nz = (tx / tl) * side;
         const r = rng.next();
         let p;
-        if (r < 0.2 && gas < 3) p = { kind: 'gas', W: 18, D: 20, extra: { chests: 1, chestChance: 0.7 } };
+        if (r < 0.2 && gas < 4) p = { kind: 'gas', W: 18, D: 20, extra: { chests: 1, chestChance: 0.7 } };
         else if (r < 0.62) p = this.housePlan(rng);
         else if (r < 0.75) p = { kind: 'shop', W: 12, D: 10, extra: { sign: rng.pick([0xd63a2f, 0x2f6fd6, 0x2fa84f]), chests: 1, chestChance: 0.7 } };
         else if (r < 0.88) p = { kind: 'house', W: 7, D: 6, extra: { floors: 1, roof: 'gable', chimney: true, wallColor: 0x8a5a32, roofColor: 0x4a3a2a, chests: 1, chestChance: 0.6 } };
@@ -1106,7 +1128,7 @@ export class World {
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const h = this.terrain.rawHeight(x, z);
       if (h < 3 || h > 14) continue;
-      if (port && Math.hypot(x - port.x, z - port.z) < 350) continue;
+      if (port && Math.hypot(x - port.x, z - port.z) < 260) continue;
       if (this.terrain.rawHeight(x * 1.08, z * 1.08) > -1) continue;
       if (!this.awayFromAll(x, z, 12)) continue;
       if (this.addLandmark('lighthouse', x, z, rotFacing(-x, -z), 22, 12, { chests: 1, chestChance: 0.9, label: 'Faro' }, Math.max(3, h))) break;
@@ -1123,18 +1145,18 @@ export class World {
       }
     };
     const forest = (x, z) => this.noise(x * 0.006 + 300, z * 0.006) > 0.1;
-    scatter('house', 5, 7, 6, () => ({ floors: 1, roof: 'gable', chimney: true, wallColor: 0x8a5a32, roofColor: 0x4a3a2a, chests: 1, chestChance: 0.8 }), forest);
-    scatter('ruins', 3, 13, 10, { chests: 1, chestChance: 0.9 });
-    scatter('watchtower', 4, 5, 5, { chests: 1, chestChance: 0.6 });
+    scatter('house', 8, 7, 6, () => ({ floors: 1, roof: 'gable', chimney: true, wallColor: 0x8a5a32, roofColor: 0x4a3a2a, chests: 1, chestChance: 0.8 }), forest);
+    scatter('ruins', 5, 13, 10, { chests: 1, chestChance: 0.9 });
+    scatter('watchtower', 6, 5, 5, { chests: 1, chestChance: 0.6 });
     scatter('watertower', 2, 9, 9, { chests: 1, chestChance: 0.7 });
-    scatter('bunker', 2, 14, 10, { chests: 2, chestChance: 0.8 });
+    scatter('bunker', 3, 14, 10, { chests: 2, chestChance: 0.8 });
     // Estructuras nuevas: castillo, molinos y mercadillos
     scatter('castle', 1, 28, 28, { chests: 3, chestChance: 1, label: 'Castillo Corona' }, null, 10);
     scatter('windmill', 2, 9, 9, () => ({ chests: 2, chestChance: 0.8, label: 'Molino' }));
     scatter('market', 2, 19, 15, () => ({ chests: 1, chestChance: 0.8, label: 'Mercadillo' }));
     // Campamentos: 3 tiendas en círculo
     let camps = 0;
-    for (let i = 0; i < 2000 && camps < 3; i++) {
+    for (let i = 0; i < 2000 && camps < 4; i++) {
       const [x, z] = this.randomLand(rng);
       if (!forest(x, z) || !this.awayFromAll(x, z, 12)) continue;
       const f = this.isFlatEnough(x, z, 9, 4);
@@ -1147,6 +1169,175 @@ export class World {
       }
       this.plans.push({ kind: 'campfire', x, z, rot: 0, fw: 1.5, fd: 1.5, noMap: true });
       camps++;
+    }
+  }
+
+
+  // Distancia a la estructura planeada más cercana (en un radio de r).
+  nearestPlan(x, z, r) {
+    let best = Infinity;
+    for (const p of this.plans) {
+      if (Math.abs(p.x - x) > r || Math.abs(p.z - z) > r) continue;
+      best = Math.min(best, Math.hypot(p.x - x, p.z - z));
+    }
+    return best;
+  }
+
+  // Relleno: puestos avanzados en los huecos que quedan entre zonas
+  // (cabañas, ruinas, torres, almacenes de contenedores, campamentos…).
+  // Así casi nunca se camina más de 30-40 m sin algo donde meterse.
+  planFill() {
+    const rng = this.rng;
+    const STEP = 40;
+    const cands = [];
+    for (let gx = -ISLAND_RADIUS; gx <= ISLAND_RADIUS; gx += STEP) {
+      for (let gz = -ISLAND_RADIUS; gz <= ISLAND_RADIUS; gz += STEP) {
+        const x = gx + rng.float(-14, 14), z = gz + rng.float(-14, 14);
+        if (Math.hypot(x, z) > ISLAND_RADIUS * 0.86) continue;
+        cands.push([x, z]);
+      }
+    }
+    rng.shuffle(cands);
+    const kinds = ['cabins', 'cabins', 'ruins', 'outpost', 'yard', 'camp', 'shack', 'tower', 'barn'];
+    let placed = 0;
+    for (const [x, z] of cands) {
+      const h = this.terrain.rawHeight(x, z);
+      if (h < 3 || h > 62) continue;
+      if (this.pois.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius * 1.12 + 6)) continue;
+      if (this.nearestPlan(x, z, 40) < 30) continue;
+      if (this.roads.edgeDistance(x, z, 30) < 12) continue;
+      if (this.hydro.distanceTo(x, z) < 22) continue;
+      const kind = rng.pick(kinds);
+      if (this.placeOutpost(kind, x, z)) placed++;
+    }
+    this.fillCount = placed;
+  }
+
+  placeOutpost(kind, x, z) {
+    const rng = this.rng;
+    const R = kind === 'yard' || kind === 'outpost' || kind === 'cabins' ? 13 : 10;
+    const f = this.isFlatEnough(x, z, R, 9);
+    if (!f.ok || f.avg > 60) return false;
+    if (!this.free(x - R, z - R, x + R, z + R)) return false;
+    const pad = { x, z, radius: R + 3, height: f.avg };
+    const rot = rng.int(0, 3);
+    const n0 = this.plans.length;
+    const at = (u, v) => {
+      // u, v en ejes locales girados rot·90°
+      const c = [[1, 0], [0, 1], [-1, 0], [0, -1]][rot];
+      return [x + u * c[0] - v * c[1], z + u * c[1] + v * c[0]];
+    };
+    const cabin = (u, v, face) => {
+      const [cx, cz] = at(u, v);
+      return this.tryPlan(this.plan('house', cx, cz, (face + rot) % 4, 7, 6, {
+        floors: 1, roof: 'gable', chimney: rng.chance(0.5), wallColor: rng.pick([0x8a5a32, 0x7a4e2c, 0x9a6a3c, 0x6f7a55]), roofColor: rng.pick([0x4a3a2a, 0x5b4636, 0x3f4a30]), chests: 1, chestChance: 0.7,
+      }), 0.8);
+    };
+    const bags = (u, v, len, along) => {
+      const [cx, cz] = at(u, v);
+      const r = (along + rot) % 2;
+      this.tryPlan(this.plan('sandbags', cx, cz, r, len, 0.6, { W: len, noMap: true }), 0.2);
+    };
+    switch (kind) {
+      case 'cabins':
+        cabin(-6, 0, 1);
+        cabin(6, 2, 3);
+        if (rng.chance(0.5)) cabin(0, -7, 0);
+        this.plans.push({ kind: 'campfire', x, z, rot: 0, fw: 1.5, fd: 1.5, noMap: true });
+        break;
+      case 'ruins': {
+        const [cx, cz] = at(0, 0);
+        this.tryPlan(this.plan('ruins', cx, cz, rot, 13, 10, { chests: 1, chestChance: 0.9 }), 0.8);
+        bags(0, 8, 4, 0);
+        break;
+      }
+      case 'outpost': {
+        const [tx, tz] = at(-5, -5);
+        this.tryPlan(this.plan('watchtower', tx, tz, rot, 5, 5, { chests: 1, chestChance: 0.7 }), 0.5);
+        cabin(5, 3, 3);
+        bags(-6, 4, 4, 0);
+        bags(2, -7, 4, 1);
+        const [kx, kz] = at(5, -6);
+        this.tryPlan(this.plan('crates', kx, kz, rot, 3, 3, { noMap: true, chests: 1, chestChance: 0.5 }), 0.3);
+        break;
+      }
+      case 'yard':
+        for (let k = 0; k < 4; k++) {
+          const [cx, cz] = at(-6 + (k % 2) * 7.5, (k < 2 ? -4 : 4));
+          this.tryPlan(this.plan('container', cx, cz, (rot + 1) % 2, 2.6, 6.2, { stack: rng.int(1, 2), noMap: true }), 0.4);
+        }
+        {
+          const [kx, kz] = at(8, 0);
+          this.tryPlan(this.plan('crates', kx, kz, rot, 3, 3, { noMap: true, chests: 1, chestChance: 0.8 }), 0.3);
+        }
+        break;
+      case 'camp':
+        for (let k = 0; k < 3; k++) {
+          const a = (k / 3) * Math.PI * 2 + rot;
+          const tx = x + Math.cos(a) * 6, tz = z + Math.sin(a) * 6;
+          this.tryPlan(this.plan('tent', tx, tz, rotFacing(x - tx, z - tz), 3.4, 4.8, {}), 0.5);
+        }
+        this.plans.push({ kind: 'campfire', x, z, rot: 0, fw: 1.5, fd: 1.5, noMap: true });
+        bags(0, -8, 3.5, 0);
+        break;
+      case 'shack': {
+        const [sx, sz] = at(0, 0);
+        this.tryPlan(this.plan('shop', sx, sz, rot, 11, 9, { sign: rng.pick([0xd63a2f, 0x2f6fd6, 0x2fa84f, 0xe0a020]), chests: 1, chestChance: 0.8 }), 0.8);
+        const [kx, kz] = at(8, 4);
+        this.tryPlan(this.plan('crates', kx, kz, rot, 3, 3, { noMap: true }), 0.3);
+        break;
+      }
+      case 'tower': {
+        const [cx, cz] = at(0, 0);
+        this.tryPlan(this.plan('watertower', cx, cz, rot, 9, 9, { chests: 1, chestChance: 0.7 }), 0.8);
+        bags(-7, 0, 4, 1);
+        bags(7, 0, 4, 1);
+        break;
+      }
+      case 'barn': {
+        const [cx, cz] = at(0, 0);
+        this.tryPlan(this.plan('warehouse', cx, cz, rot, 14, 11, {
+          roof: 'gable', wallColor: rng.pick([0xa8322b, 0x8a5a32, 0x6f7a55]), roofColor: 0x5b4636, stripe: 0xf2efe6, hay: true, height: 5.5, chests: 1, chestChance: 0.8,
+        }), 0.8);
+        for (let k = 0; k < 2; k++) {
+          const [hx, hz] = at(-9, -3 + k * 3);
+          this.plans.push({ kind: 'hay', x: hx, z: hz, rot: 0, fw: 1.6, fd: 1.6 });
+        }
+        break;
+      }
+    }
+    if (this.plans.length === n0) return false;
+    this.pads.push(pad);
+    return true;
+  }
+
+  // Coberturas sueltas por el campo abierto: sacos terreros, cajas, balas de
+  // paja y coches abandonados para no cruzar nunca a pecho descubierto.
+  planCover() {
+    const rng = this.rng;
+    let wrecks = 0, n = 0;
+    for (let i = 0; i < 6000 && n < 520; i++) {
+      const [x, z] = this.randomLand(rng, ISLAND_RADIUS * 0.88);
+      const h = this.terrain.rawHeight(x, z);
+      if (h < 2.5 || h > 64) continue;
+      const t = this.terrain;
+      if (Math.abs(t.rawHeight(x + 2, z) - t.rawHeight(x - 2, z)) + Math.abs(t.rawHeight(x, z + 2) - t.rawHeight(x, z - 2)) > 1.6) continue;
+      if (this.roads.edgeDistance(x, z, 12) < 3) continue;
+      if (this.hydro.distanceTo(x, z) < 6) continue;
+      if (!this.free(x - 4, z - 4, x + 4, z + 4)) continue;
+      // Sólo donde no hay ya nada cerca
+      if (this.nearestPlan(x, z, 16) < 14) continue;
+      const poi = this.poiAt(x, z);
+      if (poi && rng.chance(0.7)) continue;
+      const r = rng.next();
+      n++;
+      if (r < 0.4) this.tryPlan(this.plan('sandbags', x, z, rng.int(0, 1), 3.5, 0.6, { W: 3.5, noMap: true }), 1.5);
+      else if (r < 0.68) this.tryPlan(this.plan('crates', x, z, rng.int(0, 3), 3, 3, { noMap: true, chests: 1, chestChance: 0.25 }), 1.5);
+      else if (r < 0.86) {
+        this.plans.push({ kind: 'hay', x, z, rot: 0, fw: 1.6, fd: 1.6 });
+        this.occ.add(x - 1, z - 1, x + 1, z + 1, { hay: true });
+      } else if (wrecks < 30 && this.addCar(x, z, rng.float(0, Math.PI * 2), true)) wrecks++;
+      if (this.plans.length > 1400) break;
     }
   }
 
@@ -1196,6 +1387,15 @@ export class World {
           case 'container': genContainer(ctx, rng, p.stack); break;
           case 'fence': genFence(ctx, p.a[0], p.a[1], p.b[0], p.b[1], p.gaps, p.color); break;
           case 'sandbags': genSandbags(ctx, -p.W / 2, -0.3, p.W / 2, 0.3); break;
+          case 'crates':
+            // Pila de cajas de madera (cobertura) con munición al lado
+            ctx.box(-1.4, 0, -1.4, 0.1, 1.5, 0.1, 0x9a7240);
+            ctx.box(0.1, 0, -1.2, 1.4, 1.3, 0.2, 0x8a6434);
+            ctx.box(-1.2, 0, 0.1, 0.2, 1.2, 1.4, 0x8f6a38);
+            ctx.box(-1.2, 1.5, -1.2, -0.1, 2.6, -0.1, 0xa47a46);
+            ctx.spot(ctx.ammoSpots, 1.0, 0.05, 1.0, 0, 0);
+            if (p.chests) ctx.spot(ctx.chestSpots, 0.9, 0.0, 0.9, 0, 0);
+            break;
           case 'campfire':
             ctx.geometry(new THREE.CylinderGeometry(0.9, 1.0, 0.25, 10), 0x555555, 0, 0.12, 0);
             ctx.box(-0.5, 0.2, -0.08, 0.5, 0.35, 0.08, 0x6b4a2b, false);
@@ -1328,6 +1528,17 @@ export class World {
     const cx = p.x + sx * 25, cz = p.z + sz * 25;
     this.occ.add(cx - p.fw / 2, cz - p.fd / 2, cx + p.fw / 2, cz + p.fd / 2, p);
     return { y: this.terrain.heightAt(p.x, p.z) };
+  }
+
+  // ¿Pasa una tirolesa a menos de r metros (en planta)? (los árboles no la tapan)
+  nearZipline(x, z, r) {
+    for (const zl of this.ziplines) {
+      if (x < zl.minX - r || x > zl.maxX + r || z < zl.minZ - r || z > zl.maxZ + r) continue;
+      const ax = zl.a.x, az = zl.a.z, bx = zl.b.x - ax, bz = zl.b.z - az;
+      const t = Math.max(0, Math.min(1, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz)));
+      if (Math.hypot(x - ax - bx * t, z - az - bz * t) < r) return true;
+    }
+    return false;
   }
 
   occupied(x, z, margin = 0) {

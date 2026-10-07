@@ -397,7 +397,7 @@ export class Combat {
       const end = hit ? hit.point : origin.clone().addScaledVector(d, def.range);
       g.effects.tracer(muzzle, end, 0xfff1b0, def.pellets ? 0.015 : 0.022);
       ends.push(end);
-      if (hit) this.collectHit(hit, def, item, hits);
+      if (hit) this.collectHit(hit, def, item, hits, origin);
     }
     this.applyHits(hits);
     if (!def.explosive) g.net?.shotFx(p, def.sound, muzzle, ends);
@@ -444,7 +444,7 @@ export class Combat {
     ends.push(e);
   }
 
-  collectHit(hit, def, item, hits) {
+  collectHit(hit, def, item, hits, origin = null) {
     const base = def.damage[item.rarity];
     if (hit.kind === 'dummy' || hit.kind === 'character') {
       let dmg = base * (hit.head ? def.headMult : 1);
@@ -459,7 +459,7 @@ export class Combat {
       hits.set(target, e);
       return;
     }
-    this.game.effects.impact(hit.point, hit.normal, hit.kind === 'terrain' ? 0xb59a6a : 0xffd27a);
+    this.game.effects.bulletImpact(origin || this.game.aimOrigin, hit);
     const data = hit.box?.data;
     if (data?.type === 'build') this.game.build.damage(data.piece, base);
     else if (data?.type === 'car') data.ref.damage(base * 0.6);
@@ -469,6 +469,7 @@ export class Combat {
   applyHits(hits) {
     const g = this.game;
     for (const [target, e] of hits) {
+      const hadShield = e.kind !== 'dummy' && target.shield > 0;
       let killed;
       if (e.kind === 'dummy') killed = g.dummies.damage(target, e.dmg, e.head, e.point);
       else killed = this.damageCharacter(target, e.dmg, e.head, e.point, 'bullet');
@@ -476,6 +477,7 @@ export class Combat {
       if (e.head && e.kind !== 'dummy') g.player.stats.heads++;
       g.hud.hitMarker(e.head, killed);
       g.audio.hit(e.head);
+      if (e.kind !== 'dummy') g.effects.hitSpark(e.point, hadShield, e.head);
     }
   }
 
@@ -500,7 +502,7 @@ export class Combat {
       if (hit) {
         g.effects.tracer(prev, hit.point, 0xffffff, 0.04, 0.12);
         const hits = new Map();
-        this.collectHit(hit, pr.def, pr.item, hits);
+        this.collectHit(hit, pr.def, pr.item, hits, prev);
         this.applyHits(hits);
         this.projectiles.splice(i, 1);
         continue;

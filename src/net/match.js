@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { RemotePlayer, heldCode, modeCode, F_CROUCH, F_KNOCKED, F_ALIVE, F_SPRINT, F_SWING } from './remote.js';
+import { RemotePlayer, heldCode, modeCode, F_CROUCH, F_KNOCKED, F_ALIVE, F_SPRINT, F_SWING, F_ZIP, F_SLIDE } from './remote.js';
 import { MODES } from '../game/modes.js';
 import { PICKAXE } from '../game/items.js';
 import { clamp } from '../core/rng.js';
@@ -206,7 +206,7 @@ export class OnlineMatch {
   }
 
   flags(c, swing) {
-    return (c.crouching ? F_CROUCH : 0) | (c.knocked ? F_KNOCKED : 0) | (c.alive ? F_ALIVE : 0) | (c.sprinting ? F_SPRINT : 0) | (swing ? F_SWING : 0);
+    return (c.crouching ? F_CROUCH : 0) | (c.knocked ? F_KNOCKED : 0) | (c.alive ? F_ALIVE : 0) | (c.sprinting ? F_SPRINT : 0) | (swing ? F_SWING : 0) | (c.zip ? F_ZIP : 0) | (c.sliding ? F_SLIDE : 0);
   }
 
   sendState() {
@@ -260,7 +260,13 @@ export class OnlineMatch {
     const from = shooter?.isRemote && shooter.model.root.visible ? shooter.muzzleWorld(new THREE.Vector3()) : o.clone();
     const d = from.distanceTo(g.camera.position);
     const beam = m.w === 'plasma';
-    if (d < 260) for (const e of m.e) g.effects.tracer(from, new THREE.Vector3(e[0], e[1], e[2]), beam ? 0x3ff0e0 : 0xffe0a0, beam ? 0.045 : 0.02, beam ? 0.14 : 0.07);
+    if (d < 260) {
+      for (const e of m.e) {
+        const end = new THREE.Vector3(e[0], e[1], e[2]);
+        g.effects.tracer(from, end, beam ? 0x3ff0e0 : 0xffe0a0, beam ? 0.045 : 0.02, beam ? 0.14 : 0.07);
+        g.effects.nearMiss(from, end, shooter);
+      }
+    }
     const vol = clamp(1 - d / 260, 0, 1);
     if (vol > 0.03) g.audio.shot(m.w, vol * vol * 0.9, from);
     if (d < 150 && m.w !== 'bow') g.effects.muzzleFlash(null, from);

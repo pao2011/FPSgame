@@ -110,7 +110,12 @@ export class Terrain {
       const coast = smoothstep(380, 470, d + n(x * 0.01, z * 0.01) * 12);
       return 6 * (1 - coast) - 14 * coast;
     }
-    const nx = x * 0.0032, nz = z * 0.0032;
+    // Coordenadas deformadas (domain warping): valles y crestas sinuosos en
+    // vez de manchas redondas de ruido.
+    const wx = x + n(x * 0.0035 + 11, z * 0.0035 - 7) * 46;
+    const wz = z + n(x * 0.0035 - 23, z * 0.0035 + 19) * 46;
+    // Colinas suaves de base
+    const nx = wx * 0.0036, nz = wz * 0.0036;
     let h = 0, amp = 1, f = 1, sum = 0;
     for (let o = 0; o < 5; o++) {
       h += n(nx * f + o * 17.3, nz * f - o * 9.1) * amp;
@@ -119,14 +124,41 @@ export class Terrain {
       f *= 2.03;
     }
     h /= sum;
-    // Montañas sólo en algunas regiones (máscara de baja frecuencia)
-    const ridge = 1 - Math.abs(n(x * 0.0021 + 100, z * 0.0021 - 50));
-    const mask = smoothstep(0.15, 0.55, n(x * 0.0011 + 500, z * 0.0011 - 300));
-    const mountain = Math.pow(smoothstep(0.62, 1.0, ridge), 1.5) * 48 * mask;
-    let height = 11 + h * 16 + mountain;
+    // Cordilleras: ruido «ridged» multifractal (crestas afiladas, laderas con
+    // barrancos) en las regiones que marca una máscara de baja frecuencia.
+    let r = 0, ra = 1, rf = 0.0036, wgt = 1, rs = 0;
+    for (let o = 0; o < 5; o++) {
+      let v = 1 - Math.abs(n(wx * rf + o * 31.7 + 100, wz * rf - o * 12.3 - 50));
+      v *= v;
+      v *= wgt;
+      wgt = Math.min(1, v * 1.8);
+      r += v * ra;
+      rs += ra;
+      ra *= 0.5;
+      rf *= 2.15;
+    }
+    r /= rs;
+    // Macizo: cuerpo ancho de la montaña; las crestas van encima
+    // (el centro queda en un valle: ahí está el gran lago con la bóveda)
+    const dc = Math.sqrt(x * x + z * z);
+    const massif = smoothstep(0.08, 0.62, n(x * 0.0021 + 500, z * 0.0021 - 300)) * smoothstep(120, 250, dc);
+    let mountain = massif * (22 + 70 * Math.pow(r, 1.3)) * (0.75 + 0.25 * massif);
+    // Cerros sueltos fuera de las cordilleras
+    const hill = smoothstep(0.35, 0.9, n(x * 0.0042 - 210, z * 0.0042 + 140));
+    mountain += hill * (8 + 22 * r) * (1 - massif);
+    let height = 10 + h * 13 + mountain;
+    // Mesetas y cortados: un escalonado suave en las laderas altas
+    if (height > 22) {
+      const S = 9;
+      const q = Math.floor(height / S) * S;
+      const fr = (height - q) / S;
+      const terr = q + S * smoothstep(0.25, 0.75, fr);
+      height += (terr - height) * 0.45 * smoothstep(22, 40, height);
+    }
     const d = Math.sqrt(x * x + z * z) / HALF;
     const coast = smoothstep(0.78, 0.97, d + n(x * 0.008, z * 0.008) * 0.06);
-    height = height * (1 - coast) - 14 * coast;
+    // Acantilados: donde la montaña llega a la costa cae más a pique
+    height = height * (1 - coast * coast * (3 - 2 * coast)) - 14 * coast;
     return height;
   }
 
@@ -198,6 +230,12 @@ export class Terrain {
   }
 
   build() {
+    for (const _ of this.buildSteps());
+    return this.mesh;
+  }
+
+  // Igual que build() pero por pasos (yield = fracción hecha, 0..1).
+  *buildSteps() {
     this.indexFlats();
     const N = this.res;
     const V = N + 1;
@@ -209,6 +247,7 @@ export class Terrain {
         heights[j * V + i] = h;
         if (h > maxH) maxH = h;
       }
+      if (j % 48 === 47) yield (j / V) * 0.65;
     }
     this.maxHeight = maxH;
 
@@ -230,6 +269,7 @@ export class Terrain {
         colors[idx * 3 + 1] = tmpColor.g;
         colors[idx * 3 + 2] = tmpColor.b;
       }
+      if (j % 96 === 95) yield 0.65 + (j / V) * 0.25;
     }
     // La malla se divide en TILES×TILES parcelas que comparten los vértices:
     // cada parcela tiene su propio índice y su esfera envolvente, así three.js
@@ -295,7 +335,6 @@ export class Terrain {
     full.dispose();
     this.mesh = group;
     this.material = mat;
-    return this.mesh;
   }
 
   slopeAtGrid(i, j) {
@@ -323,11 +362,15 @@ export class Terrain {
       out.setRGB(0.62, 0.58, 0.42);
     } else if (h < 2.4) {
       out.setRGB(0.86, 0.79, 0.56);
-    } else if (h > 64) {
+    } else if (h > 74 + n * 10 && slope < 1.1) {
+      // Nieve en las cumbres (no se queda en las paredes más verticales)
       out.setRGB(0.92, 0.94, 0.97);
-    } else if (slope > 0.75 || h > 50) {
-      const g = 0.42 + n * 0.12;
-      out.setRGB(g, g * 0.97, g * 0.92);
+    } else if (slope > 0.75 || h > 56 + n * 8) {
+      // Roca con vetas por estratos (bandas de altura)
+      const band = Math.sin(h * 0.9 + n2 * 4) * 0.5 + 0.5;
+      const g = 0.4 + n * 0.1 + band * 0.06;
+      out.setRGB(g * 1.02, g * 0.97, g * 0.9);
+      if (h > 66) out.lerp(tmpRock.setRGB(0.88, 0.9, 0.94), smoothstep(66, 80, h) * smoothstep(1.4, 0.6, slope) * 0.6);
     } else {
       out.setRGB(0.3 + n * 0.08 + n2 * 0.04, 0.55 + n * 0.12, 0.2 + n2 * 0.05);
       if (slope > 0.45) out.lerp(tmpRock.setRGB(0.45, 0.42, 0.36), (slope - 0.45) / 0.3);

@@ -396,7 +396,8 @@ export class Menu {
         ${check('autoReload', 'Recargar automáticamente al vaciar el cargador')}
         ${check('toggleAds', 'Apuntar: alternar (en vez de mantener)')}
         ${check('toggleCrouch', 'Agacharse: alternar (en vez de mantener)')}
-        ${check('sprintDefault', 'Correr por defecto (Shift para andar)')}
+        ${check('sprintDefault', 'Correr por defecto (Shift para andar)', 'Corriendo, agáchate para deslizarte por el suelo.')}
+        ${check('headBob', 'Balanceo de la cámara al correr')}
         ${check('skipLobby', 'Saltar la Isla de Inicio en partidas contra bots')}
         ${check('showHints', 'Mostrar consejos en pantalla')}`;
     } else if (tab === 'sens') {
@@ -439,7 +440,8 @@ export class Menu {
         ${check('damageNumbers', 'Mostrar números de daño')}
         ${range('hudScale', 'Tamaño de la interfaz', 0.7, 1.4, 0.05, mult)}
         <div class="opt-row"><label>Color de la mira</label><input type="color" data-k="crosshairColor" value="${s.crosshairColor || '#ffffff'}"></div>
-        ${check('showFps', 'Mostrar FPS')}`;
+        ${check('showFps', 'Mostrar FPS')}
+        ${check('intro', 'Animación de inicio', 'Vuelo sobre la isla al abrir el juego (se salta con cualquier tecla).')}`;
     } else if (tab === 'pad') {
       const seg = (k, opts) => `<div class="seg" data-seg="${k}">${opts.map(([v, label]) => `<button data-v="${v}" class="${String(s[k]) === String(v) ? 'on' : ''}">${label}</button>`).join('')}</div>`;
       const scheme = s.padScheme === 'pro'
@@ -661,9 +663,15 @@ export class Menu {
     }));
   }
 
-  showMain(panel = null) {
+  showMain(panel = null, fade = false) {
     this.hideAll();
     this.root.style.display = 'flex';
+    if (fade) {
+      // Tras la animación de inicio el menú aparece poco a poco
+      this.root.classList.remove('fade-in');
+      void this.root.offsetWidth;
+      this.root.classList.add('fade-in');
+    }
     this.show(panel || (this.panel === 'online' ? 'online' : 'play'));
     this.updateBadge();
     this.prog.updatePill();

@@ -91,11 +91,23 @@ export class Character {
     this.launched = false; // lanzado por una explosión (sin daño al caer)
     this.padLaunch = false; // plataforma de salto (abre el planeador)
     this.regen = null; // curación progresiva (Zumo Slurp)
+    this.zip = null; // tirolesa en la que va colgado
+    this.zipCd = 0;
+    this.sliding = false; // deslizándose por el suelo
+    this.slideT = 0;
+    this.slideCd = 0;
   }
 
   // Temporizadores comunes y curación progresiva.
   tickCommon(dt) {
+    // Suavizado de la cámara al subir/bajar escalones. Sólo el jugador lo
+    // amortiguaba: en los bots se acumulaba al bajar cuestas y sus «ojos»
+    // (de donde salen los disparos) acababan metros por encima de la cabeza.
+    if (!this.isPlayer) this.eyeOffset = 0;
+    else this.eyeOffset = clamp(this.eyeOffset, -1.2, 1.2);
     this.noFallT = Math.max(0, this.noFallT - dt);
+    this.zipCd = Math.max(0, this.zipCd - dt);
+    this.slideCd = Math.max(0, this.slideCd - dt);
     this.launchT = Math.max(0, this.launchT - dt);
     const r = this.regen;
     if (r && this.alive && !this.knocked) {
@@ -314,6 +326,18 @@ export class Character {
     return best === -Infinity ? null : best;
   }
 
+  // Boca del cañón del arma que lleva en la mano (para las trazadoras). Si
+  // el modelo no está a la vista, un punto a la altura del hombro derecho.
+  gunMuzzle(out, eye, dir) {
+    const m = this.model.root.visible ? this.model.hand.children[0]?.userData.muzzle : null;
+    if (m) {
+      m.getWorldPosition(out);
+      if (out.distanceToSquared(eye) < 1.6 * 1.6) return out;
+    }
+    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    return out.set(eye.x + dir.x * 0.6 + rx * 0.18, eye.y + dir.y * 0.6 - 0.25, eye.z + dir.z * 0.6 + rz * 0.18);
+  }
+
   // ------------------------------------------------------------ IMPACTOS
   // Raycast contra la cabeza y el cuerpo (cajas alineadas a ejes).
   raycastHit(o, dir, maxT) {
@@ -367,6 +391,8 @@ export class Character {
 
   knock(type, attacker) {
     this.knocked = true;
+    this.zip = null;
+    this.sliding = false;
     this.knockHp = 100;
     this.knocker = attacker;
     this.crouching = true;
@@ -470,6 +496,28 @@ export class Character {
       m.legL.rotation.set(0.3 - this.diveAmount * 0.2, 0, -0.25);
       m.legR.rotation.set(0.3 - this.diveAmount * 0.2, 0, 0.25);
       joints(-0.5 + this.diveAmount * 0.4, -0.5 + this.diveAmount * 0.4, 0.3, 0.3);
+      return;
+    }
+    if (this.zip) {
+      // Colgado de la tirolesa: brazos arriba agarrando la polea
+      const t = (this.zipS || 0) * 0.35;
+      m.body.rotation.x = -0.08 + Math.sin(t) * 0.04;
+      m.armL.rotation.set(0.1, 0, -2.95);
+      m.armR.rotation.set(0.1, 0, 2.95);
+      m.legL.rotation.set(0.35 + Math.sin(t * 1.3) * 0.1, 0, -0.05);
+      m.legR.rotation.set(0.15 - Math.sin(t * 1.3) * 0.1, 0, 0.05);
+      joints(-0.6, -0.35, 0.15, 0.15);
+      return;
+    }
+    if (this.sliding) {
+      // Deslizándose: echado hacia atrás, una pierna estirada delante
+      m.body.rotation.x = 0.62;
+      m.body.position.y = -0.62;
+      m.legL.rotation.set(1.5, 0, 0.12);
+      m.legR.rotation.set(0.95, 0, -0.12);
+      m.armL.rotation.set(0.3, 0, -0.9);
+      m.armR.rotation.set(1.0, 0, 0.2);
+      joints(-0.1, -1.1, 0.3, 0.6);
       return;
     }
     if (this.mode === 'glide') {

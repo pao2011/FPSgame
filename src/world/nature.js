@@ -55,6 +55,7 @@ export function createNature(world, rng) {
     if (world.waterDepth && world.waterDepth(x, z) > -0.4) return null; // ni en lagos ni en ríos
     if (world.occupied(x, z, margin)) return null;
     if (world.roads.edgeDistance(x, z, 24) < margin + 1) return null;
+    if (world.nearZipline(x, z, margin + 3.5)) return null;
     const poi = world.poiAt(x, z);
     if (poi && poi.type !== 'town' && poi.type !== 'farm') return null;
     if (poi && !rng.chance(0.12)) return null;
@@ -83,7 +84,7 @@ export function createNature(world, rng) {
     if (h < 0.5) continue;
     if (world.waterDepth && world.waterDepth(x, z) > 0.3) continue;
     if (world.creative && Math.hypot(x, z) < 300) continue;
-    if (world.occupied(x, z, 2) || world.poiAt(x, z) || world.roads.edgeDistance(x, z, 24) < 3) continue;
+    if (world.occupied(x, z, 2) || world.poiAt(x, z) || world.roads.edgeDistance(x, z, 24) < 3 || world.nearZipline(x, z, 3)) continue;
     rocks.push({ x, y: h, z, s: rng.float(0.8, 3.2), rot: rng.float(0, Math.PI * 2) });
   }
   for (let i = 0; i < 9000 && bushes.length < 1400; i++) {

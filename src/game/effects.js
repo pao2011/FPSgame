@@ -95,7 +95,7 @@ export class Effects {
     // Viajan desde el cañón al impacto en lugar de aparecer de golpe.
     this.tracers = [];
     const streak = new THREE.CylinderGeometry(1, 0.15, 1, 6, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2);
-    for (let i = 0; i < 48; i++) {
+    for (let i = 0; i < 96; i++) {
       const core = new THREE.Mesh(streak, new THREE.MeshBasicMaterial({
         color: 0xfff1b0, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false,
       }));
@@ -217,8 +217,8 @@ export class Effects {
     t.len = len;
     t.beam = width >= 0.04; // rayos (plasma, arco): línea completa que se desvanece
     t.width = width;
-    t.head = t.beam ? len : Math.min(len, 1.5);
-    t.speed = 420;
+    t.head = t.beam ? len : Math.min(len, 2.5);
+    t.speed = 560;
     t.life = t.beam ? life : len / t.speed + 0.06;
     t.max = t.life;
     t.core.material.color.setHex(color).multiplyScalar(this.hdr);
@@ -228,7 +228,7 @@ export class Effects {
   }
 
   placeTracer(t) {
-    const streakLen = t.beam ? t.len : Math.min(6, t.len * 0.6);
+    const streakLen = t.beam ? t.len : Math.min(9, t.len * 0.6);
     const head = Math.min(t.head, t.len);
     const tail = Math.max(0, head - streakLen);
     const L = head - tail;
@@ -237,7 +237,12 @@ export class Effects {
       return;
     }
     const k = t.beam ? Math.max(0, t.life / t.max) : 1;
-    for (const [m, w] of [[t.core, t.width * 0.8], [t.halo, t.width * 3.2]]) {
+    // De lejos la trazadora no se queda en menos de ~1 píxel: se ensancha
+    // con la distancia a la cámara (si no, las balas lejanas no se ven)
+    const cam = this.game.camera.position;
+    this.v2.copy(t.from).addScaledVector(t.dir, (head + tail) * 0.5);
+    const far = Math.max(1, this.v2.distanceTo(cam) * 0.0016 / Math.max(t.width, 0.01));
+    for (const [m, w] of [[t.core, t.width * 0.8 * far], [t.halo, t.width * 3.2 * Math.sqrt(far)]]) {
       m.position.copy(t.from).addScaledVector(t.dir, tail);
       m.lookAt(this.v.copy(t.from).addScaledVector(t.dir, head));
       m.scale.set(w, w, L);
@@ -262,30 +267,134 @@ export class Effects {
     p.sprite.material.opacity = alpha;
   }
 
-  impact(point, normal, color = 0xffd27a) {
-    const d = this.decals[this.decalIdx++ % this.decals.length];
-    d.position.copy(point).addScaledVector(normal, 0.01);
-    d.lookAt(this.v.copy(point).add(normal));
-    d.rotateZ(Math.random() * Math.PI * 2);
-    d.scale.setScalar(0.75 + Math.random() * 0.6);
-    d.updateMatrix();
-    d.visible = true;
-    // Chispas
-    for (let i = 0; i < 6; i++) {
+  impact(point, normal, color = 0xffd27a, mat = 'stone') {
+    if (mat !== 'water') {
+      const d = this.decals[this.decalIdx++ % this.decals.length];
+      d.position.copy(point).addScaledVector(normal, 0.01);
+      d.lookAt(this.v.copy(point).add(normal));
+      d.rotateZ(Math.random() * Math.PI * 2);
+      d.scale.setScalar((0.75 + Math.random() * 0.6) * (mat === 'dirt' ? 1.4 : 1));
+      d.updateMatrix();
+      d.visible = true;
+    } else {
+      this.splash(point, 0.6);
+      return;
+    }
+    // Chispas: muchas y brillantes en metal, pocas en piedra, ninguna en tierra/madera
+    const nSpark = mat === 'metal' ? 10 : mat === 'stone' ? 5 : 0;
+    for (let i = 0; i < nSpark; i++) {
       const s = this.sparks[this.sparkIdx++ % this.sparks.length];
       s.mesh.position.copy(point);
-      s.mesh.material.color.setHex(0xffd27a).multiplyScalar(this.hdr * 0.7);
-      s.vel.copy(normal).multiplyScalar(3 + Math.random() * 4);
+      s.mesh.material.color.setHex(mat === 'metal' ? 0xffe6a8 : 0xffd27a).multiplyScalar(this.hdr * (mat === 'metal' ? 1.1 : 0.7));
+      s.vel.copy(normal).multiplyScalar(3 + Math.random() * (mat === 'metal' ? 7 : 4));
       s.vel.x += (Math.random() - 0.5) * 5;
       s.vel.y += Math.random() * 3;
       s.vel.z += (Math.random() - 0.5) * 5;
-      s.life = 0.15 + Math.random() * 0.2;
+      s.life = 0.15 + Math.random() * (mat === 'metal' ? 0.35 : 0.2);
       s.mesh.visible = true;
     }
     // Trocitos del material y nube de polvo de su color
-    for (let i = 0; i < 3; i++) this.chunk(point, color, 0.35, normal, 3);
-    this.v2.copy(normal).multiplyScalar(0.8);
-    this.puff(this.v.copy(point).addScaledVector(normal, 0.15), color, 0.35, 0.7, this.v2, 0.55);
+    const nChunk = mat === 'wood' ? 5 : mat === 'dirt' ? 4 : 3;
+    for (let i = 0; i < nChunk; i++) this.chunk(point, color, mat === 'wood' ? 0.45 : 0.35, normal, mat === 'dirt' ? 4 : 3);
+    this.v2.copy(normal).multiplyScalar(mat === 'dirt' ? 1.6 : 0.8);
+    if (mat === 'dirt') this.v2.y += 0.8;
+    this.puff(this.v.copy(point).addScaledVector(normal, 0.15), color, mat === 'dirt' ? 0.55 : 0.35, mat === 'dirt' ? 1.0 : 0.7, this.v2, mat === 'metal' ? 0.3 : 0.6);
+  }
+
+  // Material de lo que ha golpeado una bala (para el efecto y el sonido).
+  materialOf(hit) {
+    if (hit.kind === 'terrain') {
+      const w = this.game.world.waterLevelAt?.(hit.point.x, hit.point.z) ?? 0;
+      if (hit.point.y < w - 0.05) return 'water';
+      return hit.normal && hit.normal.y < 0.72 ? 'stone' : 'dirt';
+    }
+    const data = hit.box?.data;
+    if (!data) return 'stone';
+    if (data.type === 'build') return data.piece?.mat === 'wood' ? 'wood' : data.piece?.mat === 'metal' ? 'metal' : 'stone';
+    if (data.type === 'car' || data.type === 'wreck') return 'metal';
+    if (data.ref?.mat) return data.ref.mat === 'wood' ? 'wood' : data.ref.mat === 'metal' ? 'metal' : 'stone';
+    if (data.type === 'chest' || data.type === 'bridge') return 'wood';
+    return 'stone';
+  }
+
+  // Impacto de una bala en el mundo con el efecto de su material, y
+  // salpicadura si antes cruza la superficie del agua.
+  bulletImpact(origin, hit) {
+    const mat = this.materialOf(hit);
+    const color = mat === 'dirt' ? 0x8a7350 : mat === 'wood' ? 0xa07a48 : mat === 'metal' ? 0xb8c0c8 : mat === 'water' ? 0xffffff : 0xb0aca4;
+    if (mat === 'water') {
+      // Punto donde la trayectoria corta el agua
+      const w = this.game.world.waterLevelAt?.(hit.point.x, hit.point.z) ?? 0;
+      const dy = hit.point.y - origin.y;
+      const k = Math.abs(dy) > 1e-3 ? Math.min(1, Math.max(0, (w - origin.y) / dy)) : 1;
+      this.v.copy(origin).lerp(hit.point, k);
+      this.v.y = w;
+      this.splash(this.v, 0.6);
+      const dc = this.v.distanceTo(this.game.camera.position);
+      if (dc < 45) this.game.audio.ricochet?.('water', Math.pow(1 - dc / 45, 1.5), this.v);
+      return;
+    }
+    this.impact(hit.point, hit.normal, color, mat);
+    // Sonido del impacto (cerca de la cámara)
+    const dc = hit.point.distanceTo(this.game.camera.position);
+    if (dc < 45) this.game.audio.ricochet?.(mat, Math.pow(1 - dc / 45, 1.5), hit.point);
+  }
+
+  // Salpicadura de agua (balas, caídas).
+  splash(point, size = 1) {
+    for (let i = 0; i < 4; i++) {
+      this.v2.set((Math.random() - 0.5) * 1.2, 2.5 + Math.random() * 2.5, (Math.random() - 0.5) * 1.2).multiplyScalar(size);
+      this.puff(this.v.copy(point).add(this.v2.clone().multiplyScalar(0.05)), 0xe8f4ff, 0.25 * size + Math.random() * 0.2, 0.7, this.v2, 0.7);
+    }
+    for (let i = 0; i < 4; i++) this.chunk(point, 0xcfe8ff, 0.25 * size, UP, 4);
+  }
+
+  // Acierto en un personaje: destello azul (escudo) o blanco (salud).
+  hitSpark(point, shield = false, head = false) {
+    const col = shield ? 0x6fd0ff : head ? 0xffe36b : 0xffffff;
+    for (let i = 0; i < (head ? 9 : 6); i++) {
+      const s = this.sparks[this.sparkIdx++ % this.sparks.length];
+      s.mesh.position.copy(point);
+      s.mesh.material.color.setHex(col).multiplyScalar(this.hdr);
+      s.vel.set((Math.random() - 0.5) * 7, Math.random() * 4, (Math.random() - 0.5) * 7);
+      s.life = 0.12 + Math.random() * 0.16;
+      s.mesh.visible = true;
+    }
+    this.puff(point, shield ? 0x9fe0ff : 0xf0f0f0, 0.3, 0.35, null, 0.45);
+  }
+
+  // Polvo levantado al deslizarse (dir: hacia dónde va).
+  dust(pos, dir, n = 1) {
+    if (!this.game.world) return;
+    const mat = this.game.groundMaterial?.(this.game.player) || 'grass';
+    const col = mat === 'sand' ? 0xd8c89a : mat === 'grass' ? 0x9a8a62 : mat === 'wood' ? 0xa08060 : 0xa8a49c;
+    for (let i = 0; i < n; i++) {
+      this.v2.set(-dir.x * 1.5 + (Math.random() - 0.5) * 1.2, 0.6 + Math.random() * 0.8, -dir.z * 1.5 + (Math.random() - 0.5) * 1.2);
+      this.v.set(pos.x + (Math.random() - 0.5) * 0.5, pos.y + 0.12, pos.z + (Math.random() - 0.5) * 0.5);
+      this.puff(this.v, col, 0.35 + Math.random() * 0.25, 0.8, this.v2, 0.45);
+    }
+  }
+
+  // Bala enemiga que pasa cerca de la cámara: silbido y un leve temblor.
+  // from→to es el recorrido de la bala.
+  nearMiss(from, to, shooter) {
+    const g = this.game;
+    const p = g.player;
+    if (!p.alive || shooter === p || (shooter && shooter.team === p.team && shooter !== p)) return;
+    const cam = g.camera.position;
+    const abx = to.x - from.x, aby = to.y - from.y, abz = to.z - from.z;
+    const l2 = abx * abx + aby * aby + abz * abz;
+    if (l2 < 1) return;
+    let t = ((cam.x - from.x) * abx + (cam.y - from.y) * aby + (cam.z - from.z) * abz) / l2;
+    if (t <= 0.02 || t >= 1) return; // la bala no llega hasta aquí (o impacta antes)
+    const x = from.x + abx * t, y = from.y + aby * t, z = from.z + abz * t;
+    const d = Math.hypot(x - cam.x, y - cam.y, z - cam.z);
+    if (d > 3.2) return;
+    const now = g.time;
+    if (now - (this.lastWhiz || 0) < 0.07) return;
+    this.lastWhiz = now;
+    g.audio.whiz?.(Math.min(1, 1.25 - d / 3.2), this.v.set(x, y, z));
+    if (g.explosives) g.explosives.shake = Math.max(g.explosives.shake, 0.45 * (1 - d / 3.2));
   }
 
   chunk(point, color, scale, dir, speed) {
@@ -417,7 +526,7 @@ export class Effects {
       if (!t.beam) t.head += t.speed * dt;
       // Cuando la cabeza llega al final, la cola sigue avanzando hasta el impacto
       if (!t.beam && t.head >= t.len) {
-        const streakLen = Math.min(6, t.len * 0.6);
+        const streakLen = Math.min(9, t.len * 0.6);
         if (t.head - streakLen >= t.len) {
           t.life = 0;
           t.core.visible = t.halo.visible = false;

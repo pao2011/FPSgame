@@ -4,6 +4,25 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Isla más densa, montañas y tirolesas:** 🗺️ **mapa más compacto y lleno**
+(la isla pasa de 740 a 592 m de radio y entre las zonas hay **puestos
+avanzados**: cabañas, ruinas, torres de vigilancia, almacenes de contenedores,
+campamentos y graneros, más **coberturas** por todo el campo: sacos terreros,
+cajas y coches abandonados), ⛰️ **cordilleras de verdad** (crestas afiladas,
+mesetas, barrancos y **cumbres nevadas**, con el gran lago en un valle), 🚡
+**tirolesas** para cruzar la isla volando (E para engancharte, Espacio para
+saltar, S para dar la vuelta; salen en el mapa como líneas amarillas), 🏃
+**correr por defecto** (Shift para andar) con balanceo de cámara y 🛝
+**deslizarse** (agáchate corriendo; cuesta abajo se gana velocidad). 🔫
+**Balas mejoradas**: trazadoras más rápidas y visibles de lejos, **silbido**
+cuando una bala te pasa cerca, impactos según el material (tierra, metal con
+chispas, madera, piedra y **salpicaduras en el agua**) y destello azul/blanco
+al acertar. Arreglado: los disparos de los bots ya no parecen venir **del
+cielo** (sus «ojos» se iban subiendo al bajar cuestas) y sus trazadoras salen
+del cañón del arma. Además, **pantalla de carga ilustrada con progreso real**,
+pantalla de carga antes de cada partida y **animación de inicio** (vuelo sobre
+la isla con el logo; se salta con cualquier tecla o en Opciones).
+
 **Isla de la Bóveda:** 🏝️ un **gran lago en el centro con una isla** donde
 espera el 💀 **Guardián de la Bóveda** con sus secuaces; al morir suelta una
 💳 **tarjeta** que abre la 🔒 **bóveda** (cofres seguros y armas
@@ -89,7 +108,7 @@ reflejos y espuma en la orilla, terreno con más detalle y menús nuevos.
 Dúos, Tríos, Escuadras, 1v1 Práctica, Duelo por equipos, Construcción cero,
 Práctica libre y Creativo), **bots con
 IA** (navegan por el mapa, saquean, construyen, se curan, se reaniman y
-trabajan en equipo), una isla de 1,6 km con **carreteras y pueblos ordenados
+trabajan en equipo), una isla de 1,3 km con **carreteras y pueblos ordenados
 por calles** y muchos tipos de estructuras (casas, tiendas, gasolineras,
 iglesias, rascacielos, fábrica, puerto con muelle y grúa, base militar,
 estadio, granjas, faro, antena de radio, depósitos de agua, búnkeres,

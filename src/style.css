@@ -71,21 +71,109 @@ kbd {
   background: radial-gradient(circle at 50% 40%, #2d5fb8, #0b1630 70%);
 }
 
-#loading .bar {
-  width: 260px;
-  height: 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.15);
+#loading {
   overflow: hidden;
-  margin-top: 16px;
+  transition: opacity 0.6s ease;
 }
-
+#loading.out { opacity: 0; pointer-events: none; }
+#loading .ld-art { position: absolute; inset: 0; }
+#loading .ld-front { position: relative; text-align: center; margin-top: -12vh; animation: ldIn 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+#loading .ld-front .logo { font-size: clamp(44px, 9vw, 96px); }
+#loading .ld-season { letter-spacing: 6px; font-size: 13px; font-weight: 800; opacity: 0.85; margin-top: 4px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+#loading .ld-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: max(28px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(620px, calc(100vw - 32px));
+}
+#loading .ld-row { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+#loading .ld-pct { font-family: 'Lilita One', Inter, sans-serif; font-size: 22px; }
+#loading .bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  margin-top: 8px;
+}
 #loading .bar div {
-  width: 40%;
+  width: 0%;
   height: 100%;
-  background: var(--accent);
-  animation: load 1s ease-in-out infinite alternate;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #ffd34d, #ff9a3c);
+  background-size: 200% 100%;
+  box-shadow: 0 0 12px rgba(255, 211, 77, 0.7);
+  transition: width 0.25s ease-out;
+  position: relative;
+  overflow: hidden;
 }
+#loading .bar div::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.55) 50%, transparent 80%);
+  animation: ldShine 1.3s linear infinite;
+}
+#loading.error .bar div { background: #d63a2f; }
+@keyframes ldShine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes ldIn { from { opacity: 0; transform: scale(1.6); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* Escena animada de las pantallas de carga (src/ui/loading.js) */
+.ls-svg { position: absolute; inset: 0; width: 100%; height: 100%; color: rgba(8, 12, 34, 0.78); }
+.ls-svg .ls-far { fill: rgba(8, 12, 34, 0.32); }
+.ls-svg .ls-island, .ls-svg .ls-palms path, .ls-svg .ls-palms g { fill: rgba(8, 12, 34, 0.82); }
+.ls-svg .ls-palms path[stroke] { fill: none; stroke: rgba(8, 12, 34, 0.82); }
+.ls-svg .ls-snow { fill: rgba(255, 255, 255, 0.55); }
+.ls-svg .ls-waves path { fill: none; stroke: rgba(255, 255, 255, 0.22); stroke-width: 3; animation: lsWave 6s linear infinite; }
+.ls-svg .ls-waves path + path { stroke: rgba(255, 255, 255, 0.12); animation-duration: 9s; animation-direction: reverse; }
+.ls-svg .ls-cloud ellipse { fill: rgba(255, 255, 255, 0.16); }
+.ls-svg .ls-clouds-near .ls-cloud ellipse { fill: rgba(255, 255, 255, 0.1); }
+.ls-svg .ls-cloud { animation: lsDrift 60s linear infinite; }
+.ls-svg .ls-cloud.c2, .ls-svg .ls-cloud.c4 { animation-duration: 80s; animation-delay: -30s; }
+.ls-svg .ls-cloud.c3, .ls-svg .ls-cloud.c5 { animation-duration: 70s; animation-delay: -50s; }
+.ls-svg .ls-sun { transform-origin: 1120px 330px; animation: lsSun 4s ease-in-out infinite alternate; }
+.ls-svg .ls-bus { color: rgba(8, 12, 34, 0.7); fill: rgba(8, 12, 34, 0.7); animation: lsBus 22s linear infinite; }
+.ls-svg .ls-bus .ls-balloon { fill: rgba(8, 12, 34, 0.55); }
+.ls-svg .ls-bus .ls-win { fill: rgba(255, 230, 160, 0.35); }
+.ls-svg .ls-fronds { transform-origin: 0 0; animation: lsFrond 3s ease-in-out infinite alternate; }
+@keyframes lsWave { from { transform: translateX(0); } to { transform: translateX(-160px); } }
+@keyframes lsDrift { from { transform: translateX(-300px); } to { transform: translateX(1900px); } }
+@keyframes lsSun { from { transform: scale(1); opacity: 0.9; } to { transform: scale(1.06); opacity: 1; } }
+@keyframes lsBus { 0% { transform: translate(-220px, 260px) rotate(-3deg); } 50% { transform: translate(800px, 210px) rotate(2deg); } 100% { transform: translate(1820px, 250px) rotate(-2deg); } }
+@keyframes lsFrond { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+
+/* Animación de inicio */
+#intro { position: fixed; inset: 0; z-index: 60; pointer-events: auto; cursor: pointer; transition: opacity 0.7s ease; }
+#intro.out { opacity: 0; pointer-events: none; }
+#intro .bar-top, #intro .bar-bot { position: absolute; left: 0; right: 0; height: 11vh; background: #000; animation: introBars 5.6s ease-in-out forwards; }
+#intro .bar-top { top: 0; transform-origin: top; }
+#intro .bar-bot { bottom: 0; transform-origin: bottom; }
+#intro .intro-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+#intro .intro-logo {
+  position: relative;
+  font-family: 'Lilita One', Inter, sans-serif;
+  font-size: clamp(56px, 12vw, 150px);
+  letter-spacing: 3px;
+  line-height: 0.9;
+  color: #fff;
+  text-shadow: 0 6px 0 #1b3a8a, 0 14px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  padding: 0 12px 14px;
+  opacity: 0;
+  animation: introLogo 1.1s cubic-bezier(0.2, 1.5, 0.4, 1) 1.5s forwards;
+}
+#intro .intro-logo .l2 { color: #ffd34d; text-shadow: 0 6px 0 #8a5a00, 0 14px 40px rgba(0, 0, 0, 0.55); margin-left: 0.15em; }
+#intro .intro-logo .shine { position: absolute; top: 0; bottom: 0; width: 30%; left: -40%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.4), transparent); transform: skewX(-20deg); animation: introShine 1s ease-in-out 2.7s forwards; }
+#intro .intro-sub { margin-top: 10px; font-weight: 800; letter-spacing: 7px; font-size: clamp(11px, 1.6vw, 17px); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7); opacity: 0; animation: introSub 0.8s ease 2.5s forwards; text-align: center; padding: 0 16px; }
+#intro .intro-skip { position: absolute; right: 22px; bottom: calc(11vh + 14px); font-size: 13px; opacity: 0; animation: introSub 0.6s ease 0.8s forwards; text-shadow: 0 2px 6px #000; }
+@keyframes introBars { 0% { transform: scaleY(1.4); } 15% { transform: scaleY(1); } 85% { transform: scaleY(1); } 100% { transform: scaleY(0); } }
+@keyframes introLogo { 0% { opacity: 0; transform: scale(2.6); } 60% { opacity: 1; } 100% { opacity: 1; transform: scale(1); } }
+@keyframes introShine { from { left: -40%; } to { left: 120%; } }
+@keyframes introSub { from { opacity: 0; transform: translateY(10px); } to { opacity: 0.9; transform: none; } }
+#main-menu.fade-in { animation: menuFade 0.7s ease both; }
+@keyframes menuFade { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
 
 @keyframes load {
   from { transform: translateX(-100%); }
@@ -3877,13 +3965,16 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 
 /* ------------------------------------------------------------ CARGA */
 #loading .loading-tip {
-  margin-top: 26px;
-  max-width: min(560px, calc(100vw - 32px));
+  margin-bottom: 12px;
   text-align: center;
   font-size: 14px;
-  opacity: 0.8;
+  opacity: 0.85;
   line-height: 1.4;
+  min-height: 2.8em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: opacity 0.25s;
 }
+#loading .loading-tip.swap { opacity: 0; }
 #match-loader {
   position: fixed;
   inset: 0;
@@ -3895,6 +3986,12 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
   transition: opacity 0.35s;
 }
 #match-loader.out { opacity: 0; }
+#match-loader { overflow: hidden; }
+#match-loader .ml-art { position: absolute; inset: 0; opacity: 0.9; }
+#match-loader .ml-box { position: relative; animation: ldIn 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+#match-loader .ml-sub { opacity: 0.85; font-weight: 700; margin-top: 2px; }
+#match-loader .ml-bar { height: 8px; border-radius: 5px; background: rgba(0, 0, 0, 0.35); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.15); overflow: hidden; margin: -6px 0 16px; }
+#match-loader .ml-bar div { height: 100%; width: 0; background: linear-gradient(90deg, #ffd34d, #ff9a3c); box-shadow: 0 0 10px rgba(255, 211, 77, 0.7); transition: width 0.35s ease-out; }
 #match-loader .ml-box { display: flex; gap: 28px; align-items: center; max-width: calc(100vw - 32px); flex-wrap: wrap; justify-content: center; }
 #match-loader .ml-map canvas {
   width: min(360px, 80vw);

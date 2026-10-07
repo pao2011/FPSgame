@@ -1060,8 +1060,9 @@ class Bot extends Character {
     const still = this.hSpeed < 1;
     const spread = def.pellets ? def.spread : (still ? def.adsSpread * 2 + 0.006 : def.spread * 0.8);
     const pellets = def.pellets || 1;
-    const muzzle = eye.clone().addScaledVector(dir, 0.6);
-    const near = this.pos.distanceToSquared(g.camera.position) < 200 * 200;
+    // Las trazadoras salen del cañón del arma (no de los ojos)
+    const muzzle = this.gunMuzzle(new THREE.Vector3(), eye, dir);
+    const near = this.pos.distanceToSquared(g.camera.position) < 260 * 260;
     const d = new THREE.Vector3();
     let total = 0, head = false, victim = null;
     const ends = g.net ? [] : null;
@@ -1070,7 +1071,10 @@ class Bot extends Character {
       const hit = g.raycast(eye, d, def.range, 0, this);
       if ((near || ends) && i < 4) {
         const end = hit ? hit.point : eye.clone().addScaledVector(d, def.range);
-        if (near) g.effects.tracer(muzzle, end, def.beam || 0xffe0a0, def.beam ? 0.045 : 0.02, def.beam ? 0.14 : 0.07);
+        if (near) {
+          g.effects.tracer(muzzle, end, def.beam || 0xffe0a0, def.beam ? 0.045 : 0.02, def.beam ? 0.14 : 0.07);
+          g.effects.nearMiss(muzzle, end, this);
+        }
         if (ends) ends.push(end);
       }
       if (!hit) continue;
@@ -1086,13 +1090,17 @@ class Bot extends Character {
         victim = hit.entity;
       } else if (hit.kind === 'world' && hit.box?.data?.type === 'build') {
         g.build.damage(hit.box.data.piece, def.damage[w.rarity]);
+        if (near && i < 4) g.effects.bulletImpact(eye, hit);
       } else if (hit.kind === 'dummy') {
         g.dummies.damage(hit.dummy, def.damage[w.rarity], hit.head, hit.point);
-      } else if (near) {
-        g.effects.impact(hit.point, hit.normal);
+      } else if (near && i < 4) {
+        g.effects.bulletImpact(eye, hit);
       }
     }
-    if (victim && total > 0) victim.damage(total, head ? 'headshot' : 'bullet', this);
+    if (victim && total > 0) {
+      if (!victim.isPlayer && near) g.effects.hitSpark(victim.pos.clone().setY(victim.pos.y + victim.height * (head ? 0.92 : 0.6)), victim.shield > 0, head);
+      victim.damage(total, head ? 'headshot' : 'bullet', this);
+    }
     if (ends) g.net.shotFx(this, def.sound, muzzle, ends);
     const dCam = this.pos.distanceTo(g.camera.position);
     const vol = clamp(1 - dCam / 260, 0, 1);
