@@ -138,6 +138,10 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Integridad estructural', 'Los edificios que se quedan sin apoyos se vienen abajo (y caen con todo lo que tenían encima). Tus construcciones también: si rompes la pieza que las sujeta al suelo, se caen como en Fortnite.'],
+  ['Cofres destructibles', 'Rompe cofres y cajas de munición a pico, poniéndoles una construcción encima (un techo, por ejemplo) o con explosivos: revientan y sueltan el botín. Si se hunde el suelo en el que están, también.'],
+  ['Puntos débiles', 'Al picar aparece un punto azul: si le das, el golpe es crítico (doble de daño y de material).'],
+  ['Construcción como en Fortnite', 'Menos alcance: suelos, rampas y techos van donde apuntas (como mucho una casilla) y nunca atraviesan una pared, así que en los «90» la rampa se pone en tu caja. Edición de rampas arrastrando en la dirección en la que quieres que suba (con la rejilla sobre la rampa) y techos con forma de esquina, pendiente, cumbrera, tres esquinas o plano.'],
   ['Edificios destructibles', 'Las casas, tiendas, naves, iglesias, gasolineras y demás se pueden romper a pico, a tiros o con explosivos. Al picarlas dan el material de lo que están hechas: madera, piedra (ladrillo, hormigón, tejas) o metal (chapa, paneles). Las bóvedas, el búnker, el faro, el castillo y el estadio siguen siendo indestructibles.'],
   ['Construcción y edición', 'En los «90» la rampa ya se coloca en tu propia casilla (al mirar abajo, al saltar o con un muro delante) y te sube encima. Para salir de la edición basta con pulsar la tecla del pico o de cualquier arma; las formas de muro pasan a Mayús + 1-8. Arreglado atravesar paredes al editar.'],
   ['Pato de botín', 'Las llamas de botín ahora son patos de goma gigantes que hacen «¡cuak!» (también al abrirlos).'],

@@ -45,6 +45,8 @@ export class DestSet {
     this.list = list; // lista global (mundo) de piezas
     this.mine = [];
     this.decor = [];
+    // Edificio: sus piezas y (al romper la primera) quién toca a quién
+    this.bld = { pieces: this.mine, adj: null };
   }
 
   add(aabb, hex) {
@@ -58,6 +60,7 @@ export class DestSet {
       kind: 'building', id: this.list.length, mat: materialOf(hex), hp, maxHp: hp, hex,
       center: new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2),
       aabb, boxes: [[x0, y0, z0, x1, y1, z1, 'building']], colliders: [], ranges: [],
+      bld: this.bld, grounded: y0 <= this.groundY + 0.5,
     };
     this.list.push(piece);
     this.mine.push(piece);

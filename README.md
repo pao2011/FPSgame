@@ -4,6 +4,13 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Integridad estructural y cofres:** 🏚️ los edificios (y tus construcciones)
+que se quedan sin apoyos **se caen**; los **cofres se rompen** a pico, con una
+construcción encima o con explosivos; **puntos débiles** al picar (doble de
+daño y material). Construcción con **menos alcance** (las rampas de los «90»
+van a tu caja) y **edición como en Fortnite**: rampas arrastrando y techos de
+esquina, pendiente, cumbrera, tres esquinas o planos.
+
 **Edificios destructibles y controles:** 🏚️ las **casas, tiendas, naves y
 demás edificios se rompen** a pico, a tiros o con explosivos y dan el
 **material del que están hechos** (madera, piedra o metal). En los **«90»** la

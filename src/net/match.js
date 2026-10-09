@@ -477,15 +477,15 @@ export class OnlineMatch {
     else g.pickups.remove(pk);
   }
 
-  requestChest(c, opener) {
+  requestChest(c, opener, brk = false) {
     if (c.requested) return;
     c.requested = true;
-    this.net.send('m.chest', { i: c.index, kind: c.kind, by: opener?.netId || this.you });
+    this.net.send('m.chest', { i: c.index, kind: c.kind, by: opener?.netId || this.you, brk });
   }
 
   onChest(m) {
     const c = this.game.containers.list[m.i];
-    if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by));
+    if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by), !!m.brk);
   }
 
   sendEmote(c, id) {

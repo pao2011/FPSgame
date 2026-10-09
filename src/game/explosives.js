@@ -471,6 +471,11 @@ export class Explosives {
         const seen = new Set();
         for (const b of g.world.collision.query(pos.x - R, pos.y - R, pos.z - R, pos.x + R, pos.y + R, pos.z + R, [])) {
           const ref = b.data?.ref;
+          if (b.data?.type === 'chest' && ref) {
+            // Los cofres alcanzados de lleno revientan y sueltan su botín
+            if (Math.hypot(ref.pos.x - pos.x, ref.pos.y - pos.y, ref.pos.z - pos.z) < r * 0.7) g.containers.smash(ref, o.owner);
+            continue;
+          }
           if (ref?.kind !== 'building' || seen.has(ref)) continue;
           seen.add(ref);
           const cx = Math.max(b.minX, Math.min(pos.x, b.maxX)), cy = Math.max(b.minY, Math.min(pos.y, b.maxY)), cz = Math.max(b.minZ, Math.min(pos.z, b.maxZ));

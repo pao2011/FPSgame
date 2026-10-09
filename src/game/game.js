@@ -1911,7 +1911,7 @@ export class Game {
     }
     if (this.build.editing) {
       const pc = this.build.editing.piece;
-      const presets = pc.type === 'wall' ? ' · Mayús+1 puerta · 2 ventana · 3 arco · 4 arco grande · 5 media pared · 6 valla · 7 puerta lateral' : pc.type === 'ramp' ? ' · elige 2 casillas de un lado para girarla' : '';
+      const presets = pc.type === 'wall' ? ' · Mayús+1 puerta · 2 ventana · 3 arco · 4 arco grande · 5 media pared · 6 valla · 7 puerta lateral' : pc.type === 'ramp' ? ' · arrastra en la dirección en la que quieres que suba' : pc.type === 'cone' ? ' · cada casilla sube su esquina: 1 esquina · 2 de un lado pendiente · 2 en diagonal cumbrera · 4 plano' : '';
       this.hud.setPrompt(`EDITANDO · clic: quitar/poner casillas (arrastra) · ${keyName(this.settings.binds.editReset[0])}: restablecer · <kbd>${this.key('edit')}</kbd> o tecla de un arma: confirmar${presets}`);
       return;
     }

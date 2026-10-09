@@ -183,7 +183,43 @@ export class ContainerManager {
     if (!on) return;
     const e = c.kind === 'chest' ? 0.5 : 0.42;
     const p = c.pos;
-    c.collider = col.add(p.x - e, p.y, p.z - e, p.x + e, p.y + (c.kind === 'chest' ? 0.7 : 0.45), p.z + e, { type: 'chest' });
+    c.collider = col.add(p.x - e, p.y, p.z - e, p.x + e, p.y + (c.kind === 'chest' ? 0.7 : 0.45), p.z + e, { type: 'chest', ref: c });
+  }
+
+  // Golpe (pico): al romperse se abre de golpe y suelta el botín.
+  damage(c, dmg, who = null) {
+    if (!c.active || c.opened || c.locked || c.broken) return false;
+    c.hp = (c.hp ?? (c.kind === 'chest' ? 150 : 100)) - dmg;
+    c.shakeT = 0.25;
+    if (c.hp <= 0) this.smash(c, who);
+    return true;
+  }
+
+  // Romper un cofre o caja (pico, una construcción encima o el suelo que se
+  // hunde): se abre y desaparece. En online lo arbitra el servidor como una
+  // apertura normal y avisa a todos de que se ha roto.
+  smash(c, who = null) {
+    if (!c.active || c.opened || c.locked || c.broken) return;
+    if (this.game.net) {
+      this.game.net.requestChest(c, who, true);
+      return;
+    }
+    this._open(c, c.kind === 'chest' ? lootForChest(random) : lootForAmmoBox(random), null, who);
+    this.breakVisual(c);
+  }
+
+  breakVisual(c) {
+    if (c.broken) return;
+    c.broken = true;
+    c.model.visible = false;
+    if (c.glow) c.glow.visible = false;
+    this._setCollider(c, false);
+    c.pendingT = 0; // el botín sale ya
+    const g = this.game;
+    if (c.pos.distanceTo(g.camera.position) < 60) {
+      g.effects.debris(c.pos.clone().setY(c.pos.y + 0.4), c.kind === 'chest' ? 0xc8902e : 0x5d6b3a);
+      g.audio.breakPiece?.(0.7);
+    }
   }
 
   // Desactiva al azar parte de los cofres para cada partida (con la misma
@@ -195,6 +231,8 @@ export class ContainerManager {
       c.pending = null;
       c.pendingIds = null;
       c.requested = false;
+      c.broken = false;
+      c.hp = undefined;
       c.active = c.forced || rng.chance(c.chance ?? (c.kind === 'chest' ? 0.5 : 0.55));
       c.model.visible = c.active;
       this._setCollider(c, c.active);
@@ -214,9 +252,10 @@ export class ContainerManager {
     this._open(c, c.kind === 'chest' ? lootForChest(random) : lootForAmmoBox(random), null, opener);
   }
 
-  openNet(c, items, opener) {
+  openNet(c, items, opener, brk = false) {
     if (c.opened) return;
     this._open(c, items.map((x) => x[1]), items.map((x) => x[0]), opener);
+    if (brk) this.breakVisual(c);
   }
 
   _open(c, loot, ids, opener) {
@@ -248,8 +287,14 @@ export class ContainerManager {
           c.pendingIds = null;
         }
       }
+      if (c.broken) continue;
       const vis = c.pos.distanceToSquared(cam) < cd2;
       c.model.visible = vis;
+      if (c.shakeT > 0) {
+        c.shakeT -= dt;
+        c.model.rotation.z = Math.sin(c.shakeT * 60) * 0.06 * (c.shakeT / 0.25);
+        if (c.shakeT <= 0) c.model.rotation.z = 0;
+      }
       if (c.glow) c.glow.visible = vis && !c.opened;
       if (!vis) continue;
       if (c.opened && c.openT < 1) {
@@ -263,7 +308,7 @@ export class ContainerManager {
   findInteract(eye, forward, maxDist = 3) {
     let best = null, bestScore = -Infinity;
     for (const c of this.list) {
-      if (!c.active || c.opened || c.locked) continue;
+      if (!c.active || c.opened || c.locked || c.broken) continue;
       tmp.copy(c.pos).y += 0.35;
       tmp.sub(eye);
       const d = tmp.length();
