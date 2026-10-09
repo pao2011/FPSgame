@@ -33,8 +33,18 @@ export class Harvest {
       this.list.push(w);
     }
     this.list.forEach((o, i) => (o.hid = i));
+    // Piezas de edificios (aparte: la IA no las tala). Mismo número en todos
+    // los equipos porque el mapa es el mismo.
+    this.pieces = world.destructibles || [];
+    this.pieces.forEach((o, i) => (o.hid = this.list.length + i));
+    this.damaged = new Set();
     this.destroyed = [];
     this.shaking = new Set();
+  }
+
+  // Objeto por su número de red (árbol/roca/coche o pieza de edificio).
+  byId(i) {
+    return i < this.list.length ? this.list[i] : this.pieces[i - this.list.length];
   }
 
   // Golpe de pico. Devuelve los materiales conseguidos por `who`.
@@ -46,7 +56,11 @@ export class Harvest {
     if (!fromNet) this.game.net?.sendHarvest(obj, dmg);
     let gain = YIELD[obj.mat];
     obj.shakeT = 0.3;
-    this.shaking.add(obj);
+    if (obj.kind === 'building') {
+      this.damaged.add(obj);
+      gain = Math.max(1, Math.round(gain * Math.min(1, dmg / 50)));
+      if (obj.hp > 0) this.tint(obj, 0.55 + 0.45 * (obj.hp / obj.maxHp));
+    } else this.shaking.add(obj);
     if (obj.hp <= 0) {
       gain += 12;
       this.destroy(obj);
@@ -57,10 +71,54 @@ export class Harvest {
     return p.mats[obj.mat] - before;
   }
 
+  // Oscurece una pieza de edificio según el daño (grietas, polvo).
+  tint(obj, k) {
+    for (const r of obj.ranges) {
+      const attr = r.mesh.geometry.attributes.color;
+      const a = attr.array, i0 = r.start * 3, n = r.count * 3;
+      if (!r.col) r.col = a.slice(i0, i0 + n);
+      for (let i = 0; i < n; i++) a[i0 + i] = r.col[i] * k;
+      attr.addUpdateRange(i0, n);
+      attr.needsUpdate = true;
+    }
+  }
+
+  // Pieza de edificio: sus triángulos se colapsan (sin rehacer la parcela).
+  collapse(obj, on) {
+    for (const r of obj.ranges) {
+      const attr = r.mesh.geometry.attributes.position;
+      const a = attr.array, i0 = r.start * 3, n = r.count * 3;
+      if (on) {
+        if (!r.pos) r.pos = a.slice(i0, i0 + n);
+        a.fill(0, i0, i0 + n);
+      } else if (r.pos) a.set(r.pos, i0);
+      attr.addUpdateRange(i0, n);
+      attr.needsUpdate = true;
+    }
+  }
+
   destroy(obj) {
     const col = this.game.world.collision;
     for (const c of obj.colliders) col.remove(c);
     obj.colliders = [];
+    if (obj.kind === 'building') {
+      this.collapse(obj, true);
+      this.destroyed.push(obj);
+      const g = this.game;
+      g.mapDoors?.breakNear(obj.aabb);
+      const d = obj.center.distanceTo(g.camera.position);
+      if (d < 160) {
+        const [x0, y0, z0, x1, y1, z1] = obj.aabb;
+        const hex = MATERIALS[obj.mat].hex;
+        const n = Math.min(6, 1 + Math.round(Math.max(x1 - x0, y1 - y0, z1 - z0) / 2));
+        for (let i = 0; i < n; i++) {
+          const p = new THREE.Vector3(x0 + Math.random() * (x1 - x0), y0 + Math.random() * (y1 - y0), z0 + Math.random() * (z1 - z0));
+          g.effects.debris(p, i % 2 ? hex : obj.hex);
+        }
+        g.audio.breakPiece?.(Math.max(0.2, 1 - d / 160));
+      }
+      return;
+    }
     if (obj.parts) {
       for (const part of obj.parts) {
         if (!part.base) {
@@ -80,7 +138,8 @@ export class Harvest {
     const col = this.game.world.collision;
     for (const obj of this.destroyed) {
       obj.colliders = obj.boxes.map((b) => col.add(b[0], b[1], b[2], b[3], b[4], b[5], { type: b[6], ref: obj }));
-      if (obj.parts) {
+      if (obj.kind === 'building') this.collapse(obj, false);
+      else if (obj.parts) {
         for (const part of obj.parts) {
           part.mesh.setMatrixAt(part.index, part.base);
           part.mesh.instanceMatrix.needsUpdate = true;
@@ -88,6 +147,11 @@ export class Harvest {
       } else obj.mesh.visible = true;
     }
     for (const obj of this.list) obj.hp = obj.maxHp;
+    for (const obj of this.damaged) {
+      obj.hp = obj.maxHp;
+      this.tint(obj, 1);
+    }
+    this.damaged.clear();
     this.destroyed.length = 0;
   }
 

@@ -4,6 +4,61 @@ import { scanLan, canScan } from '../net/discover.js';
 
 const $ = (id) => document.getElementById(id);
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+// ------------------------------------------------------------ CUENTAS
+// Mismas reglas que el servidor (server/db.js) para avisar antes de enviar.
+const NAME_RE = /^[A-Za-z0-9_ÁÉÍÓÚÜÑáéíóúüñ]{3,16}$/;
+const LAST_NAME = 'islaRoyale.lastName';
+
+export function nameProblem(name) {
+  name = String(name || '').trim();
+  if (!name) return '';
+  if (name.length < 3) return 'Mínimo 3 caracteres';
+  if (name.length > 16) return 'Máximo 16 caracteres';
+  if (/\s/.test(name)) return 'Sin espacios (usa _)';
+  if (!NAME_RE.test(name)) return 'Sólo letras, números y _';
+  return '';
+}
+
+// Fuerza de la contraseña: nivel 0-4, texto y, si no vale, el motivo.
+export function passStrength(pass, name = '') {
+  pass = String(pass || '');
+  if (!pass) return { lv: 0, text: '', problem: 'Escribe una contraseña' };
+  if (pass.length < 6) return { lv: 1, text: '<span class="no">Muy corta (mínimo 6)</span>', problem: 'La contraseña debe tener al menos 6 caracteres' };
+  if (name && pass.toLowerCase() === String(name).trim().toLowerCase()) return { lv: 1, text: '<span class="no">No puede ser tu nombre</span>', problem: 'La contraseña no puede ser tu nombre' };
+  if (/^(123456\d*|password|contraseña|qwerty|111111|000000|abc123|abcdef)$/i.test(pass)) return { lv: 1, text: '<span class="no">Demasiado fácil</span>', problem: 'Esa contraseña es demasiado fácil de adivinar' };
+  let sc = 0;
+  if (pass.length >= 8) sc++;
+  if (pass.length >= 12) sc++;
+  if (/[a-zñ]/.test(pass) && /[A-ZÑ]/.test(pass)) sc++;
+  if (/\d/.test(pass)) sc++;
+  if (/[^A-Za-z0-9ñÑ]/.test(pass)) sc++;
+  const lv = sc <= 1 ? 2 : sc <= 3 ? 3 : 4;
+  return { lv, text: ['', '', '<span class="wait">Aceptable</span>', '<span class="ok">Buena</span>', '<span class="ok">¡Muy segura!</span>'][lv], problem: '' };
+}
+
+const NAME_A = ['Pato', 'Rayo', 'Tiburon', 'Lobo', 'Halcon', 'Tigre', 'Cohete', 'Ninja', 'Pirata', 'Dragon', 'Fenix', 'Coco', 'Mango', 'Puma'];
+const NAME_B = ['Veloz', 'Loco', 'Feroz', 'Dorado', 'Salvaje', 'Epico', 'Turbo', 'Mega', 'Pro', 'Rey', 'Max', 'Neon'];
+function randomName() {
+  const r = (a) => a[Math.floor(Math.random() * a.length)];
+  return `${r(NAME_A)}${r(NAME_B)}${Math.floor(Math.random() * 90 + 10)}`.slice(0, 16);
+}
+
+function loadLastName() {
+  try {
+    return localStorage.getItem(LAST_NAME) || '';
+  } catch {
+    return '';
+  }
+}
+
+function saveLastName(n) {
+  try {
+    localStorage.setItem(LAST_NAME, n);
+  } catch {
+    /* sin almacenamiento */
+  }
+}
 const hex = (n) => '#' + (n ?? 0x888888).toString(16).padStart(6, '0');
 const ONLINE_MODES = Object.values(MODES).filter((m) => m.online);
 const ST_DOT = { menu: 'on', party: 'on', queue: 'busy', match: 'busy', offline: 'off' };
@@ -135,7 +190,9 @@ export class OnlineUI {
     });
     n.on('auth_ok', (m) => {
       this.busy = false;
-      this.error = '';
+      this.error = this.errorField = '';
+      if (this.form) this.form.pass = this.form.pass2 = '';
+      this.accountOpen = false;
       // Pase de batalla, tokens y objetos: se sincronizan con la cuenta
       this.game.progress.syncWithAccount(m.profile);
       // Aspecto: el del servidor manda; si no tiene, se sube el local
@@ -157,6 +214,21 @@ export class OnlineUI {
     n.on('auth_err', (m) => {
       this.busy = false;
       this.error = m.resume ? '' : m.text;
+      this.errorField = m.resume ? '' : m.field || (this.tab === 'login' ? 'pass' : '');
+      if (m.field === 'name') this.nameCheck = { name: this.form?.name || '', problem: m.text };
+      this.refresh();
+    });
+    n.on('name_check', (m) => {
+      this.nameCheck = m;
+      const h = $('ol-name-hint');
+      if (h && this.form && m.name.toLowerCase() === this.form.name.trim().toLowerCase()) h.innerHTML = this.nameHint(this.form.name.trim());
+    });
+    n.on('change_pass', (m) => {
+      this.accountMsg = { ok: m.ok, text: m.text };
+      if (m.ok) this.toast('🔒 Contraseña cambiada');
+      this.dirty = true;
+      const a = document.activeElement;
+      if (a?.closest?.('#ol-account')) a.blur();
       this.refresh();
     });
     n.on('disconnected', ({ wasAuthed }) => {
@@ -354,11 +426,8 @@ export class OnlineUI {
         <button data-tab="login" class="${this.tab === 'login' ? 'on' : ''}">Entrar</button>
         <button data-tab="register" class="${this.tab === 'register' ? 'on' : ''}">Crear cuenta</button>
       </div>
-      <form id="ol-auth" class="auth-form" autocomplete="on">
-        <label>Nombre de jugador<input name="name" maxlength="16" autocomplete="username" required placeholder="3-16 letras o números"></label>
-        <label>Contraseña<input name="pass" type="password" maxlength="64" autocomplete="${this.tab === 'login' ? 'current-password' : 'new-password'}" required placeholder="Mínimo 4 caracteres"></label>
-        ${this.error ? `<div class="form-error">${esc(this.error)}</div>` : ''}
-        <button class="big-play" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'CONECTANDO…' : this.tab === 'login' ? 'ENTRAR' : 'CREAR CUENTA'}</button>
+      <form id="ol-auth" class="auth-form" autocomplete="on" novalidate>
+        ${this.authFormHTML()}
       </form>
       <div class="server-row">
         <div>${status}<br><small>Servidor: <code>${this.url ? esc(this.url) : 'sin configurar'}</code></small></div>
@@ -371,29 +440,10 @@ export class OnlineUI {
     el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
       this.tab = b.dataset.tab;
       this.error = '';
+      this.errorField = '';
       this.render(el);
     }));
-    el.querySelector('#ol-auth').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const f = new FormData(e.target);
-      if (!this.url) {
-        this.error = 'Primero indica la dirección del servidor (o pulsa Buscar en mi Wi-Fi).';
-        this.render(el);
-        return;
-      }
-      this.error = '';
-      this.busy = true;
-      this.net.url = this.url;
-      this.net.auth(this.tab, String(f.get('name')).trim(), String(f.get('pass')));
-      this.render(el);
-      setTimeout(() => {
-        if (this.busy && !this.authed) {
-          this.busy = false;
-          this.error = this.error || 'El servidor no responde. ¿Está en marcha? (npm run dev o npm start)';
-          this.refresh();
-        }
-      }, 6000);
-    });
+    this.bindAuthForm(el);
     el.querySelector('#ol-server-btn').addEventListener('click', () => {
       this.editServer = !this.editServer;
       this.render(el);
@@ -410,6 +460,174 @@ export class OnlineUI {
       this.scanFound = null;
       this.render(el);
     }));
+  }
+
+  // ------------------------------------------------------------ CUENTA
+  // Formulario de entrar / crear cuenta. Lo escrito se guarda en this.form
+  // para que no se borre cuando el panel se redibuja (estado de la conexión,
+  // errores…).
+  authFormHTML() {
+    const reg = this.tab === 'register';
+    const f = (this.form ||= { name: loadLastName(), pass: '', pass2: '' });
+    const show = this.showPass ? 'text' : 'password';
+    const bad = (k) => (this.errorField === k ? ' bad' : '');
+    const st = reg ? passStrength(f.pass, f.name) : null;
+    return `
+      <label>Nombre de jugador
+        <span class="auth-field">
+          <input name="name" class="${bad('name').trim()}" maxlength="16" autocomplete="username" required placeholder="3-16 letras, números o _" value="${esc(f.name)}" spellcheck="false" autocapitalize="off">
+          ${reg ? '<button type="button" class="auth-eye" id="ol-dice" title="Nombre al azar">🎲</button>' : ''}
+        </span>
+        ${reg ? `<small class="auth-hint" id="ol-name-hint">${this.nameHint(f.name)}</small>` : ''}
+      </label>
+      <label>Contraseña
+        <span class="auth-field">
+          <input name="pass" class="${bad('pass').trim()}" type="${show}" maxlength="64" autocomplete="${reg ? 'new-password' : 'current-password'}" required placeholder="${reg ? 'Mínimo 6 caracteres' : 'Tu contraseña'}" value="${esc(f.pass)}">
+          <button type="button" class="auth-eye" id="ol-eye" title="${this.showPass ? 'Ocultar' : 'Mostrar'} contraseña">${this.showPass ? '🙈' : '👁️'}</button>
+        </span>
+        ${reg ? `<span class="pass-meter" data-lv="${st.lv}"><i></i><i></i><i></i><i></i></span><small class="auth-hint" id="ol-pass-hint">${st.text}</small>` : ''}
+      </label>
+      ${reg ? `<label>Repite la contraseña
+        <input name="pass2" class="${bad('pass2').trim()}" type="${show}" maxlength="64" autocomplete="new-password" required placeholder="La misma otra vez" value="${esc(f.pass2)}">
+        <small class="auth-hint" id="ol-pass2-hint">${f.pass2 && f.pass2 !== f.pass ? '<span class="no">No coinciden</span>' : f.pass2 ? '<span class="ok">✔ Coinciden</span>' : ''}</small>
+      </label>` : ''}
+      ${this.error ? `<div class="form-error">${esc(this.error)}</div>` : ''}
+      <button class="big-play" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'CONECTANDO…' : reg ? 'CREAR CUENTA' : 'ENTRAR'}</button>
+      <small class="auth-foot">${reg ? 'Tu progreso (pase, monedas y taquilla) se guardará en la cuenta para jugar en cualquier dispositivo. ¿Ya tienes una? <a href="#" data-goto="login">Entra</a>' : '¿Aún no tienes cuenta? <a href="#" data-goto="register">Créala en un momento</a>'}</small>`;
+  }
+
+  // Estado del nombre al crear cuenta: formato (aquí) y si está libre (servidor).
+  nameHint(name) {
+    if (!name) return '';
+    const local = nameProblem(name);
+    if (local) return `<span class="no">${esc(local)}</span>`;
+    const c = this.nameCheck;
+    if (c && c.name.toLowerCase() === name.toLowerCase()) return c.problem ? `<span class="no">${esc(c.problem)}</span>` : '<span class="ok">✔ Nombre libre</span>';
+    return this.net.state === 'online' ? '<span class="wait">Comprobando…</span>' : '';
+  }
+
+  bindAuthForm(el) {
+    const form = el.querySelector('#ol-auth');
+    const f = this.form;
+    const reg = this.tab === 'register';
+    const upd = (id, html) => {
+      const h = el.querySelector(id);
+      if (h) h.innerHTML = html;
+    };
+    const checkName = () => {
+      clearTimeout(this.nameTimer);
+      upd('#ol-name-hint', this.nameHint(f.name));
+      if (!reg || nameProblem(f.name)) return;
+      // Conecta (sin entrar) para preguntar si el nombre está libre
+      if (this.url && this.net.state === 'offline') this.net.connect(this.url);
+      this.nameTimer = setTimeout(() => this.net.send('name_check', { name: f.name }), 350);
+    };
+    const passHints = () => {
+      if (!reg) return;
+      const st = passStrength(f.pass, f.name);
+      const m = el.querySelector('.pass-meter');
+      if (m) m.dataset.lv = String(st.lv);
+      upd('#ol-pass-hint', st.text);
+      upd('#ol-pass2-hint', f.pass2 && f.pass2 !== f.pass ? '<span class="no">No coinciden</span>' : f.pass2 ? '<span class="ok">✔ Coinciden</span>' : '');
+    };
+    form.addEventListener('input', (e) => {
+      const t = e.target;
+      if (!(t.name in f)) return;
+      f[t.name] = t.value;
+      t.classList.remove('bad');
+      if (t.name === 'name') checkName();
+      passHints();
+    });
+    el.querySelector('#ol-eye')?.addEventListener('click', () => {
+      this.showPass = !this.showPass;
+      this.render(el);
+    });
+    el.querySelector('#ol-dice')?.addEventListener('click', () => {
+      f.name = randomName();
+      form.elements.name.value = f.name;
+      checkName();
+      passHints();
+    });
+    el.querySelectorAll('[data-goto]').forEach((a) => a.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.tab = a.dataset.goto;
+      this.error = this.errorField = '';
+      this.render(el);
+    }));
+    if (reg && f.name && !this.nameCheck) checkName();
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fail = (text, field) => {
+        this.error = text;
+        this.errorField = field;
+        this.render(el);
+        el.querySelector(`#ol-auth [name="${field}"]`)?.focus();
+      };
+      if (!this.url) return fail('Primero indica la dirección del servidor (o pulsa Buscar en mi Wi-Fi).', '');
+      const name = f.name.trim();
+      if (!name) return fail('Escribe tu nombre de jugador', 'name');
+      if (!f.pass) return fail('Escribe tu contraseña', 'pass');
+      if (reg) {
+        const np = nameProblem(name);
+        if (np) return fail(np, 'name');
+        if (this.nameCheck?.problem && this.nameCheck.name.toLowerCase() === name.toLowerCase()) return fail(this.nameCheck.problem, 'name');
+        const pp = passStrength(f.pass, name).problem;
+        if (pp) return fail(pp, 'pass');
+        if (f.pass !== f.pass2) return fail('Las contraseñas no coinciden', 'pass2');
+      }
+      this.error = this.errorField = '';
+      this.busy = true;
+      saveLastName(name);
+      this.net.url = this.url;
+      this.net.auth(this.tab, name, f.pass);
+      this.render(el);
+      setTimeout(() => {
+        if (this.busy && !this.authed) {
+          this.busy = false;
+          this.error = this.error || 'El servidor no responde. ¿Está en marcha? (npm run dev o npm start)';
+          this.refresh();
+        }
+      }, 6000);
+    });
+  }
+
+  // Panel «Cuenta» del hub: cambiar la contraseña.
+  accountHTML() {
+    if (!this.accountOpen) return '';
+    const show = this.showPass ? 'text' : 'password';
+    return `<form id="ol-account" class="auth-form account-box" novalidate>
+      <h3>Cuenta <small>${esc(this.net.user.name)}</small></h3>
+      <label>Contraseña actual<input name="old" type="${show}" maxlength="64" autocomplete="current-password" required></label>
+      <label>Nueva contraseña<input name="pass" type="${show}" maxlength="64" autocomplete="new-password" required placeholder="Mínimo 6 caracteres"></label>
+      <label>Repite la nueva<input name="pass2" type="${show}" maxlength="64" autocomplete="new-password" required></label>
+      ${this.accountMsg ? `<div class="${this.accountMsg.ok ? 'form-ok' : 'form-error'}">${esc(this.accountMsg.text)}</div>` : ''}
+      <div class="account-row"><button class="small-btn ok" type="submit">Cambiar contraseña</button><button class="small-btn" type="button" id="ol-account-close">Cerrar</button></div>
+    </form>`;
+  }
+
+  bindAccount(el) {
+    el.querySelector('#ol-account-btn')?.addEventListener('click', () => {
+      this.accountOpen = !this.accountOpen;
+      this.accountMsg = null;
+      this.render(el);
+    });
+    el.querySelector('#ol-account-close')?.addEventListener('click', () => {
+      this.accountOpen = false;
+      this.render(el);
+    });
+    el.querySelector('#ol-account')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const d = new FormData(e.target);
+      const [old, pass, pass2] = ['old', 'pass', 'pass2'].map((k) => String(d.get(k) || ''));
+      const pp = passStrength(pass, this.net.user.name).problem;
+      const err = !old ? 'Escribe tu contraseña actual' : pp || (pass !== pass2 ? 'Las contraseñas nuevas no coinciden' : '');
+      if (err) {
+        this.accountMsg = { ok: false, text: err };
+        this.render(el);
+        return;
+      }
+      this.net.send('change_pass', { old, pass, token: this.net.token });
+    });
   }
 
   hubHTML() {
@@ -456,8 +674,10 @@ export class OnlineUI {
             ${avatar(u.outfit, 52)}
             <div class="who"><div class="nm">${esc(u.name)}</div>
               <div class="st"><span title="Victorias">🏆 ${st.wins}</span><span title="Eliminaciones">💀 ${st.kills}</span><span title="Partidas">🎮 ${st.matches}</span><span title="Ping">📶 ${this.net.ping || '–'} ms</span></div></div>
+            <button class="small-btn" id="ol-account-btn" title="Cambiar contraseña">⚙️ Cuenta</button>
             <button class="small-btn" id="ol-logout">Cerrar sesión</button>
           </div>
+          ${this.accountHTML()}
           <h3>Tu grupo <small>${members.length}/${lim}</small>${members.length > 1 ? '<button class="link" id="ol-leave">Salir del grupo</button>' : ''}</h3>
           <div class="party-slots">${slots.join('')}</div>
           <h3>Modo de juego ${leader ? '' : '<small>(lo elige el líder)</small>'}</h3>
@@ -523,6 +743,7 @@ export class OnlineUI {
 
   bindHub(el) {
     const n = this.net;
+    this.bindAccount(el);
     const on = (sel, fn) => el.querySelector(sel)?.addEventListener('click', fn);
     on('#ol-logout', () => {
       n.logout();

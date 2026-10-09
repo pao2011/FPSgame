@@ -463,6 +463,7 @@ export class Combat {
     const data = hit.box?.data;
     if (data?.type === 'build') this.game.build.damage(data.piece, base);
     else if (data?.type === 'car') data.ref.damage(base * 0.6);
+    else if (data?.ref?.kind === 'building') this.game.harvest.hit(data.ref, base * 0.5, null); // a tiros no da material
   }
 
   // Aplica el daño acumulado por objetivo (la escopeta suma sus perdigones).

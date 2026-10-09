@@ -328,9 +328,9 @@ class AudioSys {
     this._tone(260, 0.08, { type: 'square', gain: 0.05 });
   }
 
-  breakPiece() {
+  breakPiece(volume = 1) {
     if (!this.ctx) return;
-    this._burst(0.35, { freq: 700, endFreq: 150, gain: 0.35 });
+    this._burst(0.35, { freq: 700, endFreq: 150, gain: 0.35 * volume });
   }
 
   harvest(mat) {
@@ -548,6 +548,33 @@ class AudioSys {
         if (Math.random() < 0.25) this._tone(3000 + Math.random() * 1500, 0.22, { type: 'sine', gain: 0.035 * v, slide: 0.5, delay: 0.02 });
     }
     this._out = null;
+  }
+
+  // «¡Cuak!»: diente de sierra que cae de tono por un formante nasal.
+  quack(volume = 1, pos = null) {
+    if (!this.ctx || volume < 0.03 || !this._room(volume)) return;
+    const c = this.ctx;
+    const out = this._at(pos) || this.master;
+    const pulses = volume > 0.8 ? [0, 0.2] : [0];
+    for (const d of pulses) {
+      const t = this.t + d;
+      const o = c.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(560, t);
+      o.frequency.exponentialRampToValueAtTime(330, t + 0.16);
+      const f = c.createBiquadFilter();
+      f.type = 'bandpass';
+      f.Q.value = 3;
+      f.frequency.setValueAtTime(1500, t);
+      f.frequency.exponentialRampToValueAtTime(900, t + 0.16);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.5 * volume, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
+      o.connect(f).connect(g).connect(out);
+      o.start(t);
+      o.stop(t + 0.22);
+    }
   }
 
   setWind(v) {

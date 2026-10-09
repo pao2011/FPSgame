@@ -4,6 +4,16 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Edificios destructibles y controles:** 🏚️ las **casas, tiendas, naves y
+demás edificios se rompen** a pico, a tiros o con explosivos y dan el
+**material del que están hechos** (madera, piedra o metal). En los **«90»** la
+rampa se pone en tu propia casilla y te sube; para **salir de la edición**
+pulsa la tecla del pico o de un arma (formas de muro: Mayús + 1-8). Perfiles
+de teclas (**Clásico, Constructor, Zurdo**), disposiciones táctiles (**4
+dedos, Compacta**) y **3 ranuras** para guardar las tuyas. **Cuentas**: nombre
+libre en directo, seguridad de la contraseña, repetirla, cambiarla y bloqueo
+tras muchos intentos fallidos.
+
 **Jefes, bóvedas y botín especial:** 👹 **tres jefes nuevos** en las
 ciudades (👠 Reina del Asfalto, 🎖️ Capitán Tormenta y 🔧 El Ingeniero, cada
 uno con escolta) que sueltan un **arma mítica**, una **cura**, la **tarjeta de
@@ -11,7 +21,7 @@ la bóveda de su ciudad** y un **medallón de batalla** (Coraza −20 % de daño
 Velocidad +15 %, Furia +20 % de daño o Vigor: regenera escudo). Con la tarjeta
 en la mano, una **flecha en pantalla y en la brújula señala su bóveda**.
 Arreglado el **Guardián de la Bóveda**, que no aparecía (la Isla de Inicio se
-llevaba a los jefes al autobús). 🦙 **Llamas de botín** escondidas (mantén E),
+llevaba a los jefes al autobús). 🦆 **Patos de botín** gigantes escondidos (hacen «¡cuak!») (mantén E),
 📦 **suministros que caen del cielo** con globo y columna de humo, 👑
 **corona**: la ganas al ganar, empiezas la siguiente partida con ella, se cae
 al suelo si te eliminan y si sigues ganando la racha de **victorias
@@ -28,7 +38,7 @@ grafitis (😀), botón **GRACIAS** al conductor en el autobús, SALTAR para
 trepar o atravesar ventanas (con el joystick hacia delante) y para
 abrir/**CERRAR** el planeador, AGACHARSE para deslizarte, bucear o soltarte
 de la tirolesa, joystick atrás para dar la vuelta en la tirolesa y USAR
-(mantener) para abrir llamas y suministros.
+(mantener) para abrir patos y suministros.
 
 **Isla más densa, montañas y tirolesas:** 🗺️ **mapa más compacto y lleno**
 (la isla pasa de 740 a 592 m de radio y entre las zonas hay **puestos

@@ -605,7 +605,7 @@ export class HUD {
     this.set('buildShow', e.buildBar, 'display', showBar ? 'flex' : 'none');
     if (b.editing) {
       const pc = b.editing.piece;
-      const presets = pc.type === 'wall' ? WALL_PRESETS.map((w, i) => `<div class="piece"><span class="key">${i + 1}</span>${w.name}</div>`).join('') : '';
+      const presets = pc.type === 'wall' ? WALL_PRESETS.map((w, i) => `<div class="piece"><span class="key">⇧${i + 1}</span>${w.name}</div>`).join('') : '';
       this.set('buildBar', e.buildBar, 'html', `<div class="piece sel">✏️ EDITANDO ${{ wall: 'MURO', floor: 'SUELO', ramp: 'RAMPA', cone: 'TECHO' }[pc.type]}</div>${presets}`);
     } else if (b.active) {
       const html = PIECES.map((pc, i) => `<div class="piece ${i === b.piece ? 'sel' : ''}"><span class="key">${pc.key}</span><span class="ico ${pc.id}"></span>${pc.name}</div>`).join('') +

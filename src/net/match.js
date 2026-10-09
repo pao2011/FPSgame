@@ -80,7 +80,7 @@ export class OnlineMatch {
         if (piece) this.game.build.remove(piece, true);
       },
       'm.harv': (m) => {
-        const obj = this.game.harvest.list[m.i];
+        const obj = this.game.harvest.byId(m.i);
         if (obj) this.game.harvest.hit(obj, m.d, null, true);
       },
       'm.veh_in': (m) => this.game.vehicles.netEnter(m.i, this.ents.get(m.id)),

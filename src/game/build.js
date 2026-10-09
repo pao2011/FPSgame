@@ -316,6 +316,11 @@ export class BuildSystem {
       if (pitch > 0.35) t = { type: 'floor', cx, cz, base: base + H, dir: d, edit: 0 };
       else if (pitch < -1.0) t = { type: 'floor', cx, cz, base, dir: d, edit: 0 };
     } else if (id === 'ramp') {
+      // En tu propia casilla (como en los «90»): si miras hacia abajo, si
+      // estás en el aire (saltando) o si ya tienes un muro delante. Si no,
+      // en la casilla de delante.
+      const wallAhead = this.pieces.has(this.key('wall', cx, cz, base, d));
+      if (pitch < -0.3 || !p.onGround || wallAhead) t = { type: 'ramp', cx, cz, base, dir: rd, edit: 0 };
       // Si estamos sobre una rampa mirando en su sentido, la continuamos.
       for (const q of this.pieces.values()) {
         if (q.type === 'ramp' && q.cx === cx && q.cz === cz && q.dir === d && p.pos.y > q.base - 0.3 && p.pos.y < q.base + H + 0.3) {
@@ -520,7 +525,8 @@ export class BuildSystem {
   canPlace(t, owner = this.game.player, matId = this.matId) {
     if (this.pieces.has(t.key)) return 'occupied';
     if (!this.game.infiniteMats && owner.mats[matId] < BUILD_COST) return 'nomats';
-    // No encerrar a nadie dentro de una pieza
+    // No encerrar a nadie dentro de una pieza. Una rampa encima de alguien
+    // sí se puede (como en los «90»): se le sube a ella si cabe.
     const boxes = this.boxesFor(t);
     for (const c of this.game.characters()) {
       if (!c.alive || c.mode !== 'ground') continue;
@@ -529,11 +535,41 @@ export class BuildSystem {
       const h = c.height;
       for (const b of boxes) {
         if (p.x - R < b[3] && p.x + R > b[0] && p.y < b[4] - 0.01 && p.y + h > b[1] && p.z - R < b[5] && p.z + R > b[2]) {
+          if (t.type === 'ramp' && this.liftTop(c, boxes) !== null) break;
           return 'player';
         }
       }
     }
     return 'ok';
+  }
+
+  // Altura a la que habría que subir a `c` para dejarlo sobre las cajas de
+  // una rampa nueva, o null si no cabe (techo encima, demasiado alto…).
+  liftTop(c, boxes) {
+    const p = c.pos;
+    let top = -Infinity;
+    for (const b of boxes) {
+      if (p.x - R < b[3] && p.x + R > b[0] && p.z - R < b[5] && p.z + R > b[2] && p.y < b[4] && p.y + c.height > b[1]) top = Math.max(top, b[4]);
+    }
+    if (top === -Infinity) return p.y;
+    if (top - p.y > H + 0.2) return null;
+    const free = !this.game.world.collision.overlaps(p.x - R, top + 0.02, p.z - R, p.x + R, top + c.height, p.z + R);
+    return free ? top + 0.01 : null;
+  }
+
+  // Tras colocar una rampa: sube a los que estaban encima.
+  liftOnto(t) {
+    const boxes = this.boxesFor(t);
+    for (const c of this.game.characters()) {
+      if (!c.alive || c.mode !== 'ground' || c.isRemote) continue;
+      if (Math.abs(c.pos.x - t.cx * G - G / 2) > 4 || Math.abs(c.pos.z - t.cz * G - G / 2) > 4) continue;
+      const y = this.liftTop(c, boxes);
+      if (y !== null && y > c.pos.y) {
+        c.pos.y = y;
+        c.vel.y = Math.max(0, c.vel.y);
+        c.onGround = true;
+      }
+    }
   }
 
   // Coloca una pieza para un bot. kind: 'wall' | 'ramp' | 'cone' | 'floor'.
@@ -566,6 +602,9 @@ export class BuildSystem {
     piece.mesh = this.buildMesh(piece);
     piece.mesh.scale.setScalar(0.3);
     this.game.scene.add(piece.mesh);
+    // Antes de crear sus cajas: así la comprobación de hueco libre no se
+    // choca con la propia rampa
+    if (t.type === 'ramp') this.liftOnto(t);
     this.setColliders(piece);
     this.pieces.set(t.key, piece);
     if (!fromNet && (!this.game.infiniteMats || !owner.isPlayer)) owner.mats[matId] = Math.max(0, owner.mats[matId] - BUILD_COST);
@@ -771,6 +810,15 @@ export class BuildSystem {
     if (back) this.setActive(true);
   }
 
+  // Forma predefinida de muro (puerta, ventana…): la aplica y confirma.
+  applyWallPreset(i) {
+    const e = this.editing;
+    if (!e || e.piece.type !== 'wall' || !WALL_PRESETS[i]) return;
+    e.mask = WALL_PRESETS[i].mask;
+    this.paintOverlay();
+    this.confirmEdit();
+  }
+
   updateEdit(input) {
     const e = this.editing;
     const g = this.game;
@@ -808,13 +856,24 @@ export class BuildSystem {
       e.mask = 0;
       this.paintOverlay();
     }
-    // Presets de muro con las teclas de hueco (1-6) y 7-8
-    if (piece.type === 'wall') {
+    // Presets de muro: Mayús + 1-8
+    const shift = input.keys?.has('ShiftLeft') || input.keys?.has('ShiftRight');
+    if (piece.type === 'wall' && shift) {
       for (let i = 0; i < WALL_PRESETS.length; i++) {
-        if ((i < 6 && input.hit('slot' + (i + 1))) || (i >= 6 && input.wasPressed('Digit' + (i + 1)))) {
-          e.mask = WALL_PRESETS[i].mask;
-          this.paintOverlay();
+        if (input.wasPressed('Digit' + (i + 1))) {
+          this.applyWallPreset(i);
+          return;
+        }
+      }
+    }
+    // Tecla del pico o de cualquier arma: termina la edición (la confirma)
+    // y saca ese objeto
+    if (!shift) {
+      for (let i = 0; i < 6; i++) {
+        if (input.hit('slot' + (i + 1))) {
           this.confirmEdit();
+          this.setActive(false);
+          g.combat.select(i);
           return;
         }
       }

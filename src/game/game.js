@@ -996,7 +996,7 @@ export class Game {
     p.pitch = -0.35;
     this.matchTime = 0;
     this.audio.busHorn?.();
-    // Jefes, botín especial (llamas, suministros) y la corona: ya en la isla
+    // Jefes, botín especial (patos, suministros) y la corona: ya en la isla
     this.npcs.startBoss(this.mode);
     this.specials?.start(this.mode);
     // Algunos bots dan las gracias al conductor
@@ -1911,8 +1911,8 @@ export class Game {
     }
     if (this.build.editing) {
       const pc = this.build.editing.piece;
-      const presets = pc.type === 'wall' ? ' · 1 puerta · 2 ventana · 3 arco · 4 arco grande · 5 media pared · 6 valla · 7 puerta lateral' : pc.type === 'ramp' ? ' · elige 2 casillas de un lado para girarla' : '';
-      this.hud.setPrompt(`EDITANDO · clic: quitar/poner casillas (arrastra) · ${keyName(this.settings.binds.editReset[0])}: restablecer · <kbd>${this.key('edit')}</kbd> confirmar${presets}`);
+      const presets = pc.type === 'wall' ? ' · Mayús+1 puerta · 2 ventana · 3 arco · 4 arco grande · 5 media pared · 6 valla · 7 puerta lateral' : pc.type === 'ramp' ? ' · elige 2 casillas de un lado para girarla' : '';
+      this.hud.setPrompt(`EDITANDO · clic: quitar/poner casillas (arrastra) · ${keyName(this.settings.binds.editReset[0])}: restablecer · <kbd>${this.key('edit')}</kbd> o tecla de un arma: confirmar${presets}`);
       return;
     }
     // Reanimar a un compañero derribado (mantener E)

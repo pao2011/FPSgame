@@ -134,6 +134,9 @@ export class GeoBuilder {
     this.nor = [];
     this.col = [];
     this.pat = [];
+    // Dueño de cada triángulo (pieza destructible) o -1
+    this.own = [];
+    this.owner = -1;
   }
 
   _color(hex, jitter = 0) {
@@ -164,6 +167,7 @@ export class GeoBuilder {
     }
     const c = this._color(hex, jitter);
     for (let i = 1; i < order.length - 1; i++) {
+      this.own.push(this.owner);
       for (const v of [order[0], order[i], order[i + 1]]) {
         this.pos.push(v[0], v[1], v[2]);
         this.nor.push(vn.x, vn.y, vn.z);
@@ -209,6 +213,7 @@ export class GeoBuilder {
     const p = g.attributes.position.array;
     const n = g.attributes.normal.array;
     const c = this._color(hex, 0.05);
+    for (let i = 0; i < p.length; i += 9) this.own.push(this.owner);
     for (let i = 0; i < p.length; i += 3) {
       this.pos.push(p[i], p[i + 1], p[i + 2]);
       this.nor.push(n[i], n[i + 1], n[i + 2]);
@@ -249,6 +254,10 @@ export class GeoBuilder {
     group.matrixAutoUpdate = false;
     group.material = mat;
     const chunks = [];
+    // Piezas destructibles: dueño -> [{ mesh, start, count }] (en vértices;
+    // los triángulos de una pieza son seguidos dentro de cada parcela)
+    const ranges = new Map();
+    const O = this.own;
     for (const list of cells.values()) {
       const n = list.length * 9;
       const pos = new Float32Array(n), nor = new Float32Array(n), col = new Float32Array(n), pat = new Float32Array(n / 3);
@@ -272,6 +281,21 @@ export class GeoBuilder {
       geo.computeBoundingSphere();
       geo.computeBoundingBox();
       const mesh = new THREE.Mesh(geo, mat);
+      let cur = null;
+      list.forEach((v, j) => {
+        const o = O[v / 9] ?? -1;
+        if (o < 0) {
+          cur = null;
+          return;
+        }
+        if (cur && cur.owner === o && cur.start + cur.count === j * 3) cur.count += 3;
+        else {
+          cur = { owner: o, mesh, start: j * 3, count: 3 };
+          let r = ranges.get(o);
+          if (!r) ranges.set(o, (r = []));
+          r.push(cur);
+        }
+      });
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.matrixAutoUpdate = false;
@@ -279,6 +303,6 @@ export class GeoBuilder {
       const bb = geo.boundingBox;
       chunks.push({ mesh, cx: (bb.min.x + bb.max.x) / 2, cz: (bb.min.z + bb.max.z) / 2, r: Math.hypot(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 });
     }
-    return { group, chunks };
+    return { group, chunks, ranges };
   }
 }
