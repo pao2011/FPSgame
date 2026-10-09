@@ -463,6 +463,7 @@ export class Combat {
     const data = hit.box?.data;
     if (data?.type === 'build') this.game.build.damage(data.piece, base);
     else if (data?.type === 'car') data.ref.damage(base * 0.6);
+    else if (data?.ref?.kind === 'building') this.game.harvest.hit(data.ref, base * 0.5, null); // a tiros no da material
   }
 
   // Aplica el daño acumulado por objetivo (la escopeta suma sus perdigones).
@@ -535,13 +536,19 @@ export class Combat {
         const killed = this.damageCharacter(hit.entity, 20, false, hit.point, 'pickaxe');
         g.hud.hitMarker(false, killed);
         g.audio.hit(false);
+      } else if (data?.type === 'chest' && data.ref) {
+        // Cofres y cajas de munición: a golpes se rompen y sueltan el botín
+        g.containers.damage(data.ref, 50, this.player);
+        g.effects.impact(hit.point, hit.normal, 0xc8902e);
+        g.audio.harvest('wood');
       } else if (data?.ref?.mat) {
-        // Recolección de materiales
-        const gain = g.harvest.hit(data.ref, 50);
-        g.effects.impact(hit.point, hit.normal, MATERIALS[data.ref.mat].hex);
-        if (gain > 0) g.effects.damageNumber(hit.point, `+${gain} ${MATERIALS[data.ref.mat].name}`, 'mat');
+        // Recolección de materiales (con punto débil)
+        const { gain, crit } = g.harvest.pickaxeHit(data.ref, hit.point, hit.normal);
+        g.effects.impact(hit.point, hit.normal, crit ? 0x5ad1ff : MATERIALS[data.ref.mat].hex);
+        if (gain > 0) g.effects.damageNumber(hit.point, `${crit ? '¡CRÍTICO! ' : ''}+${gain} ${MATERIALS[data.ref.mat].name}`, 'mat');
         else g.hud.toast(`Tienes el máximo de ${MATERIALS[data.ref.mat].name.toLowerCase()}`);
         g.audio.harvest(data.ref.mat);
+        if (crit) g.audio.hit(true);
       } else {
         if (data?.type === 'build') g.build.damage(data.piece, 50);
         g.effects.impact(hit.point, hit.normal, 0xcccccc);

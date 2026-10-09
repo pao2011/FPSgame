@@ -3,7 +3,7 @@ import { RNG, createNoise2D } from '../core/rng.js';
 import { CollisionWorld } from './collision.js';
 import { Terrain } from './terrain.js';
 import { GeoBuilder } from './geobuilder.js';
-import { BuildingCtx, genHouse, genWarehouse, genSilo, genHay, genContainer, PALETTES } from './buildings.js';
+import { BuildingCtx, DestSet, genHouse, genWarehouse, genSilo, genHay, genContainer, PALETTES } from './buildings.js';
 import {
   genShop, genGasStation, genChurch, genWaterTower, genRadioTower, genLighthouse, genBunker, genWatchtower,
   genTent, genFactory, genStadium, genPier, genCrane, genRuins, genFountain, genLamp, genBench, genFence, genSandbags,
@@ -59,6 +59,10 @@ function rotFacing(dx, dz) {
   if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? 3 : 1;
   return dz > 0 ? 0 : 2;
 }
+
+// Edificios que se pueden destruir (a pico, a tiros y con explosivos). Los
+// especiales (bóvedas, búnker, faro, castillo, estadio…) son indestructibles.
+const DESTRUCTIBLE = new Set(['house', 'warehouse', 'factory', 'shop', 'gas', 'church', 'tent', 'ruins', 'windmill', 'market', 'silo', 'hay', 'container', 'fence', 'sandbags', 'crates', 'watchtower', 'watertower']);
 
 export class World {
   // opts.creative: isla plana y vacía para el modo creativo.
@@ -1381,6 +1385,7 @@ export class World {
   // ------------------------------------------------------- CONSTRUCCIÓN
   buildStructures() {
     const geo = new GeoBuilder();
+    this.destructibles = []; // piezas de edificio que se pueden romper
     const glow = new GeoBuilder(); // llamas, faroles y cristales (sin iluminar)
     const caps = new GeoBuilder(); // tapas de cuevas/trincheras (material del terreno)
     const rng = this.rng;
@@ -1395,6 +1400,7 @@ export class World {
           y = r.y;
         }
         ctx = new BuildingCtx(geo, this.collision, p.x, y, p.z, p.rot);
+        if (DESTRUCTIBLE.has(p.kind)) ctx.dest = new DestSet(geo, y, this.destructibles);
         switch (p.kind) {
           case 'house': genHouse(ctx, rng, p); break;
           case 'warehouse': genWarehouse(ctx, rng, p); break;
@@ -1443,6 +1449,7 @@ export class World {
             break;
         }
       }
+      ctx.dest?.finish();
       // Todos los huecos son candidatos: en cada partida cada cofre aparece
       // con una probabilidad (el mapa es fijo, los cofres no).
       const cands = ctx.chestSpots;
@@ -1473,7 +1480,8 @@ export class World {
     for (const d of this.dummySpots) d.y = this.terrain.heightAt(d.x, d.z);
     for (const c of [...this.carSpots, ...this.wreckSpots]) c.y = this.terrain.heightAt(c.x, c.z);
     // En parcelas de 120 m: sólo se dibujan las que están a la vista y cerca
-    const { group, chunks } = geo.buildChunks(120);
+    const { group, chunks, ranges } = geo.buildChunks(120);
+    for (const piece of this.destructibles) piece.ranges = ranges.get(piece.id) || [];
     this.buildingMesh = group;
     this.buildingMesh.name = 'buildings';
     for (const c of chunks) this.lod.add(c.mesh, 'building', c.cx, c.cz, c.r);

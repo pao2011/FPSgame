@@ -8,6 +8,8 @@ export const G = 4; // ancho de casilla
 export const H = 3.2; // altura de planta
 const T = 0.2; // grosor de muros y suelos
 const RAMP_STEPS = 10;
+const REACH = 2.6; // alcance horizontal al construir suelos, rampas y techos
+const CONE_H = 1.6; // altura del techo
 
 export const PIECES = [
   { id: 'wall', name: 'Muro', key: '1' },
@@ -46,6 +48,30 @@ function sideOf(mask) {
   return -1;
 }
 
+// Techo editado (como en Fortnite): cada casilla marcada sube su esquina.
+// 1 = esquina, 2 del mismo lado = pendiente, 2 en diagonal = cumbrera,
+// 3 = casi plano con una esquina caída y las 4 = plano. Esquinas: 0 NO,
+// 1 NE, 2 SO, 3 SE. Devuelve alturas (0/1) y la diagonal de los triángulos
+// ('a' = NO-SE, 'b' = NE-SO).
+function coneShape(mask) {
+  const h = [0, 1, 2, 3].map((i) => (mask === 15 ? 0 : (mask >> i) & 1));
+  const n = h.reduce((a, b) => a + b, 0);
+  let diag = 'a';
+  if (n === 1 || n === 3) {
+    const odd = h.findIndex((v) => v === (n === 1 ? 1 : 0));
+    diag = odd === 0 || odd === 3 ? 'b' : 'a';
+  } else if (mask === 0b0110) diag = 'b';
+  return { h, diag };
+}
+
+// Altura (0-1) de la superficie del techo en (u, v) ∈ [0,1]² (u hacia el
+// este, v hacia el sur).
+function coneHeight(shape, u, v) {
+  const [h0, h1, h2, h3] = shape.h;
+  if (shape.diag === 'a') return u >= v ? h0 * (1 - u) + h1 * (u - v) + h3 * v : h0 * (1 - v) + h3 * u + h2 * (v - u);
+  return u + v <= 1 ? h0 * (1 - u - v) + h1 * u + h2 * v : h3 * (u + v - 1) + h1 * (1 - v) + h2 * (1 - u);
+}
+
 // Columnas de un muro editado que forman una puerta (hueco de 1×2 abajo).
 function doorColumns(mask) {
   const out = [];
@@ -62,7 +88,12 @@ export function editName(type, mask) {
   if (!mask) return '';
   if (type === 'wall') return EDIT_NAMES.get(mask) || 'Muro editado';
   if (type === 'floor') return 'Suelo con hueco';
-  if (type === 'cone') return sideOf(mask) >= 0 ? 'Tejado inclinado' : 'Tejado plano';
+  if (type === 'cone') {
+    const n = [0, 1, 2, 3].filter((i) => (mask >> i) & 1).length;
+    if (n === 4) return 'Tejado plano';
+    if (n === 2) return sideOf(mask) >= 0 ? 'Tejado inclinado' : 'Cumbrera';
+    return n === 1 ? 'Tejado de esquina' : 'Tejado de tres esquinas';
+  }
   return 'Rampa girada';
 }
 
@@ -300,6 +331,30 @@ export class BuildSystem {
     return anchor + k * H;
   }
 
+  // Casilla a la que apunta el jugador para suelos, rampas y techos (como en
+  // Fortnite): el punto donde la mira corta el plano de los pies, como mucho
+  // a REACH m en horizontal; si hay una pared (de la isla o construida) en
+  // medio, se queda en tu casilla. Así en los «90» la rampa va a la caja en
+  // la que estás.
+  aimCell(base, d) {
+    const p = this.game.player;
+    const [dx, dz] = DIRS[d];
+    const cx = Math.floor(p.pos.x / G), cz = Math.floor(p.pos.z / G);
+    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+    const k = Math.max(0.7, fx * dx + fz * dz); // parte de la mirada en el eje elegido
+    let dist = REACH;
+    if (p.pitch < -0.05) dist = Math.min(dist, Math.max(0, p.eye.y - base) / Math.tan(-p.pitch));
+    const along = dist * k;
+    const ax = p.pos.x + dx * along, az = p.pos.z + dz * along;
+    const tx = Math.floor(ax / G), tz = Math.floor(az / G);
+    if (tx === cx && tz === cz) return { cx, cz, own: true };
+    // ¿pared entre medias? (muro construido en este borde o colisión del mundo)
+    if (this.pieces.has(this.key('wall', cx, cz, base, d))) return { cx, cz, own: true };
+    const hit = this.game.world.collision.raycast(p.pos.x, Math.max(p.pos.y, base) + 0.7, p.pos.z, dx, 0, dz, along + R);
+    if (hit && hit.box.data?.type !== 'leaves') return { cx, cz, own: true };
+    return { cx: tx, cz: tz, own: false };
+  }
+
   computeTarget() {
     const p = this.game.player;
     const yaw = p.yaw, pitch = p.pitch;
@@ -309,13 +364,16 @@ export class BuildSystem {
     const base = this.levelBase(p.pos.y, p.pos.x, p.pos.z);
     const id = this.pieceId;
     const rd = (d + this.rot) % 4;
-    let t = { type: id, cx: cx + dx, cz: cz + dz, base, dir: rd, edit: 0 };
+    let t;
     if (id === 'wall') {
       t = { type: 'wall', cx, cz, base: pitch > 0.7 ? base + H : base, dir: d, edit: 0 };
     } else if (id === 'floor') {
+      const a = this.aimCell(base, d);
       if (pitch > 0.35) t = { type: 'floor', cx, cz, base: base + H, dir: d, edit: 0 };
-      else if (pitch < -1.0) t = { type: 'floor', cx, cz, base, dir: d, edit: 0 };
+      else t = { type: 'floor', cx: a.cx, cz: a.cz, base, dir: d, edit: 0 };
     } else if (id === 'ramp') {
+      const a = this.aimCell(base, d);
+      t = { type: 'ramp', cx: a.cx, cz: a.cz, base, dir: rd, edit: 0 };
       // Si estamos sobre una rampa mirando en su sentido, la continuamos.
       for (const q of this.pieces.values()) {
         if (q.type === 'ramp' && q.cx === cx && q.cz === cz && q.dir === d && p.pos.y > q.base - 0.3 && p.pos.y < q.base + H + 0.3) {
@@ -323,8 +381,12 @@ export class BuildSystem {
           break;
         }
       }
-    } else if (id === 'cone') {
+    } else {
       if (pitch > 0.2) t = { type: 'cone', cx, cz, base: base + H, dir: rd, edit: 0 };
+      else {
+        const a = this.aimCell(base, d);
+        t = { type: 'cone', cx: a.cx, cz: a.cz, base, dir: rd, edit: 0 };
+      }
     }
     t.key = this.key(t.type, t.cx, t.cz, t.base, t.dir);
     return t;
@@ -384,8 +446,69 @@ export class BuildSystem {
   }
 
   coneVariant(t) {
-    if (t.type !== 'cone' || !t.edit) return 'pyramid';
-    return sideOf(t.edit) >= 0 ? 'slope' : 'flat';
+    return t.type !== 'cone' || !t.edit ? 'pyramid' : 'shape';
+  }
+
+  // Cajas de colisión de un techo editado: columnas escalonadas que siguen la
+  // superficie (escalones de ≤0,32 m: se suben andando).
+  coneBoxes(x0, z0, b, mask) {
+    const shape = coneShape(mask);
+    const N = 5, s = G / N, out = [];
+    for (let j = 0; j < N; j++) {
+      let run = null;
+      for (let i = 0; i <= N; i++) {
+        let top = null;
+        if (i < N) {
+          let m = 0;
+          for (const [du, dv] of [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]]) m = Math.max(m, coneHeight(shape, (i + du) / N, (j + dv) / N));
+          top = b + Math.round(m * CONE_H * 100) / 100;
+        }
+        if (run && top === run.top) {
+          run.i1 = i;
+          continue;
+        }
+        if (run) out.push([x0 + run.i0 * s, b - T, z0 + j * s, x0 + (run.i1 + 1) * s, Math.max(run.top, b), z0 + (j + 1) * s]);
+        run = top === null ? null : { i0: i, i1: i, top };
+      }
+    }
+    return out;
+  }
+
+  // Malla de un techo editado: superficie de dos triángulos con grosor T.
+  coneGeometry(mask) {
+    const shape = coneShape(mask);
+    const C = [[0, 0], [1, 0], [0, 1], [1, 1]];
+    const P = (i, dy = 0) => [C[i][0] * G - G / 2, shape.h[i] * CONE_H + dy, C[i][1] * G - G / 2];
+    const tris = shape.diag === 'a' ? [[0, 1, 3], [0, 3, 2]] : [[0, 1, 2], [1, 3, 2]];
+    const pos = [], uv = [];
+    const v3 = new THREE.Vector3(), a = new THREE.Vector3(), b2 = new THREE.Vector3();
+    const tri = (p0, p1, p2, want, uvs) => {
+      a.fromArray(p1).sub(v3.fromArray(p0));
+      b2.fromArray(p2).sub(v3);
+      a.cross(b2);
+      const flip = a.x * want[0] + a.y * want[1] + a.z * want[2] < 0;
+      const list = flip ? [[p0, uvs[0]], [p2, uvs[2]], [p1, uvs[1]]] : [[p0, uvs[0]], [p1, uvs[1]], [p2, uvs[2]]];
+      for (const [p, t] of list) {
+        pos.push(...p);
+        uv.push(...t);
+      }
+    };
+    const uvOf = (i) => [C[i][0], 1 - C[i][1]];
+    for (const [i, j, k] of tris) {
+      tri(P(i), P(j), P(k), [0, 1, 0], [uvOf(i), uvOf(j), uvOf(k)]);
+      tri(P(i, -T), P(j, -T), P(k, -T), [0, -1, 0], [uvOf(i), uvOf(j), uvOf(k)]);
+    }
+    // Bordes
+    for (const [i, j, nx, nz] of [[0, 1, 0, -1], [1, 3, 1, 0], [3, 2, 0, 1], [2, 0, -1, 0]]) {
+      const ti = P(i), tj = P(j), bi = P(i, -T), bj = P(j, -T);
+      tri(ti, tj, bj, [nx, 0, nz], [[0, 1], [1, 1], [1, 0]]);
+      tri(ti, bj, bi, [nx, 0, nz], [[0, 1], [1, 0], [0, 0]]);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.computeVertexNormals();
+    return g;
   }
 
   // Cajas de colisión de una pieza (en coordenadas del mundo).
@@ -407,8 +530,7 @@ export class BuildSystem {
     }
     if (t.type === 'cone') {
       const v = this.coneVariant(t);
-      if (v === 'flat') return [[x0, b - T, z0, x0 + G, b + 0.25, z0 + G]];
-      if (v === 'slope') return this.stairBoxes(x0, z0, b, sideOf(t.edit), 1.6, 6);
+      if (v === 'shape') return this.coneBoxes(x0, z0, b, t.edit);
       return [
         [x0, b - T, z0, x0 + G, b + 0.4, z0 + G],
         [x0 + 0.7, b, z0 + 0.7, x0 + G - 0.7, b + 0.9, z0 + G - 0.7],
@@ -438,7 +560,7 @@ export class BuildSystem {
   // Geometría (en caché) de una pieza editada.
   geoFor(t) {
     if (!t.edit) return this.geos[t.type];
-    const key = `${t.type}:${t.type === 'cone' ? this.coneVariant(t) : t.edit}`;
+    const key = `${t.type}:${t.edit}`;
     let g = this.geoCache.get(key);
     if (g) return g;
     if (t.type === 'wall') {
@@ -448,9 +570,7 @@ export class BuildSystem {
       const parts = this.floorTiles(t.edit).map(([ax, az, bx, bz]) => new THREE.BoxGeometry(bx - ax, T, bz - az).translate((ax + bx) / 2, 0, (az + bz) / 2));
       g = parts.length ? mergeGeometries(parts) : new THREE.BufferGeometry();
     } else if (t.type === 'cone') {
-      const v = this.coneVariant(t);
-      if (v === 'flat') g = new THREE.BoxGeometry(G, T, G).translate(0, -0.7, 0);
-      else g = new THREE.BoxGeometry(G, T, Math.hypot(G, 1.6));
+      g = this.coneGeometry(t.edit);
     } else g = this.geos[t.type];
     this.geoCache.set(key, g);
     return g;
@@ -467,12 +587,7 @@ export class BuildSystem {
     } else if (t.type === 'floor') {
       obj.position.set(cxw, t.base - T / 2, czw);
     } else if (t.type === 'cone') {
-      obj.position.set(cxw, t.base + 0.8, czw);
-      if (this.coneVariant(t) === 'slope') {
-        obj.rotation.order = 'YXZ';
-        obj.rotation.y = [0, -Math.PI / 2, Math.PI, Math.PI / 2][sideOf(t.edit)];
-        obj.rotation.x = Math.atan2(1.6, G);
-      }
+      obj.position.set(cxw, t.edit ? t.base : t.base + 0.8, czw);
     } else {
       obj.position.set(cxw, t.base + H / 2 + 0.12, czw);
       const ang = Math.atan2(H, G);
@@ -520,7 +635,8 @@ export class BuildSystem {
   canPlace(t, owner = this.game.player, matId = this.matId) {
     if (this.pieces.has(t.key)) return 'occupied';
     if (!this.game.infiniteMats && owner.mats[matId] < BUILD_COST) return 'nomats';
-    // No encerrar a nadie dentro de una pieza
+    // No encerrar a nadie dentro de una pieza. Una rampa encima de alguien
+    // sí se puede (como en los «90»): se le sube a ella si cabe.
     const boxes = this.boxesFor(t);
     for (const c of this.game.characters()) {
       if (!c.alive || c.mode !== 'ground') continue;
@@ -529,11 +645,41 @@ export class BuildSystem {
       const h = c.height;
       for (const b of boxes) {
         if (p.x - R < b[3] && p.x + R > b[0] && p.y < b[4] - 0.01 && p.y + h > b[1] && p.z - R < b[5] && p.z + R > b[2]) {
+          if (t.type === 'ramp' && this.liftTop(c, boxes) !== null) break;
           return 'player';
         }
       }
     }
     return 'ok';
+  }
+
+  // Altura a la que habría que subir a `c` para dejarlo sobre las cajas de
+  // una rampa nueva, o null si no cabe (techo encima, demasiado alto…).
+  liftTop(c, boxes) {
+    const p = c.pos;
+    let top = -Infinity;
+    for (const b of boxes) {
+      if (p.x - R < b[3] && p.x + R > b[0] && p.z - R < b[5] && p.z + R > b[2] && p.y < b[4] && p.y + c.height > b[1]) top = Math.max(top, b[4]);
+    }
+    if (top === -Infinity) return p.y;
+    if (top - p.y > H + 0.2) return null;
+    const free = !this.game.world.collision.overlaps(p.x - R, top + 0.02, p.z - R, p.x + R, top + c.height, p.z + R);
+    return free ? top + 0.01 : null;
+  }
+
+  // Tras colocar una rampa: sube a los que estaban encima.
+  liftOnto(t) {
+    const boxes = this.boxesFor(t);
+    for (const c of this.game.characters()) {
+      if (!c.alive || c.mode !== 'ground' || c.isRemote) continue;
+      if (Math.abs(c.pos.x - t.cx * G - G / 2) > 4 || Math.abs(c.pos.z - t.cz * G - G / 2) > 4) continue;
+      const y = this.liftTop(c, boxes);
+      if (y !== null && y > c.pos.y) {
+        c.pos.y = y;
+        c.vel.y = Math.max(0, c.vel.y);
+        c.onGround = true;
+      }
+    }
   }
 
   // Coloca una pieza para un bot. kind: 'wall' | 'ramp' | 'cone' | 'floor'.
@@ -566,14 +712,33 @@ export class BuildSystem {
     piece.mesh = this.buildMesh(piece);
     piece.mesh.scale.setScalar(0.3);
     this.game.scene.add(piece.mesh);
+    // Antes de crear sus cajas: así la comprobación de hueco libre no se
+    // choca con la propia rampa
+    if (t.type === 'ramp') this.liftOnto(t);
     this.setColliders(piece);
     this.pieces.set(t.key, piece);
+    // Un cofre que queda dentro de la pieza (p. ej. un techo encima) revienta
+    if (!fromNet) this.smashChests(t, owner);
     if (!fromNet && (!this.game.infiniteMats || !owner.isPlayer)) owner.mats[matId] = Math.max(0, owner.mats[matId] - BUILD_COST);
     if (owner.isPlayer) owner.stats.built++;
     if (owner.isPlayer || piece.mesh.position.distanceTo(this.game.player.pos) < 40) this.game.audio.build();
     if (!fromNet) this.game.net?.sendBuild(piece);
     this.game.creative?.changed();
     return piece;
+  }
+
+  smashChests(t, owner) {
+    const boxes = this.boxesFor(t);
+    const cx = t.cx * G + G / 2, cz = t.cz * G + G / 2;
+    for (const c of this.game.containers?.list || []) {
+      if (!c.active || c.opened || c.broken || c.locked) continue;
+      const p = c.pos;
+      if (Math.abs(p.x - cx) > G || Math.abs(p.z - cz) > G) continue;
+      const e = 0.45, h = c.kind === 'chest' ? 0.7 : 0.45;
+      if (boxes.some((b) => p.x - e < b[3] && p.x + e > b[0] && p.y < b[4] && p.y + h > b[1] && p.z - e < b[5] && p.z + e > b[2])) {
+        this.game.containers.smash(c, owner.isPlayer ? owner : null);
+      }
+    }
   }
 
   // Pieza colocada por otro jugador (partida online).
@@ -594,15 +759,78 @@ export class BuildSystem {
     }
   }
 
-  remove(piece, fx) {
+  // check: al romperse, lo que se queda sin apoyo se cae (no al reiniciar).
+  remove(piece, fx, check = fx) {
     for (const c of piece.colliders) this.game.world.collision.remove(c);
     this.game.scene.remove(piece.mesh);
     this.pieces.delete(piece.key);
     if (this.editing?.piece === piece) this.cancelEdit();
     this.game.creative?.changed();
     if (fx) {
-      this.game.effects.debris(piece.mesh.position.clone(), MATERIALS[piece.mat].hex);
-      this.game.audio.breakPiece();
+      if (piece.mesh.position.distanceTo(this.game.camera.position) < 160) this.game.effects.debris(piece.mesh.position.clone(), MATERIALS[piece.mat].hex);
+      this.game.audio.breakPiece(Math.max(0.15, 1 - piece.mesh.position.distanceTo(this.game.camera.position) / 120));
+    }
+    if (check) this.checkSupport(piece);
+  }
+
+  // ------------------------------------------------- INTEGRIDAD ESTRUCTURAL
+  // Como en Fortnite: una construcción tiene que tocar (directamente o a
+  // través de otras piezas) el suelo, una roca, un árbol o un edificio. Al
+  // romper una pieza, lo que quede colgando se cae. Cada jugador online lo
+  // calcula igual, así que no hace falta enviarlo.
+  checkSupport(removed) {
+    if (this.game.mode?.creative || !this.pieces.size) return;
+    const grid = new Map();
+    for (const p of this.pieces.values()) {
+      const k = p.cx * 4096 + p.cz;
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(p);
+    }
+    const boxes = new Map();
+    const bx = (p) => boxes.get(p) || (boxes.set(p, this.boxesFor(p)), boxes.get(p));
+    const e = 0.06;
+    const touch = (a, b) => bx(a).some((u) => bx(b).some((v) => u[0] <= v[3] + e && v[0] <= u[3] + e && u[1] <= v[4] + e && v[1] <= u[4] + e && u[2] <= v[5] + e && v[2] <= u[5] + e));
+    const near = (p) => {
+      const out = [];
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        for (const q of grid.get((p.cx + dx) * 4096 + p.cz + dz) || []) if (q !== p && Math.abs(q.base - p.base) <= H + 0.1) out.push(q);
+      }
+      return out;
+    };
+    const neighbors = (p) => near(p).filter((q) => touch(p, q));
+    const grounded = (p) => {
+      const T0 = this.game.world.terrain, col = this.game.world.collision;
+      for (const b of bx(p)) {
+        for (const [x, z] of [[(b[0] + b[3]) / 2, (b[2] + b[5]) / 2], [b[0] + 0.1, b[2] + 0.1], [b[3] - 0.1, b[2] + 0.1], [b[0] + 0.1, b[5] - 0.1], [b[3] - 0.1, b[5] - 0.1]]) {
+          if (T0.heightAt(x, z) >= b[1] - 0.35) return true;
+        }
+        for (const c of col.query(b[0] - 0.1, b[1] - 0.15, b[2] - 0.1, b[3] + 0.1, b[4] + 0.1, b[5] + 0.1, [])) {
+          const ty = c.data?.type;
+          if (ty !== 'build' && ty !== 'chest' && ty !== 'mapdoor' && ty !== 'leaves' && ty !== 'dummy' && ty !== 'duck') return true;
+        }
+      }
+      return false;
+    };
+    // El trozo al que pertenecía la pieza rota: cada vecino y lo que toca
+    const removedBoxes = this.boxesFor(removed);
+    boxes.set(removed, removedBoxes);
+    const start = near(removed).filter((q) => touch(removed, q));
+    const safe = new Set();
+    for (const s0 of start) {
+      if (safe.has(s0) || !this.pieces.has(s0.key)) continue;
+      const seen = new Set([s0]);
+      const q = [s0];
+      let ok = false;
+      while (q.length && !ok) {
+        const p = q.pop();
+        if (safe.has(p) || grounded(p) || seen.size > 600) ok = true;
+        else for (const n of neighbors(p)) if (!seen.has(n)) {
+          seen.add(n);
+          q.push(n);
+        }
+      }
+      if (ok) for (const p of seen) safe.add(p);
+      else for (const p of seen) if (this.pieces.has(p.key)) this.remove(p, true, false);
     }
   }
 
@@ -621,7 +849,7 @@ export class BuildSystem {
       piece.edit = 0;
     } else {
       piece.edit = mask & FULL[piece.type];
-      if (piece.edit === FULL[piece.type]) return;
+      if (piece.edit === FULL[piece.type] && piece.type !== 'cone') return;
     }
     piece.doorOpen = false;
     piece.mesh = this.buildMesh(piece);
@@ -698,7 +926,7 @@ export class BuildSystem {
     this.game.combat.reloading = false;
     const n = piece.type === 'wall' ? 9 : 4;
     const mask = piece.type === 'ramp' ? 0 : piece.edit || 0;
-    this.editing = { piece, mask, start: mask, n, drag: null, hover: -1, fromBuild };
+    this.editing = { piece, mask, start: mask, n, drag: null, hover: -1, fromBuild, order: [] };
     this.buildOverlay();
     this.game.audio.editTile();
   }
@@ -710,6 +938,7 @@ export class BuildSystem {
     const piece = e.piece;
     e.tiles = [];
     if (piece.type === 'wall') {
+      o.scale.set(1, 1, 1);
       this.placeMesh(o, piece);
       const tw = G / 3, th = H / 3;
       for (let r = 0; r < 3; r++) {
@@ -725,8 +954,20 @@ export class BuildSystem {
       o.children.forEach((m) => (m.renderOrder = 3));
     } else {
       o.rotation.set(0, 0, 0);
+      o.scale.set(1, 1, 1);
       const y = piece.type === 'floor' ? piece.base + 0.06 : piece.type === 'ramp' ? piece.base + H / 2 + 0.3 : piece.base + 1.0;
       o.position.set(piece.cx * G + G / 2, y, piece.cz * G + G / 2);
+      if (piece.type === 'ramp') {
+        // Rejilla sobre la pendiente de la rampa
+        const a = Math.atan2(H, G), k = 1 / Math.cos(a);
+        if (piece.dir % 2 === 0) {
+          o.rotation.x = piece.dir === 0 ? a : -a;
+          o.scale.z = k;
+        } else {
+          o.rotation.z = piece.dir === 1 ? a : -a;
+          o.scale.x = k;
+        }
+      }
       for (let i = 0; i < 4; i++) {
         const m = new THREE.Mesh(new THREE.PlaneGeometry(G / 2 - 0.12, G / 2 - 0.12).rotateX(-Math.PI / 2), this.tileOn);
         m.position.set(-G / 4 + (i % 2) * (G / 2), 0, -G / 4 + (i >> 1) * (G / 2));
@@ -759,16 +1000,40 @@ export class BuildSystem {
     if (!e) return;
     const piece = e.piece;
     const full = FULL[piece.type];
-    if (e.mask === full) this.game.hud.toast('No puedes quitar todas las casillas');
-    else if (piece.type === 'ramp') {
+    if (piece.type === 'ramp') {
+      // Rampa: sube hacia donde arrastraste (de la primera casilla a la última)
       if (e.mask) {
-        if (sideOf(e.mask) < 0) this.game.hud.toast('Rampa: selecciona las 2 casillas del lado hacia el que quieres que suba');
-        else this.applyEdit(piece, e.mask);
+        const dir = this.rampDir(e);
+        if (dir < 0) this.game.hud.toast('Rampa: arrastra por las casillas en la dirección en la que quieres que suba');
+        else if (dir !== piece.dir) this.applyEdit(piece, e.mask, false, dir);
       }
-    } else if (e.mask !== (piece.edit || 0)) this.applyEdit(piece, e.mask);
+    } else if (e.mask === full && piece.type !== 'cone') this.game.hud.toast('No puedes quitar todas las casillas');
+    else if (e.mask !== (piece.edit || 0)) this.applyEdit(piece, e.mask);
     const back = e.fromBuild;
     this.cancelEdit();
     if (back) this.setActive(true);
+  }
+
+  // Dirección de subida de una rampa editada: el último tramo arrastrado
+  // (casilla anterior → última); si no, el lado con las 2 casillas marcadas.
+  rampDir(e) {
+    const o = e.order.filter((b) => (e.mask >> b) & 1);
+    for (let k = o.length - 1; k > 0; k--) {
+      const a = o[k - 1], b = o[k];
+      const dc = (b % 2) - (a % 2), dr = (b >> 1) - (a >> 1);
+      if (dc && !dr) return dc > 0 ? 1 : 3;
+      if (dr && !dc) return dr > 0 ? 2 : 0;
+    }
+    return sideOf(e.mask);
+  }
+
+  // Forma predefinida de muro (puerta, ventana…): la aplica y confirma.
+  applyWallPreset(i) {
+    const e = this.editing;
+    if (!e || e.piece.type !== 'wall' || !WALL_PRESETS[i]) return;
+    e.mask = WALL_PRESETS[i].mask;
+    this.paintOverlay();
+    this.confirmEdit();
   }
 
   updateEdit(input) {
@@ -790,31 +1055,49 @@ export class BuildSystem {
       this.paintOverlay();
     }
     const fire = input.held('fire');
-    if (input.hit('fire') && bit >= 0) {
-      e.drag = !((e.mask >> bit) & 1);
-      e.mask ^= 1 << bit;
+    const mark = (b, on) => {
+      e.mask = on ? e.mask | (1 << b) : e.mask & ~(1 << b);
+      e.order = e.order.filter((x) => x !== b);
+      if (on) e.order.push(b);
       g.audio.editTile();
       this.paintOverlay();
-    } else if (fire && e.drag !== null && bit >= 0 && this.settings.editDragSelect) {
+    };
+    // Rampa: una nueva pasada empieza de cero (arrastrar define la subida)
+    if (input.hit('fire') && bit >= 0 && piece.type === 'ramp' && !((e.mask >> bit) & 1)) {
+      e.mask = 0;
+      e.order = [];
+    }
+    if (input.hit('fire') && bit >= 0) {
+      e.drag = !((e.mask >> bit) & 1);
+      mark(bit, e.drag);
+    } else if (fire && e.drag !== null && bit >= 0 && (this.settings.editDragSelect || piece.type === 'ramp')) {
       const want = e.drag ? 1 : 0;
-      if (((e.mask >> bit) & 1) !== want) {
-        e.mask = want ? e.mask | (1 << bit) : e.mask & ~(1 << bit);
-        g.audio.editTile();
-        this.paintOverlay();
-      }
+      if (((e.mask >> bit) & 1) !== want) mark(bit, !!want);
     }
     if (!fire) e.drag = null;
     if (input.hit('editReset')) {
       e.mask = 0;
+      e.order = [];
       this.paintOverlay();
     }
-    // Presets de muro con las teclas de hueco (1-6) y 7-8
-    if (piece.type === 'wall') {
+    // Presets de muro: Mayús + 1-8
+    const shift = input.keys?.has('ShiftLeft') || input.keys?.has('ShiftRight');
+    if (piece.type === 'wall' && shift) {
       for (let i = 0; i < WALL_PRESETS.length; i++) {
-        if ((i < 6 && input.hit('slot' + (i + 1))) || (i >= 6 && input.wasPressed('Digit' + (i + 1)))) {
-          e.mask = WALL_PRESETS[i].mask;
-          this.paintOverlay();
+        if (input.wasPressed('Digit' + (i + 1))) {
+          this.applyWallPreset(i);
+          return;
+        }
+      }
+    }
+    // Tecla del pico o de cualquier arma: termina la edición (la confirma)
+    // y saca ese objeto
+    if (!shift) {
+      for (let i = 0; i < 6; i++) {
+        if (input.hit('slot' + (i + 1))) {
           this.confirmEdit();
+          this.setActive(false);
+          g.combat.select(i);
           return;
         }
       }

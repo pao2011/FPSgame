@@ -62,7 +62,7 @@ const NAMES = {
   Space: 'Espacio', ShiftLeft: 'Shift', ShiftRight: 'Shift der.', ControlLeft: 'Ctrl', ControlRight: 'Ctrl der.',
   AltLeft: 'Alt', AltRight: 'Alt der.', Tab: 'Tab', CapsLock: 'Bloq Mayús', Enter: 'Intro', Backspace: 'Retroceso',
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Equal: '=', Minus: '-', Backquote: 'º',
-  Mouse0: 'Clic izq.', Mouse1: 'Clic central', Mouse2: 'Clic der.', Mouse3: 'Ratón 4', Mouse4: 'Ratón 5',
+  Mouse0: 'Clic izq.', Mouse1: 'Clic central', Mouse2: 'Clic der.', Mouse3: 'Ratón 4', Mouse4: 'Ratón 5', NumpadEnter: 'Intro num.', NumpadAdd: 'Num +', NumpadSubtract: 'Num -', NumpadDecimal: 'Num .',
   BracketLeft: '[', BracketRight: ']', Semicolon: 'Ñ', Quote: "'", Comma: ',', Period: '.', Slash: '-', IntlBackslash: '<',
 };
 
@@ -73,4 +73,60 @@ export function keyName(code) {
   if (code.startsWith('Digit')) return code.slice(5);
   if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
   return code;
+}
+
+// Perfiles de teclas predefinidos (Opciones → Controles). Sólo cambian las
+// acciones que aparecen; el resto queda como en «Clásico».
+export const BIND_PRESETS = {
+  clasico: { name: 'Clásico', binds: {} },
+  // Constructor: piezas en teclas al alcance de la mano izquierda y en los
+  // botones laterales del ratón; editar en G.
+  constructor: {
+    name: 'Constructor',
+    binds: {
+      pieceWall: ['KeyQ', 'Mouse4'],
+      pieceFloor: ['KeyZ', 'Mouse3'],
+      pieceRamp: ['KeyX', 'F3'],
+      pieceCone: ['KeyV', 'F4'],
+      build: ['CapsLock', ''],
+      edit: ['KeyG', 'KeyF'],
+      lastWeapon: ['Backquote', ''],
+      drop: ['KeyK', ''],
+      camera: ['KeyP', ''],
+    },
+  },
+  // Zurdo: ratón en la izquierda, movimiento con las flechas y el teclado
+  // numérico para el resto.
+  zurdo: {
+    name: 'Zurdo (flechas)',
+    binds: {
+      forward: ['ArrowUp', 'KeyW'],
+      back: ['ArrowDown', 'KeyS'],
+      left: ['ArrowLeft', 'KeyA'],
+      right: ['ArrowRight', 'KeyD'],
+      jump: ['Numpad0', 'Space'],
+      sprint: ['ShiftRight', 'ShiftLeft'],
+      crouch: ['ControlRight', 'KeyC'],
+      reload: ['NumpadDecimal', 'KeyR'],
+      interact: ['NumpadEnter', 'KeyE'],
+      build: ['Numpad3', 'KeyQ'],
+      edit: ['Numpad2', 'KeyF'],
+      slot1: ['Numpad7', 'Digit1'],
+      slot2: ['Numpad8', 'Digit2'],
+      slot3: ['Numpad9', 'Digit3'],
+      slot4: ['Numpad4', 'Digit4'],
+      slot5: ['Numpad5', 'Digit5'],
+      slot6: ['Numpad6', 'Digit6'],
+      quickHeal: ['Numpad1', 'KeyH'],
+      map: ['NumpadAdd', 'KeyM'],
+      emote: ['NumpadSubtract', 'KeyN'],
+    },
+  },
+};
+
+export function presetBinds(id) {
+  const out = defaultBinds();
+  const pr = BIND_PRESETS[id];
+  if (pr) for (const k in pr.binds) out[k] = pr.binds[k].slice();
+  return out;
 }

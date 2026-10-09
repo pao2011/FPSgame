@@ -1820,6 +1820,27 @@ button:disabled {
   box-shadow: 0 0 0 3px rgba(90, 209, 255, 0.2);
 }
 
+.auth-field { display: flex; gap: 6px; align-items: stretch; }
+.auth-field input { flex: 1; min-width: 0; }
+.auth-eye { margin-top: 6px; padding: 0 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 16px; cursor: pointer; }
+.auth-form input.bad { border-color: #ff6060; box-shadow: 0 0 0 3px rgba(255, 80, 80, 0.2); }
+.auth-hint { display: block; min-height: 1.2em; margin-top: 4px; font-weight: 400; font-size: 12px; opacity: 0.9; }
+.auth-hint .ok { color: #7dff9a; }
+.auth-hint .no { color: #ff9a9a; }
+.auth-hint .wait { color: #ffd76a; }
+.auth-foot { display: block; margin-top: 10px; text-align: center; opacity: 0.8; }
+.auth-foot a { color: var(--cyan); }
+.pass-meter { display: flex; gap: 4px; margin-top: 6px; }
+.pass-meter i { flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); transition: background 0.2s; }
+.pass-meter[data-lv="1"] i:nth-child(-n + 1) { background: #ff5a5a; }
+.pass-meter[data-lv="2"] i:nth-child(-n + 2) { background: #ffb43a; }
+.pass-meter[data-lv="3"] i:nth-child(-n + 3) { background: #9be04a; }
+.pass-meter[data-lv="4"] i { background: #3ee07a; }
+.account-box { background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 12px 14px; margin: 10px 0; }
+.account-box h3 { margin-top: 0; }
+.account-row { display: flex; gap: 8px; }
+.form-ok { background: rgba(80, 220, 120, 0.15); border: 1px solid rgba(80, 220, 120, 0.4); color: #b0ffc4; padding: 8px 12px; border-radius: 10px; margin-bottom: 10px; }
+
 .form-error {
   background: rgba(255, 80, 80, 0.15);
   border: 1px solid rgba(255, 80, 80, 0.4);
@@ -3980,6 +4001,11 @@ body.touch #fullmap-canvas { width: min(92vh, 80vw); }
 .t-edit-bar span { opacity: 0.7; }
 .t-edit-bar button { padding: 4px 10px; font-size: 13px; }
 .t-edit-bar button.ok { background: #2fb35a; }
+.t-edit-bar select { padding: 4px 6px; font-size: 13px; border-radius: 6px; background: #22325e; color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); }
+.slot-list { display: flex; flex-direction: column; gap: 6px; }
+.slot-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.slot-row .slot-name { min-width: 130px; font-weight: 700; }
+.slot-row .slot-name.empty { opacity: 0.5; font-weight: 400; font-style: italic; }
 
 /* ------------------------------------------------------------ CARGA */
 #loading .loading-tip {

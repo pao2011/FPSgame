@@ -64,6 +64,18 @@ export const TOUCH_PRESETS = {
     aim: { x: 0.7, y: 0.64, s: 1 },
     heal: { x: 0.31, y: 0.3, s: 1 },
   },
+  // 4 dedos: como la garra, pero construir, editar y recargar también arriba
+  // (índices) para no soltar nunca la mirada.
+  cuatro: {
+    jump: { x: 0.18, y: 0.3, s: 1.05 },
+    crouch: { x: 0.18, y: 0.5, s: 1 },
+    heal: { x: 0.29, y: 0.28, s: 0.95 },
+    fire2: { x: 0.84, y: 0.36, s: 1.1 },
+    build: { x: 0.72, y: 0.3, s: 1 },
+    edit: { x: 0.62, y: 0.3, s: 1 },
+    reload: { x: 0.72, y: 0.48, s: 0.95 },
+    aim: { x: 0.84, y: 0.56, s: 1 },
+  },
   // Botones grandes: los principales más grandes (pantallas pequeñas o
   // dedos grandes).
   grandes: {
@@ -75,7 +87,11 @@ export const TOUCH_PRESETS = {
     reload: { s: 1.15 },
     heal: { s: 1.1 },
   },
+  // Compacta: todo un poco más pequeño para ver más pantalla.
+  compacta: Object.fromEntries(BUTTONS.map((b) => [b.id, { s: ['fire', 'jump'].includes(b.id) ? 0.9 : 0.78 }])),
 };
+
+const PRESET_NAMES = { defecto: 'Por defecto', garra: 'Garra', cuatro: '4 dedos', grandes: 'Botones grandes', compacta: 'Compacta' };
 
 export function isTouchDevice() {
   try {
@@ -206,9 +222,20 @@ export class TouchControls {
     bar.className = 't-edit-bar';
     bar.innerHTML = `<b>Personalizar botones</b><span>Arrastra un botón para moverlo</span>
       <label>Tamaño <input type="range" min="0.6" max="1.8" step="0.05" value="1"></label>
+      <select class="t-edit-preset"><option value="">Cargar diseño…</option>${Object.keys(TOUCH_PRESETS).map((k) => `<option value="p:${k}">${PRESET_NAMES[k] || k}</option>`).join('')}${(g.settings.touchSlots || []).map((it, i) => (it ? `<option value="s:${i}">★ ${String(it.name).replace(/[<>&"]/g, '')}</option>` : '')).join('')}</select>
       <button data-e="reset">Restablecer</button><button data-e="cancel">Cancelar</button><button data-e="save" class="ok">Guardar</button>`;
     document.body.appendChild(bar);
     const range = bar.querySelector('input');
+    const pick = bar.querySelector('select');
+    pick.addEventListener('change', () => {
+      const [k, v] = pick.value.split(':');
+      const src = k === 'p' ? TOUCH_PRESETS[v] : g.settings.touchSlots?.[Number(v)]?.data;
+      pick.value = '';
+      if (!src) return;
+      this.editing.layout = JSON.parse(JSON.stringify(src));
+      this.applyLayout(this.editing.layout);
+      sync();
+    });
     const sync = () => {
       for (const el of Object.values(this.btn)) el.classList.toggle('t-sel', el.dataset.act === this.editing.sel);
       range.value = String(this.editing.layout[this.editing.sel]?.s || 1);
@@ -328,8 +355,10 @@ export class TouchControls {
       const el = e.target.closest('.piece, .piece-mat');
       if (!el) return;
       e.preventDefault();
+      const i = [...bar.querySelectorAll('.piece')].indexOf(el);
       if (el.classList.contains('piece-mat')) this.input.tap('mouse2');
-      else this.input.tap('Digit' + ([...bar.querySelectorAll('.piece')].indexOf(el) + 1));
+      else if (g.build.editing) g.build.applyWallPreset(i - 1); // la primera es «EDITANDO»
+      else this.input.tap('Digit' + (i + 1));
     });
 
     tapEl(document.getElementById('minimap'), () => this.input.tap('KeyM'));

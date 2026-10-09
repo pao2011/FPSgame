@@ -80,7 +80,7 @@ export class OnlineMatch {
         if (piece) this.game.build.remove(piece, true);
       },
       'm.harv': (m) => {
-        const obj = this.game.harvest.list[m.i];
+        const obj = this.game.harvest.byId(m.i);
         if (obj) this.game.harvest.hit(obj, m.d, null, true);
       },
       'm.veh_in': (m) => this.game.vehicles.netEnter(m.i, this.ents.get(m.id)),
@@ -477,15 +477,15 @@ export class OnlineMatch {
     else g.pickups.remove(pk);
   }
 
-  requestChest(c, opener) {
+  requestChest(c, opener, brk = false) {
     if (c.requested) return;
     c.requested = true;
-    this.net.send('m.chest', { i: c.index, kind: c.kind, by: opener?.netId || this.you });
+    this.net.send('m.chest', { i: c.index, kind: c.kind, by: opener?.netId || this.you, brk });
   }
 
   onChest(m) {
     const c = this.game.containers.list[m.i];
-    if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by));
+    if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by), !!m.brk);
   }
 
   sendEmote(c, id) {

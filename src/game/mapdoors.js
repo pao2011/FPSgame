@@ -66,9 +66,31 @@ export class MapDoors {
     door.collider = col.add(d.minX - (d.alongX ? 0 : pad), d.y0, d.minZ - (d.alongX ? pad : 0), d.maxX + (d.alongX ? 0 : pad), d.y1, d.maxZ + (d.alongX ? pad : 0), { type: 'mapdoor', door });
   }
 
-  // Nueva partida: todas cerradas.
+  // Se ha roto una pieza del edificio: las puertas de ese hueco caen con ella.
+  breakNear(bb) {
+    const e = 0.35;
+    const cx = (bb[0] + bb[3]) / 2, cz = (bb[2] + bb[5]) / 2;
+    for (const door of this.near(cx, cz)) {
+      const d = door.d;
+      if (door.broken || d.maxX < bb[0] - e || d.minX > bb[3] + e || d.maxZ < bb[2] - e || d.minZ > bb[5] + e || d.y1 < bb[1] - e || d.y0 > bb[4] + e) continue;
+      door.broken = true;
+      door.hinge.visible = false;
+      if (door.collider) this.game.world.collision.remove(door.collider);
+      door.collider = null;
+      this.game.effects?.debris(door.center.clone(), 0x8a5a32);
+    }
+  }
+
+  // Nueva partida: todas cerradas (y las rotas, otra vez en su sitio).
   reset() {
     for (const door of this.list) {
+      if (door.broken) {
+        door.broken = false;
+        door.hinge.visible = true;
+        door.open = false;
+        this.setCollider(door);
+        continue;
+      }
       if (door.open) {
         door.open = false;
         this.setCollider(door);
@@ -77,7 +99,7 @@ export class MapDoors {
   }
 
   setOpen(door, open, fromNet = false) {
-    if (door.open === open) return;
+    if (door.open === open || door.broken) return;
     door.open = open;
     this.setCollider(door);
     if (door.center.distanceTo(this.game.camera.position) < 40) this.game.audio.door?.();
@@ -98,6 +120,7 @@ export class MapDoors {
   findDoor(eye, forward, maxDist = 2.8) {
     let best = null, bd = maxDist;
     for (const door of this.near(eye.x, eye.z)) {
+      if (door.broken) continue;
       const dist = door.center.distanceTo(eye);
       if (dist > bd) continue;
       const dot = tmpV.copy(door.center).sub(eye).normalize().dot(forward);
@@ -116,7 +139,7 @@ export class MapDoors {
     if (this.cullT <= 0) {
       this.cullT = 0.5;
       const d2 = g.propDist(140) ** 2;
-      for (const door of this.list) door.hinge.visible = door.center.distanceToSquared(cam) < d2;
+      for (const door of this.list) door.hinge.visible = !door.broken && door.center.distanceToSquared(cam) < d2;
     }
     // Animación de la hoja (abre hacia dentro de la casa)
     for (const door of this.near(cam.x, cam.z)) {
@@ -132,7 +155,7 @@ export class MapDoors {
       if (!b.alive || b.mode !== 'ground' || b.hSpeed < 0.5) continue;
       if (g.net && !g.net.isLocal(b)) continue;
       for (const door of this.near(b.pos.x, b.pos.z)) {
-        if (!door.open && Math.abs(door.center.x - b.pos.x) < 1.6 && Math.abs(door.center.z - b.pos.z) < 1.6 && Math.abs(door.d.y0 - b.pos.y) < 1.5) this.setOpen(door, true);
+        if (!door.open && !door.broken && Math.abs(door.center.x - b.pos.x) < 1.6 && Math.abs(door.center.z - b.pos.z) < 1.6 && Math.abs(door.d.y0 - b.pos.y) < 1.5) this.setOpen(door, true);
       }
     }
   }

@@ -465,6 +465,25 @@ export class Explosives {
         if (d > r + 2) continue;
         g.build.damage(piece, o.build * (1 - 0.5 * Math.min(1, d / (r + 2))));
       }
+      // Edificios del mapa: lo calcula quien lanzó el explosivo y lo envía
+      if (this.authority(o.owner)) {
+        const R = r + 1;
+        const seen = new Set();
+        for (const b of g.world.collision.query(pos.x - R, pos.y - R, pos.z - R, pos.x + R, pos.y + R, pos.z + R, [])) {
+          const ref = b.data?.ref;
+          if (b.data?.type === 'chest' && ref) {
+            // Los cofres alcanzados de lleno revientan y sueltan su botín
+            if (Math.hypot(ref.pos.x - pos.x, ref.pos.y - pos.y, ref.pos.z - pos.z) < r * 0.7) g.containers.smash(ref, o.owner);
+            continue;
+          }
+          if (ref?.kind !== 'building' || seen.has(ref)) continue;
+          seen.add(ref);
+          const cx = Math.max(b.minX, Math.min(pos.x, b.maxX)), cy = Math.max(b.minY, Math.min(pos.y, b.maxY)), cz = Math.max(b.minZ, Math.min(pos.z, b.maxZ));
+          const d = Math.hypot(cx - pos.x, cy - pos.y, cz - pos.z);
+          if (d > R) continue;
+          g.harvest.hit(ref, o.build * 1.2 * (1 - 0.5 * Math.min(1, d / R)), null);
+        }
+      }
     }
   }
 

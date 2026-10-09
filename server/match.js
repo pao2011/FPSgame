@@ -265,7 +265,7 @@ export class Match {
     setLootPool(null);
     const items = loot.map((it, k) => [`c${i}_${k}`, it]);
     this.chestItems.set(i, items);
-    this.broadcast({ t: 'm.chest', i, by: this.owns(c, m.by) ? m.by : me.id, items });
+    this.broadcast({ t: 'm.chest', i, by: this.owns(c, m.by) ? m.by : me.id, items, brk: !!m.brk });
   }
 
   chat(c, text, teamOnly) {

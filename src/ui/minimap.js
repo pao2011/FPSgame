@@ -258,7 +258,7 @@ export class MapRenderer {
       ctx.textBaseline = 'alphabetic';
     }
     // Bóvedas (la de la tarjeta que llevas en la mano, resaltada), botín
-    // especial (llamas y suministros) y la corona
+    // especial (patos y suministros) y la corona
     {
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';

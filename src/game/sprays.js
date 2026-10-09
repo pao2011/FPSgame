@@ -5,7 +5,7 @@ import * as THREE from 'three';
 export const SPRAYS = {
   gg: { name: 'GG', draw: (x, s) => text(x, s, 'GG', '#ffd34d', '#8a2bff') },
   corona: { name: 'Corona', draw: drawCrown },
-  llama: { name: 'Llama', draw: drawLlama },
+  pato: { name: 'Pato', draw: drawDuck },
   calavera: { name: 'Calavera', draw: drawSkull },
   isla: { name: 'Isla', draw: drawIsland },
   corazon: { name: 'Corazón', draw: drawHeart },
@@ -52,17 +52,21 @@ function drawCrown(x, s) {
   x.stroke();
 }
 
-function drawLlama(x, s) {
-  blob(x, s, 'rgba(255,90,140,0.85)');
-  x.fillStyle = '#c78bff';
-  x.fillRect(s * 0.38, s * 0.3, s * 0.24, s * 0.42);
-  x.fillRect(s * 0.4, s * 0.2, s * 0.06, s * 0.12);
-  x.fillRect(s * 0.54, s * 0.2, s * 0.06, s * 0.12);
+function drawDuck(x, s) {
+  blob(x, s, 'rgba(60,170,255,0.85)');
+  x.fillStyle = '#ffd21f';
+  x.beginPath();
+  x.ellipse(s * 0.52, s * 0.6, s * 0.22, s * 0.14, 0, 0, Math.PI * 2);
+  x.arc(s * 0.4, s * 0.38, s * 0.12, 0, Math.PI * 2);
+  x.fill();
+  x.fillStyle = '#ff8a1f';
+  x.beginPath();
+  x.ellipse(s * 0.27, s * 0.41, s * 0.07, s * 0.035, 0, 0, Math.PI * 2);
+  x.fill();
   x.fillStyle = '#111';
-  x.fillRect(s * 0.43, s * 0.38, s * 0.04, s * 0.04);
-  x.fillRect(s * 0.53, s * 0.38, s * 0.04, s * 0.04);
-  x.fillStyle = '#ffd34d';
-  x.fillRect(s * 0.38, s * 0.6, s * 0.24, s * 0.05);
+  x.beginPath();
+  x.arc(s * 0.38, s * 0.35, s * 0.022, 0, Math.PI * 2);
+  x.fill();
 }
 
 function drawSkull(x, s) {

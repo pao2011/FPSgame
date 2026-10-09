@@ -5,14 +5,15 @@ import { getGlowTexture } from './models.js';
 import { ISLAND_RADIUS } from '../world/constants.js';
 
 // Botín especial de las partidas contra bots:
-//  · Llamas de botín escondidas por la isla: mantén E para abrirlas.
+//  · Patos de botín gigantes escondidos por la isla: mantén E para
+//    abrirlos (y hacen «¡cuak!»).
 //  · Suministros que caen del cielo con un globo y una columna de humo.
 //  · La corona: la lleva quien ganó la partida anterior (o un bot); si lo
 //    eliminan cae al suelo y la puede coger cualquiera. Ganar con ella es una
 //    «victoria coronada» y la racha sigue mientras sigas ganando.
-const LLAMAS = 4;
+const DUCKS = 4;
 const DROP_TIMES = [75, 160, 250, 340, 430];
-const OPEN_LLAMA = 1.2; // s manteniendo E
+const OPEN_DUCK = 1.2; // s manteniendo E
 const OPEN_DROP = 1.0;
 
 const tmp = new THREE.Vector3();
@@ -21,31 +22,41 @@ function mat(color, extra = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0, ...extra });
 }
 
-// Llama piñata: cuerpo morado con franjas de colores, cuello, cabeza y orejas.
-function makeLlama() {
+// Pato de botín gigante (de goma, ~2,8 m): cuerpo amarillo, pico naranja,
+// ojos, alas, cresta y una banda de colores en el cuello.
+function makeDuck() {
   const g = new THREE.Group();
-  const body = mat(0x8a3fd6), stripe = [0xffd34d, 0x3fa9ff, 0xff5a8a, 0x5fe05a];
-  const box = (w, h, d, c, x, y, z) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), typeof c === 'number' ? mat(c) : c);
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    g.add(m);
-    return m;
+  const yellow = mat(0xffd84a, { roughness: 0.35 }), orange = mat(0xff8a1a, { roughness: 0.4 });
+  const add = (geo, m, x, y, z, sx = 1, sy = 1, sz = 1) => {
+    const o = new THREE.Mesh(geo, m);
+    o.position.set(x, y, z);
+    o.scale.set(sx, sy, sz);
+    o.castShadow = true;
+    g.add(o);
+    return o;
   };
-  box(0.8, 0.6, 1.3, body, 0, 1.0, 0);
-  stripe.forEach((c, i) => box(0.84, 0.1, 0.16, c, 0, 1.0 + (i % 2 ? 0.12 : -0.12), -0.45 + i * 0.3));
-  box(0.36, 0.9, 0.36, body, 0, 1.65, -0.5);
-  box(0.42, 0.36, 0.6, body, 0, 2.15, -0.68);
-  box(0.12, 0.26, 0.1, 0xffd34d, -0.12, 2.43, -0.55);
-  box(0.12, 0.26, 0.1, 0xffd34d, 0.12, 2.43, -0.55);
-  box(0.07, 0.07, 0.04, 0x111111, -0.14, 2.22, -0.99);
-  box(0.07, 0.07, 0.04, 0x111111, 0.14, 2.22, -0.99);
-  for (const [x, z] of [[-0.28, -0.45], [0.28, -0.45], [-0.28, 0.45], [0.28, 0.45]]) box(0.16, 0.75, 0.16, 0x6a2fb0, x, 0.37, z);
-  box(0.9, 0.08, 0.6, 0xff5a8a, 0, 1.34, 0.1); // silla
-  box(0.12, 0.3, 0.12, body, 0, 1.15, 0.72); // cola
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: 0xc78bff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
-  glow.scale.set(3.4, 3.4, 1);
-  glow.position.y = 1.3;
+  const sph = new THREE.SphereGeometry(1, 20, 14);
+  add(sph, yellow, 0, 0.95, 0.15, 1.05, 0.85, 1.35); // cuerpo
+  add(sph, yellow, 0, 1.25, 1.25, 0.45, 0.55, 0.35); // cola levantada
+  add(sph, yellow, 0, 2.15, -0.75, 0.7, 0.7, 0.7); // cabeza
+  add(sph, orange, 0, 2.0, -1.4, 0.38, 0.14, 0.42); // pico de arriba
+  add(sph, orange, 0, 1.88, -1.32, 0.32, 0.1, 0.34); // pico de abajo
+  for (const s of [-1, 1]) {
+    add(sph, mat(0xffffff), s * 0.3, 2.35, -1.22, 0.16, 0.18, 0.08); // ojo
+    add(sph, mat(0x111111), s * 0.3, 2.36, -1.29, 0.08, 0.1, 0.05); // pupila
+    add(sph, mat(0xffc21a, { roughness: 0.35 }), s * 0.98, 1.1, 0.15, 0.22, 0.5, 0.85); // ala
+  }
+  add(sph, orange, 0, 2.85, -0.7, 0.1, 0.22, 0.28); // cresta
+  // Banda de colores (piñata) alrededor del cuello
+  [0xff5a8a, 0x3fa9ff, 0x5fe05a].forEach((c, i) => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62 - i * 0.02, 0.07, 8, 20), mat(c));
+    ring.rotation.x = Math.PI / 2 + 0.35;
+    ring.position.set(0, 1.62 + i * 0.12, -0.62);
+    g.add(ring);
+  });
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: 0xffe066, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+  glow.scale.set(4.6, 4.6, 1);
+  glow.position.y = 1.4;
   g.add(glow);
   return g;
 }
@@ -107,7 +118,7 @@ function makeCrown() {
 export class Specials {
   constructor(game) {
     this.game = game;
-    this.llamas = [];
+    this.ducks = [];
     this.drops = [];
     this.active = false;
     this.crown = { holder: null, pos: null, mesh: null, glow: null, startStreak: 0, startedWith: false };
@@ -119,16 +130,16 @@ export class Specials {
     const g = this.game;
     this.active = !g.net && !mode.respawn && !mode.creative && !mode.noBots && !g.world.creative;
     if (!this.active) return;
-    // Llamas en sitios escondidos (lejos de las zonas, en el campo)
-    for (let i = 0, tries = 0; i < LLAMAS && tries < 600; tries++) {
+    // Patos en sitios escondidos (lejos de las zonas, en el campo)
+    for (let i = 0, tries = 0; i < DUCKS && tries < 600; tries++) {
       const p = this.randomSpot(ISLAND_RADIUS * 0.82, true);
-      if (!p || this.llamas.some((l) => l.pos.distanceTo(p) < 150)) continue;
-      const mesh = makeLlama();
+      if (!p || this.ducks.some((l) => l.pos.distanceTo(p) < 150)) continue;
+      const mesh = makeDuck();
       mesh.position.copy(p);
       mesh.rotation.y = random.float(0, Math.PI * 2);
       g.scene.add(mesh);
-      const col = g.world.collision.add(p.x - 0.5, p.y, p.z - 0.75, p.x + 0.5, p.y + 1.4, p.z + 0.75, { type: 'llama' });
-      this.llamas.push({ pos: p, mesh, col, hold: 0, phase: random.float(0, 6) });
+      const col = g.world.collision.add(p.x - 1.0, p.y, p.z - 1.0, p.x + 1.0, p.y + 2.0, p.z + 1.0, { type: 'duck' });
+      this.ducks.push({ pos: p, mesh, col, hold: 0, phase: random.float(0, 6) });
       i++;
     }
     this.dropQueue = DROP_TIMES.slice();
@@ -145,7 +156,7 @@ export class Specials {
 
   clear() {
     const g = this.game;
-    for (const l of this.llamas) {
+    for (const l of this.ducks) {
       g.scene.remove(l.mesh);
       if (l.col) g.world.collision.remove(l.col);
     }
@@ -153,7 +164,7 @@ export class Specials {
       g.scene.remove(d.mesh);
       if (d.col) g.world.collision.remove(d.col);
     }
-    this.llamas = [];
+    this.ducks = [];
     this.drops = [];
     this.dropQueue = [];
     const c = this.crown;
@@ -269,7 +280,7 @@ export class Specials {
   }
 
   // ------------------------------------------------------------ BOTÍN
-  llamaLoot() {
+  duckLoot() {
     const heals = ['shieldpot', 'medkit', 'slurp', 'smallshield', 'bandage'];
     const thr = ['grenade', 'impulse', 'sticky', 'smoke'];
     const out = [
@@ -298,7 +309,7 @@ export class Specials {
     ];
   }
 
-  // Confeti al abrir una llama
+  // Plumas y confeti al abrir un pato
   confetti(pos) {
     const fx = this.game.effects;
     for (let i = 0; i < 18; i++) {
@@ -309,23 +320,23 @@ export class Specials {
   }
 
   // ------------------------------------------------------------ INTERACCIÓN
-  // Mantener E junto a una llama o un suministro posado. true = gestionado.
+  // Mantener E junto a un pato o un suministro posado. true = gestionado.
   interact(input, E, dt) {
     if (!this.active) return false;
     const g = this.game;
     const p = g.player;
     let target = null, kind = '';
-    for (const l of this.llamas) if (l.pos.distanceTo(p.pos) < 2.6) (target = l), (kind = 'llama');
+    for (const l of this.ducks) if (l.pos.distanceTo(p.pos) < 3.4) (target = l), (kind = 'duck');
     for (const d of this.drops) if (d.landed && !d.opened && d.ground.distanceTo(p.pos) < 2.6) (target = d), (kind = 'drop');
     if (!target) return false;
-    const total = kind === 'llama' ? OPEN_LLAMA : OPEN_DROP;
-    const label = kind === 'llama' ? 'Abrir la llama de botín' : 'Abrir el suministro';
+    const total = kind === 'duck' ? OPEN_DUCK : OPEN_DROP;
+    const label = kind === 'duck' ? 'Abrir el pato de botín' : 'Abrir el suministro';
     if (input.held('interact')) {
       target.hold += dt;
       g.hud.setProgress(Math.min(1, target.hold / total), `${label}…`);
       if (target.hold >= total) {
         g.hud.setProgress(null);
-        if (kind === 'llama') this.openLlama(target);
+        if (kind === 'duck') this.openDuck(target);
         else this.openDrop(target);
       }
     } else if (target.hold > 0) {
@@ -336,15 +347,16 @@ export class Specials {
     return true;
   }
 
-  openLlama(l) {
+  openDuck(l) {
     const g = this.game;
-    this.llamas.splice(this.llamas.indexOf(l), 1);
+    this.ducks.splice(this.ducks.indexOf(l), 1);
     g.scene.remove(l.mesh);
     g.world.collision.remove(l.col);
     this.confetti(l.pos);
-    g.pickups.burst(this.llamaLoot(), l.pos.clone().setY(l.pos.y + 1));
+    g.pickups.burst(this.duckLoot(), l.pos.clone().setY(l.pos.y + 1));
+    g.audio.quack?.(1, l.pos);
     g.audio.chest?.();
-    g.hud.toast('🦙 ¡Llama de botín abierta!');
+    g.hud.toast('🦆 ¡Cuak! ¡Pato de botín abierto!');
     g.player.stats.chests++;
   }
 
@@ -404,15 +416,23 @@ export class Specials {
       }
       ud.beam.material.opacity = 0.16 + Math.sin(t * 3) * 0.05;
     }
-    // Llamas: saltitos y giro lento
-    for (const l of this.llamas) {
+    // Patos: se balancean como en el agua y giran despacio
+    for (const l of this.ducks) {
       if (l.pos.distanceToSquared(g.camera.position) > 250 * 250) {
         l.mesh.visible = false;
         continue;
       }
       l.mesh.visible = true;
-      l.mesh.position.y = l.pos.y + Math.abs(Math.sin(t * 2.2 + l.phase)) * 0.18;
-      l.mesh.rotation.y += dt * 0.3;
+      l.mesh.position.y = l.pos.y + Math.abs(Math.sin(t * 1.8 + l.phase)) * 0.12;
+      l.mesh.rotation.z = Math.sin(t * 1.3 + l.phase) * 0.06;
+      l.mesh.rotation.y += dt * 0.25;
+      // De vez en cuando hace «cuak» si estás cerca
+      l.quackT = (l.quackT ?? 4 + l.phase) - dt;
+      if (l.quackT <= 0) {
+        l.quackT = 6 + Math.random() * 8;
+        const d = l.pos.distanceTo(g.camera.position);
+        if (d < 40) g.audio.quack?.(0.35 * (1 - d / 40), l.pos);
+      }
     }
     // Corona
     const cr = this.crown;

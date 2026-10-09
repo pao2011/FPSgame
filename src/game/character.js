@@ -294,11 +294,18 @@ export class Character {
         this.eyeOffset -= stepH;
         continue;
       }
+      // ¿Ya estaba dentro antes de moverse? (una pared que aparece encima,
+      // una casilla editada que se vuelve a cerrar…): sale por el lado en el
+      // que tiene el centro, no atraviesa la pared hacia donde camina.
+      const prev = (axis === 0 ? p.x : p.z) - amt;
+      const lo = axis === 0 ? b.minX : b.minZ, hi = axis === 0 ? b.maxX : b.maxZ;
+      const wasInside = prev - R < hi - 1e-5 && prev + R > lo + 1e-5;
+      const toMin = wasInside ? prev < (lo + hi) / 2 : amt > 0;
       if (axis === 0) {
-        p.x = amt > 0 ? b.minX - R - 1e-4 : b.maxX + R + 1e-4;
+        p.x = toMin ? b.minX - R - 1e-4 : b.maxX + R + 1e-4;
         this.vel.x = 0;
       } else {
-        p.z = amt > 0 ? b.minZ - R - 1e-4 : b.maxZ + R + 1e-4;
+        p.z = toMin ? b.minZ - R - 1e-4 : b.maxZ + R + 1e-4;
         this.vel.z = 0;
       }
     }

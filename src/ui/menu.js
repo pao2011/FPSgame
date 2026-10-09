@@ -3,7 +3,7 @@ import { MODES, DIFFICULTIES } from '../game/modes.js';
 import { OnlineUI } from './online.js';
 import { ProgressionUI } from './progression.js';
 import { makeCharacter } from '../game/models.js';
-import { ACTIONS, keyName, defaultBinds } from '../core/binds.js';
+import { ACTIONS, keyName, defaultBinds, BIND_PRESETS, presetBinds } from '../core/binds.js';
 import { MAP_NAME, MAP_SIZE, HALF } from '../world/constants.js';
 
 const $ = (id) => document.getElementById(id);
@@ -24,6 +24,21 @@ const pct100 = (v) => `${Math.round(v * 100)}%`;
 const FMT = { num, pct, pct100, deg, mult, ms };
 // Teclas que pueden repetirse sin problema (se usan en contextos distintos).
 const SHARED = new Set(['Mouse2', 'Mouse0', 'KeyB']);
+
+// Tres ranuras para guardar y cargar disposiciones propias.
+function slotRows(kind, list) {
+  const rows = [0, 1, 2].map((i) => {
+    const it = list[i];
+    return `<div class="slot-row"><span class="slot-name${it ? '' : ' empty'}">${it ? escapeHtml(it.name) : `Ranura ${i + 1} vacía`}</span>
+      <button class="small-btn" data-slot-kind="${kind}" data-slot-act="save" data-slot="${i}">Guardar actual</button>
+      ${it ? `<button class="small-btn" data-slot-kind="${kind}" data-slot-act="load" data-slot="${i}">Cargar</button><button class="small-btn" data-slot-kind="${kind}" data-slot-act="del" data-slot="${i}" title="Borrar">✕</button>` : ''}</div>`;
+  }).join('');
+  return `<div class="opt-row"><label>Mis disposiciones</label><div class="slot-list">${rows}</div></div>`;
+}
+
+function escapeHtml(t) {
+  return String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
 
 const TOUCH_CONTROLS = [
   ['Joystick (izquierda)', 'Moverse · a tope hacia delante: correr · en una escalera: trepar'],
@@ -123,6 +138,15 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Integridad estructural', 'Los edificios que se quedan sin apoyos se vienen abajo (y caen con todo lo que tenían encima). Tus construcciones también: si rompes la pieza que las sujeta al suelo, se caen como en Fortnite.'],
+  ['Cofres destructibles', 'Rompe cofres y cajas de munición a pico, poniéndoles una construcción encima (un techo, por ejemplo) o con explosivos: revientan y sueltan el botín. Si se hunde el suelo en el que están, también.'],
+  ['Puntos débiles', 'Al picar aparece un punto azul: si le das, el golpe es crítico (doble de daño y de material).'],
+  ['Construcción como en Fortnite', 'Menos alcance: suelos, rampas y techos van donde apuntas (como mucho una casilla) y nunca atraviesan una pared, así que en los «90» la rampa se pone en tu caja. Edición de rampas arrastrando en la dirección en la que quieres que suba (con la rejilla sobre la rampa) y techos con forma de esquina, pendiente, cumbrera, tres esquinas o plano.'],
+  ['Edificios destructibles', 'Las casas, tiendas, naves, iglesias, gasolineras y demás se pueden romper a pico, a tiros o con explosivos. Al picarlas dan el material de lo que están hechas: madera, piedra (ladrillo, hormigón, tejas) o metal (chapa, paneles). Las bóvedas, el búnker, el faro, el castillo y el estadio siguen siendo indestructibles.'],
+  ['Construcción y edición', 'En los «90» la rampa ya se coloca en tu propia casilla (al mirar abajo, al saltar o con un muro delante) y te sube encima. Para salir de la edición basta con pulsar la tecla del pico o de cualquier arma; las formas de muro pasan a Mayús + 1-8. Arreglado atravesar paredes al editar.'],
+  ['Pato de botín', 'Las llamas de botín ahora son patos de goma gigantes que hacen «¡cuak!» (también al abrirlos).'],
+  ['Perfiles de controles', 'Perfiles de teclas «Clásico», «Constructor» y «Zurdo», disposiciones táctiles «4 dedos» y «Compacta» y tres ranuras para guardar las tuyas (también desde el editor de botones).'],
+  ['Cuentas mejoradas', 'Al crear la cuenta se comprueba si el nombre está libre, hay medidor de seguridad de la contraseña, repetirla, mostrarla y nombre al azar; lo escrito ya no se borra al fallar. Nuevo panel «Cuenta» para cambiar la contraseña y bloqueo temporal tras muchos intentos fallidos.'],
   ['Más FPS en PC y móvil', 'Resolución dinámica en todas las calidades (apunta a los 60, 90 o 120 Hz de tu pantalla y no baja la nitidez si no sirve de nada), sombras que se dibujan una sola vez por fotograma, oclusión ambiental a media resolución, ruido de los sombreados precalculado, luces de efectos compartidas, perfil ligero de Normal y Baja en móviles, calidad Móvil más nítida (con antialiasing) y aviso si el navegador no usa la tarjeta gráfica.'],
   ['Mira telescópica en táctil', 'El botón de dejar de apuntar (y el resto de botones) se ve también mientras miras por la mira del francotirador.'],
   ['Novedades para móviles', 'Apuntar con el giroscopio, disparo automático, asistencia de apuntado táctil, botón de curación rápida, doble toque para marcar, mapa táctil (toca para marcar, pellizca para hacer zoom), disposiciones «Garra» y «Botones grandes», correr automáticamente, más vibraciones, batería y hora en pantalla y ahorro automático con la batería baja.'],
@@ -431,7 +455,11 @@ export class Menu {
         };
         return `${head}<tr><td>${a.name}</td><td>${btn(0)}</td><td>${btn(1)}</td></tr>`;
       }).join('');
-      body = `<p class="lead">Haz clic en una tecla y pulsa la nueva (o un botón del ratón). Esc borra la asignación. En rojo: teclas repetidas.</p>
+      const bslots = s.bindSlots || [];
+      body = `<div class="opt-row"><label>Perfil de teclas</label><div class="seg">${Object.entries(BIND_PRESETS).map(([v, p]) => `<button data-bind-preset="${v}">${p.name}</button>`).join('')}</div>
+          <small class="hint">«Constructor»: piezas en Q/Z/X/V y botones laterales del ratón, editar en G, construir en Bloq Mayús. «Zurdo»: flechas y teclado numérico.</small></div>
+        ${slotRows('bind', bslots)}
+        <p class="lead">Haz clic en una tecla y pulsa la nueva (o un botón del ratón). Esc borra la asignación. En rojo: teclas repetidas.</p>
         <table class="bind-table">${rows}</table>
         <button class="small-btn" id="binds-reset">Restablecer controles</button>`;
     } else if (tab === 'hud') {
@@ -489,8 +517,9 @@ export class Menu {
         ${check('autoSprint', 'Correr automáticamente', 'Basta con empujar el joystick hacia delante.')}
         ${check('doubleTapPing', 'Doble toque para marcar', 'Dos toques rápidos en la zona de mirar ponen un marcador donde apuntas.')}
         ${check('hapticEvents', 'Vibración al acertar, eliminar y recibir daño')}
-        <div class="opt-row"><label>Disposición predefinida</label><div class="seg" data-presets>${[['defecto', 'Por defecto'], ['garra', 'Garra'], ['grandes', 'Botones grandes']].map(([v, l]) => `<button data-preset="${v}">${l}</button>`).join('')}</div>
-          <small class="hint">Sustituye a tu disposición personalizada. «Garra»: saltar y agacharse arriba a la izquierda y un segundo botón de disparo arriba a la derecha.</small></div>
+        <div class="opt-row"><label>Disposición predefinida</label><div class="seg" data-presets>${[['defecto', 'Por defecto'], ['garra', 'Garra'], ['cuatro', '4 dedos'], ['grandes', 'Botones grandes'], ['compacta', 'Compacta']].map(([v, l]) => `<button data-preset="${v}">${l}</button>`).join('')}</div>
+          <small class="hint">Sustituye a tu disposición personalizada. «Garra»: saltar y agacharse arriba a la izquierda y un segundo botón de disparo arriba a la derecha. «4 dedos»: además construir y editar arriba. «Compacta»: botones pequeños y juntos para ver más pantalla.</small></div>
+        ${slotRows('touch', s.touchSlots || [])}
         <h4 class="opt-sub">Rendimiento y batería</h4>
         ${check('lowBatterySaver', 'Ahorro automático con la batería baja', 'Con un 20 % o menos y sin cargar, el juego se limita a 30 FPS.')}
         ${check('showDeviceStatus', 'Batería y hora en la pantalla de juego')}
@@ -571,6 +600,33 @@ export class Menu {
           rerender();
         };
       }, 0);
+    }));
+    el.querySelectorAll('[data-bind-preset]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.binds = presetBinds(b.dataset.bindPreset);
+      this.game.applySettings();
+      rerender();
+      this.game.hud?.toast?.(`Perfil de teclas: ${BIND_PRESETS[b.dataset.bindPreset].name}`);
+    }));
+    // Ranuras propias (controles de PC y botones táctiles)
+    el.querySelectorAll('[data-slot-act]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const [kind, act, i] = [b.dataset.slotKind, b.dataset.slotAct, Number(b.dataset.slot)];
+      const key = kind === 'bind' ? 'bindSlots' : 'touchSlots';
+      const list = (s[key] = Array.isArray(s[key]) ? s[key] : []);
+      if (act === 'save') {
+        const prev = list[i]?.name;
+        const name = (prompt('Nombre de la disposición:', prev || `Mi diseño ${i + 1}`) || '').trim().slice(0, 20);
+        if (!name) return;
+        const data = kind === 'bind' ? s.binds : s.touchLayout || {};
+        list[i] = { name, data: JSON.parse(JSON.stringify(data)) };
+      } else if (act === 'load' && list[i]) {
+        const data = JSON.parse(JSON.stringify(list[i].data));
+        if (kind === 'bind') s.binds = data;
+        else s.touchLayout = data;
+      } else if (act === 'del') list[i] = null;
+      this.game.applySettings();
+      rerender();
     }));
     el.querySelector('#binds-reset')?.addEventListener('click', (e) => {
       e.stopPropagation();

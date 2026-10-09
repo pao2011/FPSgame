@@ -92,10 +92,23 @@ export class Lobby {
   // ------------------------------------------------------------ MENSAJES
   handle(c, m) {
     if (m.t === 'register' || m.t === 'login' || m.t === 'resume') return this.auth(c, m);
+    if (m.t === 'name_check') {
+      // Disponibilidad del nombre al crear cuenta (con un mínimo de pausa)
+      const now = Date.now();
+      if (now - (c.nameCheckT || 0) < 250) return;
+      c.nameCheckT = now;
+      const name = String(m.name || '').trim();
+      return this.send(c, { t: 'name_check', name, problem: this.db.nameProblem(name) });
+    }
     if (!c.user) return this.error(c, 'Primero inicia sesión');
     if (c.match && m.t.startsWith('m.')) return c.match.handle(c, m);
     switch (m.t) {
       case 'logout': this.db.logout(m.token); c.ws.close(); break;
+      case 'change_pass': {
+        const r = this.db.changePass(c.key, m.old, m.pass, m.token);
+        this.send(c, { t: 'change_pass', ok: !!r.ok, text: r.error || 'Contraseña cambiada. Se han cerrado tus otras sesiones.' });
+        break;
+      }
       case 'friend_add': this.friendAdd(c, m.name); break;
       case 'friend_accept': this.friendAccept(c, m.name); break;
       case 'friend_decline': this.friendDecline(c, m.name); break;
@@ -118,11 +131,23 @@ export class Lobby {
 
   auth(c, m) {
     if (c.user) return;
+    // Demasiados intentos fallidos seguidos: espera un poco (fuerza bruta)
+    const now = Date.now();
+    if (m.t !== 'resume' && (c.authFails || 0) >= 5 && now - c.authFailT < 30000) {
+      return this.send(c, { t: 'auth_err', text: `Demasiados intentos. Espera ${Math.ceil((30000 - (now - c.authFailT)) / 1000)} s.` });
+    }
     let res;
     if (m.t === 'register') res = this.db.register(String(m.name || '').trim(), m.pass);
     else if (m.t === 'login') res = this.db.login(String(m.name || '').trim(), m.pass);
     else res = this.db.resume(m.token);
-    if (res.error) return this.send(c, { t: 'auth_err', text: res.error, resume: m.t === 'resume' });
+    if (res.error) {
+      if (m.t === 'login') {
+        c.authFails = now - (c.authFailT || 0) < 30000 ? (c.authFails || 0) + 1 : 1;
+        c.authFailT = now;
+      }
+      return this.send(c, { t: 'auth_err', text: res.error, field: res.field, resume: m.t === 'resume' });
+    }
+    c.authFails = 0;
     const key = res.user.name.toLowerCase();
     const old = this.online.get(key);
     if (old && old !== c) {
