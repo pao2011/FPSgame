@@ -7,7 +7,7 @@ import { lootForChest, lootForAmmoBox, setLootPool } from '../src/game/items.js'
 import { HitGuard } from './anticheat.js';
 
 let nextMatch = 1;
-const RELAY = new Set(['m.fx', 'm.ex', 'm.down', 'm.bdmg', 'm.harv', 'm.veh', 'm.emote', 'm.ping', 'm.vboom', 'm.wdoor']);
+const RELAY = new Set(['m.fx', 'm.ex', 'm.down', 'm.bdmg', 'm.harv', 'm.veh', 'm.emote', 'm.ping', 'm.vboom', 'm.wdoor', 'm.gad']);
 // Tiempo que se guarda el sitio de un jugador que pierde la conexión.
 export const REJOIN_MS = 45000;
 const now = () => Date.now() / 1000;
@@ -145,8 +145,10 @@ export class Match {
       case 'm.pad': {
         const p = Array.isArray(m.p) && m.p.slice(0, 3).map(Number);
         if (!p || !p.every(Number.isFinite) || this.pads.length > 300) return;
-        const pad = { t: 'm.pad', p, y: Number(m.y) || 0, from: me.id };
-        this.pads.push(pad);
+        const k = ['pad', 'tire', 'fire', 'bubble'].includes(m.k) ? m.k : 'pad';
+        const pad = { t: 'm.pad', p, y: Number(m.y) || 0, k, from: me.id };
+        // Las fogatas y burbujas duran poco: no se guardan para quien entre tarde
+        if (k === 'pad' || k === 'tire') this.pads.push(pad);
         this.broadcast(pad, c);
         break;
       }

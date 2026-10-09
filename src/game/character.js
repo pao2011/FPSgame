@@ -383,6 +383,7 @@ export class Character {
     // Isla de inicio y modo dios (creativo): sin daño
     if (this.game.phase === 'lobby' || (this.isPlayer && this.game.godMode)) return false;
     if (this.invuln > 0 && type !== 'storm') return false;
+    if (this.bush) this.game.gadgets?.setBush(this, false); // el arbusto se cae al recibir daño
     if (this.knocked) {
       this.knockHp -= amount;
       this.onHurt(amount, type, attacker);

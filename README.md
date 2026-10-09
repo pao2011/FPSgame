@@ -4,6 +4,11 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Objetos de Fortnite:** 🔥 **fogata acogedora**, 🫧 **burbuja escudo**, 🏰
+**fuerte portátil** (con neumático para subir), 🌳 **arbusto**, 🎣 **caña de
+pescar** con **bancos de peces**, 🔧 **mesas de mejora** de armas en cada zona
+y **sifón** (+50 al eliminar) en los modos con reaparición y la Arena.
+
 **Integridad estructural y cofres:** 🏚️ los edificios (y tus construcciones)
 que se quedan sin apoyos **se caen**; los **cofres se rompen** a pico, con una
 construcción encima o con explosivos; **puntos débiles** al picar (doble de

@@ -160,6 +160,12 @@ export const CONSUMABLES = {
   flopper: { name: 'Pez saltarín', max: 4, pickup: 1, use: 1, heal: 40, cap: 100, rarity: 2 },
   slurp: { name: 'Zumo Slurp', max: 2, pickup: 1, use: 2, over: { total: 75, rate: 15 }, cap: 100, rarity: 3 },
   launchpad: { name: 'Plataforma de salto', max: 1, pickup: 1, use: 0, deploy: true, rarity: 3 },
+  // Objetos de Fortnite (gadget: se colocan/usan con un clic; ver gadgets.js)
+  campfire: { name: 'Fogata acogedora', max: 2, pickup: 1, use: 0, gadget: true, rarity: 2, desc: 'Cura 2 de vida por segundo durante 25 s' },
+  bubble: { name: 'Burbuja escudo', max: 2, pickup: 1, use: 0, gadget: true, rarity: 3, desc: 'Para las balas durante 15 s' },
+  portafort: { name: 'Fuerte portátil', max: 2, pickup: 1, use: 0, gadget: true, rarity: 3, desc: 'Torre de metal instantánea con neumático' },
+  bush: { name: 'Arbusto', max: 1, pickup: 1, use: 0, gadget: true, rarity: 2, desc: 'Escóndete: los enemigos no te ven de lejos' },
+  rod: { name: 'Caña de pescar', max: 5, pickup: 5, use: 0, rod: true, rarity: 1, desc: 'Apunta a un banco de peces y lanza' },
   // Lanzasopapas: dispara una ventosa con cuerda y tira de ti hasta ella (cargas)
   grappler: { name: 'Lanzasopapas', max: 15, pickup: 10, use: 0, grapple: true, rarity: 3 },
   // Tarjetas de las bóvedas (card = id de la bóveda que abren)
@@ -263,7 +269,7 @@ function ammoFor(type, mult = 1) {
 }
 
 function rollConsumable(rng) {
-  const type = pickKey(rng, { bandage: 35, smallshield: 30, medkit: 15, shieldpot: 20, chugjug: 3, flopper: 9, slurp: 6, launchpad: 3, grappler: 5 });
+  const type = pickKey(rng, { bandage: 35, smallshield: 30, medkit: 15, shieldpot: 20, chugjug: 3, flopper: 9, slurp: 6, launchpad: 3, grappler: 5, campfire: 5, bubble: 2, portafort: 2, bush: 3, rod: 4 });
   return { kind: 'consumable', type, count: CONSUMABLES[type].pickup };
 }
 

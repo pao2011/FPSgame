@@ -600,6 +600,46 @@ function makeConsumableModel(type) {
       box(g, 0.16, 0.05, 0.05, 0x2a2c30, 0, 0.08, -0.06);
       break;
     }
+    case 'campfire': {
+      for (let i = 0; i < 3; i++) {
+        const l = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 6).rotateZ(Math.PI / 2), mat(0x6b4426));
+        l.rotation.y = (i * Math.PI) / 3;
+        g.add(l);
+      }
+      const f = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 6), mat(0xffa22a, { emissive: 0xff6a00 }));
+      f.position.y = 0.1;
+      g.add(f);
+      break;
+    }
+    case 'bubble': {
+      const sph = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 10), mat(0x6fd0ff, { emissive: 0x1a5a88, transparent: true, opacity: 0.8, phong: true, shininess: 100 }));
+      g.add(sph);
+      box(g, 0.06, 0.06, 0.06, 0xdddddd, 0, -0.14, 0);
+      break;
+    }
+    case 'portafort': {
+      box(g, 0.24, 0.24, 0.24, 0x7f93a8);
+      box(g, 0.26, 0.05, 0.26, 0x55595e, 0, 0.1, 0);
+      box(g, 0.08, 0.08, 0.27, 0xf2c230, 0, -0.03, 0);
+      break;
+    }
+    case 'bush': {
+      for (let i = 0; i < 4; i++) {
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09, 0), mat(i % 2 ? 0x3f8f3a : 0x2f7a2c));
+        b.position.set(Math.cos(i * 1.6) * 0.07, (i % 2) * 0.06, Math.sin(i * 1.6) * 0.07);
+        g.add(b);
+      }
+      break;
+    }
+    case 'rod': {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.7, 6).rotateX(Math.PI / 2.4), mat(0x8a5a32));
+      pole.position.z = -0.15;
+      g.add(pole);
+      const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.04, 10).rotateZ(Math.PI / 2), mat(0x55595e));
+      reel.position.set(0.04, -0.05, 0.1);
+      g.add(reel);
+      break;
+    }
     case 'grappler': {
       // Pistola roja con una ventosa de goma en la boca
       box(g, 0.09, 0.1, 0.36, 0xd63a2f, 0, 0, -0.02);

@@ -102,7 +102,18 @@ export class OnlineMatch {
         if (d) this.game.mapDoors.setOpen(d, !!m.open, true);
       },
       'm.vboom': (m) => this.game.vehicles.list[m.i]?.destroy(true),
-      'm.pad': (m) => Array.isArray(m.p) && this.game.combat.addPad(m.p[0], m.p[1], m.p[2], m.y || 0),
+      'm.pad': (m) => {
+        if (!Array.isArray(m.p)) return;
+        const [x, y, z] = m.p, G = this.game.gadgets;
+        if (m.k === 'fire') G.addFire(x, y, z);
+        else if (m.k === 'bubble') G.addBubble(x, y, z);
+        else if (m.k === 'tire') G.addTire(x, y, z);
+        else this.game.combat.addPad(x, y, z, m.y || 0);
+      },
+      'm.gad': (m) => {
+        const c = this.ents.get(m.s);
+        if (c && m.k === 'bush') this.game.gadgets.setBush(c, !!m.on, true);
+      },
       'm.away': (m) => this.onAway(m, true),
       'm.back': (m) => this.onAway(m, false),
       'm.rejoin': (m) => this.onRejoin(m),
@@ -500,8 +511,12 @@ export class OnlineMatch {
     this.net.send('m.vboom', { i: v.index });
   }
 
-  sendPad(x, y, z, yaw) {
-    this.net.send('m.pad', { p: [r2(x), r2(y), r2(z)], y: r3(yaw) });
+  sendPad(x, y, z, yaw, k = 'pad') {
+    this.net.send('m.pad', { p: [r2(x), r2(y), r2(z)], y: r3(yaw), k });
+  }
+
+  sendGadget(m) {
+    this.net.send('m.gad', { ...m, s: this.game.player.netId });
   }
 
   sendBuild(piece) {

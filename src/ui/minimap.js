@@ -276,6 +276,10 @@ export class MapRenderer {
         ctx.fillText(vt.open ? '🔓' : '🔒', x, y);
       }
       for (const m of game.specials?.mapMarks?.() || []) ctx.fillText(m.icon, ox + m.x * scale, oy + m.z * scale);
+      // Mesas de mejora y bancos de peces (más pequeños)
+      ctx.font = '10px sans-serif';
+      for (const b of game.gadgets?.benches || []) ctx.fillText('🔧', ox + b.pos.x * scale, oy + b.pos.z * scale);
+      for (const s of game.gadgets?.spots || []) if (s.ready <= 0) ctx.fillText('🐟', ox + s.x * scale, oy + s.z * scale);
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     }

@@ -467,6 +467,8 @@ class Bot extends Character {
       const facing = (dx * fx + dz * fz) / (d || 1);
       // Campo de visión ~130°, pero de cerca o si ya lo conoce lo detecta igual
       if (d > 14 && facing < -0.1 && !(known && now - known.time < 3)) continue;
+      // Disfrazado de arbusto: sólo se le descubre muy de cerca (o si ya se le seguía)
+      if (e.bush && d > (e.crouching ? 5 : 9) && !(known && now - known.time < 2)) continue;
       cands.push({ e, d });
     }
     cands.sort((a, b) => a.d - b.d);
@@ -565,6 +567,7 @@ class Bot extends Character {
     if (this.shield < 75 && h.shieldpot > 0) return 'shieldpot';
     if (this.health < 50 && h.medkit > 0) return 'medkit';
     if (this.health < 75 && h.bandage > 0) return 'bandage';
+    if (this.health < 70 && h.campfire > 0) return 'campfire';
     return null;
   }
 
@@ -1226,12 +1229,18 @@ class Bot extends Character {
         this.game.explosives.throwItem(this, 'smoke', tmpA.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)), this.game.explosives.aimThrow(this, at));
       }
       this.using = item;
-      this.useT = CONSUMABLES[item].use;
+      this.useT = CONSUMABLES[item].use || 0.6;
       this.crouching = true;
     }
     this.useT -= dt;
     if (this.useT <= 0) {
       const def = CONSUMABLES[this.using];
+      if (this.using === 'campfire') {
+        // Fogata a sus pies (cura mientras se queda cerca)
+        const y = this.game.world.groundBelow(this.pos.x, this.pos.z, this.pos.y + 1);
+        this.game.gadgets.addFire(this.pos.x + 0.8, y, this.pos.z);
+        this.game.net?.sendPad(this.pos.x + 0.8, y, this.pos.z, 0, 'fire');
+      }
       if (def.heal) this.health = Math.min(def.cap, this.health + def.heal);
       if (def.shield) this.shield = Math.min(def.cap, this.shield + def.shield);
       if (def.over) this.regen = { left: def.over.total, rate: def.over.rate };

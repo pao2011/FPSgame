@@ -579,6 +579,16 @@ export class Combat {
       if (start) g.hud.toast(`💳 ${def.name}: sigue la flecha hasta su bóveda y pulsa ${g.touch ? 'USAR' : g.key('interact')} en la puerta`);
       return;
     }
+    // Fogata, burbuja, fuerte portátil y arbusto: un clic
+    if (def.gadget) {
+      if (start && g.gadgets.use(item.type, p)) this.consumeOne(item);
+      return;
+    }
+    // Caña de pescar: cada lanzamiento gasta un uso
+    if (def.rod) {
+      if (start && g.gadgets.fish(p)) this.consumeOne(item);
+      return;
+    }
     // Plataforma de salto: un clic la coloca en el suelo
     if (def.deploy) {
       if (start && this.deployPad()) this.consumeOne(item);
@@ -668,12 +678,18 @@ export class Combat {
     const c = g.player;
     if (!this.pads.length || !c.alive || c.mode !== 'ground' || c.vehicle || c.launchT > 0) return;
     for (const pad of this.pads) {
-      if (Math.abs(c.pos.x - pad.pos.x) > 1.25 || Math.abs(c.pos.z - pad.pos.z) > 1.25) continue;
+      const r = pad.r || 1.25;
+      if (Math.abs(c.pos.x - pad.pos.x) > r || Math.abs(c.pos.z - pad.pos.z) > r) continue;
       if (c.pos.y < pad.pos.y - 0.3 || c.pos.y > pad.pos.y + 0.9) continue;
-      c.vel.y = 46;
+      c.vel.y = pad.vy || 46;
       c.onGround = false;
       c.launchT = 0.6;
-      c.padLaunch = true;
+      c.padLaunch = !pad.hop; // el neumático del fuerte no abre el planeador
+      c.fortHop = pad.hop || null;
+      if (pad.hop) {
+        c.vel.x = 0;
+        c.vel.z = 0;
+      }
       c.noFallT = 8;
       g.audio.launch();
       break;

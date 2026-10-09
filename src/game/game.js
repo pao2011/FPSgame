@@ -38,6 +38,7 @@ import { Storm } from './storm.js';
 import { Player } from './player.js';
 import { Combat } from './combat.js';
 import { Harvest } from './harvest.js';
+import { Gadgets } from './gadgets.js';
 import { BuildSystem } from './build.js';
 import { Vehicles } from './vehicles.js';
 import { BotManager } from './bots.js';
@@ -260,6 +261,7 @@ export class Game {
     this.player = new Player(this);
     this.combat = new Combat(this);
     this.harvest = new Harvest(this);
+    this.gadgets = new Gadgets(this);
     this.build = new BuildSystem(this);
     this.vehicles = new Vehicles(this, this.world.carSpots);
     this.bots = new BotManager(this);
@@ -821,6 +823,7 @@ export class Game {
     this.harvest.reset();
     this.vehicles.reset();
     this.combat.reset();
+    this.gadgets.reset();
     this.explosives.reset();
     this.effects.clear();
     this.pickups.clear();
@@ -1235,6 +1238,13 @@ export class Game {
     else if (how) text = `${v} fue eliminado por ${how}`;
     else text = `${v} fue eliminado`;
     this.hud.killFeed(text, killer?.isPlayer);
+    // Sifón (modos de reaparición y arena): +50 de vida/escudo al eliminar
+    if (killer && killer !== victim && killer.alive && (this.mode.respawn || this.mode.arena) && (!this.net || this.net.isLocal(killer))) {
+      const heal = Math.min(50, 100 - killer.health);
+      killer.health += heal;
+      killer.shield = Math.min(100, killer.shield + (50 - heal));
+      if (killer.isPlayer) this.effects.damageNumber(killer.pos.clone().setY(killer.pos.y + 2), '+50 sifón', 'mat');
+    }
     if (killer?.isPlayer && victim !== this.player) {
       this.player.stats.kills++;
       this.audio.elim();
@@ -1466,6 +1476,8 @@ export class Game {
     if (maxT <= 0) return null;
     const hb = this.world.collision.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, maxT);
     if (hb) best = { t: hb.t, kind: 'world', box: hb.box, normal: new THREE.Vector3(hb.nx, hb.ny, hb.nz) };
+    const hg = this.gadgets?.raycast(o, dir, best ? best.t : maxT);
+    if (hg) best = { t: hg.t, kind: 'world', box: { data: { type: 'bubble' } }, normal: hg.normal };
     const ht = this.world.terrain.raycast(o, dir, best ? best.t : maxT);
     if (ht && (!best || ht.t < best.t)) best = { t: ht.t, kind: 'terrain', normal: null };
     const hd = this.dummies.raycast(o, dir, best ? best.t : maxT);
@@ -1644,6 +1656,7 @@ export class Game {
     this.net?.voice?.update(dt, input);
     this.updateRespawns(dt);
     this.harvest.update(dt);
+    this.gadgets.update(dt);
     this.bus.update(dt, t);
     this.storm.update(dt);
     this.pickups.update(dt, t);
@@ -1964,6 +1977,7 @@ export class Game {
     }
 
     if (this.reboot.interact(input, dt, E)) return;
+    if ((!target || target.score < 1.2) && this.gadgets.interact(input, E)) return;
     if ((!target || target.score < 1.2) && this.specials.interact(input, E, dt)) return;
     if ((!target || target.score < 1.2) && this.vault.interact(input, E)) return;
     const npc = !target || target.score < 1.2 ? this.npcs.findNear(p.pos) : null;

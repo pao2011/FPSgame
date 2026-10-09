@@ -138,6 +138,9 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['Objetos de Fortnite', 'Fogata acogedora (cura 2 de vida por segundo), burbuja escudo (para las balas 15 s), fuerte portátil (torre de metal con neumático para subir a la azotea), arbusto (los enemigos no te ven de lejos hasta que te dañan) y caña de pescar.'],
+  ['Pesca y mesas de mejora', 'Bancos de peces (🐟 en el mapa): lanza la caña y saca peces saltarines, Slurp, pociones o armas. Mesas de mejora (🔧) en cada zona: mejora el arma que llevas a la siguiente rareza con madera, piedra o metal.'],
+  ['Sifón', 'En los modos con reaparición y en la Arena, cada eliminación te da +50 de vida o escudo.'],
   ['Integridad estructural', 'Los edificios que se quedan sin apoyos se vienen abajo (y caen con todo lo que tenían encima). Tus construcciones también: si rompes la pieza que las sujeta al suelo, se caen como en Fortnite.'],
   ['Cofres destructibles', 'Rompe cofres y cajas de munición a pico, poniéndoles una construcción encima (un techo, por ejemplo) o con explosivos: revientan y sueltan el botín. Si se hunde el suelo en el que están, también.'],
   ['Puntos débiles', 'Al picar aparece un punto azul: si le das, el golpe es crítico (doble de daño y de material).'],
