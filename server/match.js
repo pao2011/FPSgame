@@ -37,6 +37,7 @@ export class Match {
     this.drops = new Map(); // id -> fila de m.drop (objetos tirados aún en el suelo)
     this.pads = []; // plataformas de salto colocadas
     this.chestItems = new Map(); // cofre -> botín que soltó
+    this.harv = new Map(); // objeto del mapa -> daño recibido
     this.guard = new HitGuard();
     this.cars = new Map();
     this.score = [0, 0];
@@ -104,6 +105,12 @@ export class Match {
     }
     if (this.status === 'ended') return;
     if (RELAY.has(m.t)) {
+      // Daño a árboles, rocas y edificios: se guarda para quien vuelva
+      if (m.t === 'm.harv') {
+        const i = m.i | 0, d = Number(m.d);
+        if (i < 0 || i > 200000 || !Number.isFinite(d) || d <= 0) return;
+        if (this.harv.size < 50000 || this.harv.has(i)) this.harv.set(i, Math.min(1e5, (this.harv.get(i) || 0) + d));
+      }
       m.from = me.id;
       this.broadcast(m, c);
       return;
@@ -366,7 +373,7 @@ export class Match {
     this.send(c, {
       t: 'm.rejoin', id: this.id, you: me.id, host: this.entOf(this.host)?.id || 0, score: this.score,
       builds: [...this.builds.values()], chests: [...this.chestItems], taken: [...this.taken], drops: [...this.drops.values()],
-      pads: this.pads, cars: [...this.cars], dead: this.ents.filter((e) => !e.alive).map((e) => e.id),
+      pads: this.pads, cars: [...this.cars], harv: [...this.harv], dead: this.ents.filter((e) => !e.alive).map((e) => e.id),
       away: this.ents.filter((e) => e.away).map((e) => e.id),
     });
     this.broadcast({ t: 'm.back', id: me.id }, c);

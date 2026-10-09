@@ -237,6 +237,11 @@ export class Harvest {
     const col = this.game.world.collision;
     for (const c of obj.colliders) col.remove(c);
     obj.colliders = [];
+    // Construcciones apoyadas en él: si ya no tocan nada más, se caen
+    if (this.game.build.pieces.size) {
+      const bb = obj.aabb || obj.boxes.reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2]), Math.max(a[3], b[3]), Math.max(a[4], b[4]), Math.max(a[5], b[5])], [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+      this.game.build.checkSupport({ aabb: bb });
+    }
     if (obj.kind === 'building') {
       this.collapse(obj, true);
       this.destroyed.push(obj);

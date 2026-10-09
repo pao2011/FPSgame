@@ -812,10 +812,18 @@ export class BuildSystem {
       return false;
     };
     // El trozo al que pertenecía la pieza rota: cada vecino y lo que toca
-    const removedBoxes = this.boxesFor(removed);
-    boxes.set(removed, removedBoxes);
-    const start = near(removed).filter((q) => touch(removed, q));
+    let start;
+    if (removed.aabb) {
+      // Un objeto del mapa (casa, árbol, roca) que sujetaba construcciones
+      const b = removed.aabb;
+      start = [...this.pieces.values()].filter((q) => Math.abs(q.cx * G + G / 2 - (b[0] + b[3]) / 2) < (b[3] - b[0]) / 2 + G && Math.abs(q.cz * G + G / 2 - (b[2] + b[5]) / 2) < (b[5] - b[2]) / 2 + G)
+        .filter((q) => bx(q).some((u) => u[0] <= b[3] + e && b[0] <= u[3] + e && u[1] <= b[4] + e && b[1] <= u[4] + e && u[2] <= b[5] + e && b[2] <= u[5] + e));
+    } else {
+      boxes.set(removed, this.boxesFor(removed));
+      start = near(removed).filter((q) => touch(removed, q));
+    }
     const safe = new Set();
+    let fx = 0;
     for (const s0 of start) {
       if (safe.has(s0) || !this.pieces.has(s0.key)) continue;
       const seen = new Set([s0]);
@@ -830,7 +838,15 @@ export class BuildSystem {
         }
       }
       if (ok) for (const p of seen) safe.add(p);
-      else for (const p of seen) if (this.pieces.has(p.key)) this.remove(p, true, false);
+      else {
+        for (const p of seen) {
+          if (!this.pieces.has(p.key)) continue;
+          // Efectos sólo en unas pocas piezas (un derrumbe grande no tira)
+          this.remove(p, fx++ < 5, false);
+          // Para el servidor (quien entre tarde no debe verlas); repetido no pasa nada
+          this.game.net?.sendBuildRemove(p);
+        }
+      }
     }
   }
 

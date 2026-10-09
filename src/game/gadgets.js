@@ -166,7 +166,7 @@ export class Gadgets {
     const add = (type, lv, dir, edit = 0) => {
       const t = { type, cx, cz, base: base + lv * H, dir, edit };
       t.key = B.key(type, cx, cz, t.base, dir);
-      if (B.pieces.has(t.key)) return;
+      if (B.pieces.has(t.key) || B.canPlace(t, owner, 'metal') !== 'ok') return; // no encerrar a nadie
       const piece = B.place(t, owner, 'metal');
       piece.team = p.team;
     };

@@ -182,7 +182,12 @@ export class OnlineUI {
   // ------------------------------------------------------------ RED
   bindNet() {
     const n = this.net;
-    n.on('status', () => this.refresh());
+    n.on('status', () => {
+      // Comprobación de nombre pendiente (se escribió antes de conectar)
+      const nm = this.form?.name?.trim();
+      if (n.state === 'online' && this.tab === 'register' && nm && !nameProblem(nm) && this.nameCheck?.name?.toLowerCase() !== nm.toLowerCase()) n.send('name_check', { name: nm });
+      this.refresh();
+    });
     n.on('neterror', (text) => {
       this.error = text;
       this.busy = false;

@@ -106,7 +106,7 @@ export class Lobby {
       case 'logout': this.db.logout(m.token); c.ws.close(); break;
       case 'change_pass': {
         const r = this.db.changePass(c.key, m.old, m.pass, m.token);
-        this.send(c, { t: 'change_pass', ok: !!r.ok, text: r.error || 'Contraseña cambiada. Se han cerrado tus otras sesiones.' });
+        this.send(c, { t: 'change_pass', ok: !!r.ok, text: r.error || 'Contraseña cambiada. En tus otros dispositivos tendrás que volver a entrar.' });
         break;
       }
       case 'friend_add': this.friendAdd(c, m.name); break;
@@ -133,8 +133,11 @@ export class Lobby {
     if (c.user) return;
     // Demasiados intentos fallidos seguidos: espera un poco (fuerza bruta)
     const now = Date.now();
-    if (m.t !== 'resume' && (c.authFails || 0) >= 5 && now - c.authFailT < 30000) {
-      return this.send(c, { t: 'auth_err', text: `Demasiados intentos. Espera ${Math.ceil((30000 - (now - c.authFailT)) / 1000)} s.` });
+    // Por cuenta (no por conexión: reconectar no reinicia la cuenta atrás)
+    const fk = String(m.name || '').trim().toLowerCase();
+    const f = (this.authFails ||= new Map()).get(fk);
+    if (m.t === 'login' && f && f.n >= 5 && now - f.t < 30000) {
+      return this.send(c, { t: 'auth_err', text: `Demasiados intentos. Espera ${Math.ceil((30000 - (now - f.t)) / 1000)} s.` });
     }
     let res;
     if (m.t === 'register') res = this.db.register(String(m.name || '').trim(), m.pass);
@@ -142,12 +145,12 @@ export class Lobby {
     else res = this.db.resume(m.token);
     if (res.error) {
       if (m.t === 'login') {
-        c.authFails = now - (c.authFailT || 0) < 30000 ? (c.authFails || 0) + 1 : 1;
-        c.authFailT = now;
+        if (this.authFails.size > 5000) this.authFails.clear();
+        this.authFails.set(fk, { n: f && now - f.t < 30000 ? f.n + 1 : 1, t: now });
       }
       return this.send(c, { t: 'auth_err', text: res.error, field: res.field, resume: m.t === 'resume' });
     }
-    c.authFails = 0;
+    if (m.t === 'login') this.authFails.delete(fk);
     const key = res.user.name.toLowerCase();
     const old = this.online.get(key);
     if (old && old !== c) {

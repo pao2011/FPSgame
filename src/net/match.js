@@ -440,6 +440,13 @@ export class OnlineMatch {
       if (p.k === 'tire') g.gadgets.addTire(p.p[0], p.p[1], p.p[2]);
       else g.combat.addPad(p.p[0], p.p[1], p.p[2], p.y || 0);
     }
+    // Árboles, rocas y paredes que se rompieron mientras tanto
+    for (const [i, d] of m.harv || []) {
+      const obj = g.harvest.byId(i);
+      if (!obj) continue;
+      const want = obj.maxHp - d;
+      if (obj.hp > want) g.harvest.hit(obj, obj.hp - want, null, true);
+    }
     // Quién cayó mientras tanto
     for (const id of m.dead || []) {
       const e = this.ents.get(id);
