@@ -435,7 +435,11 @@ export class OnlineMatch {
     this.onDrop({ items: (m.drops || []).filter((d) => !taken.has(d[0]) && !(lobbyGone && offMap(d[2], d[4]))) });
     const padKey = (x, z) => `${Math.round(x * 2)},${Math.round(z * 2)}`;
     const have = new Set(g.combat.pads.map((p) => padKey(p.pos.x, p.pos.z)));
-    for (const p of m.pads || []) if (!(lobbyGone && offMap(p.p[0], p.p[2])) && !have.has(padKey(p.p[0], p.p[2]))) g.combat.addPad(p.p[0], p.p[1], p.p[2], p.y || 0);
+    for (const p of m.pads || []) {
+      if ((lobbyGone && offMap(p.p[0], p.p[2])) || have.has(padKey(p.p[0], p.p[2]))) continue;
+      if (p.k === 'tire') g.gadgets.addTire(p.p[0], p.p[1], p.p[2]);
+      else g.combat.addPad(p.p[0], p.p[1], p.p[2], p.y || 0);
+    }
     // Quién cayó mientras tanto
     for (const id of m.dead || []) {
       const e = this.ents.get(id);
