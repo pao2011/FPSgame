@@ -799,25 +799,195 @@ export function makeItemModel(item, camo = null, pick = null) {
 }
 
 // ------------------------------------------------------------------ COFRE ---
-// Frente hacia +Z, bisagra atrás.
-function makeChest() {
+// Frente hacia +Z, bisagra atrás. tier: 0 normal, 1 épico, 2 legendario.
+// Cada pieza lleva en userData.cfx [brillo, metal]: el brillo se ilumina solo
+// (gemas, runas) y el metal refleja el entorno (ver chestMat).
+const seg = (n) => (PBR ? n : Math.max(3, Math.ceil(n / 2)));
+function cp(parent, geo, color, x = 0, y = 0, z = 0, glow = 0, metal = 0) {
+  const m = new THREE.Mesh(geo, mat(color));
+  m.position.set(x, y, z);
+  m.userData.cfx = [glow, metal];
+  parent.add(m);
+  return m;
+}
+// Caja (round: aristas suavizadas en calidad normal/alta)
+const cbox = (w, h, d, round = false) => boxGeo(w, h, d, !round);
+// Semicilindro tumbado a lo largo de X (tapa abombada): radio r, altura h.
+function archGeo(w, r, h, n) {
+  return new THREE.CylinderGeometry(r, r, w, seg(n), 1, false, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, h / r, 1);
+}
+// Gema tallada (octaedro) algo aplastada contra la superficie
+function gem(parent, r, color, x, y, z, sy = 1.25, sz = 0.6) {
+  const m = cp(parent, new THREE.OctahedronGeometry(r), color, x, y, z, 1);
+  m.scale.set(1, sy, sz);
+  return m;
+}
+// Voluta de filigrana: arco de toro en el plano XY (frente del cofre) con la
+// abertura hacia el ángulo `open`.
+function curl(parent, r, color, x, y, z, open, arc = Math.PI * 1.4) {
+  const m = cp(parent, new THREE.TorusGeometry(r, r * 0.17, seg(4), seg(12), arc), color, x, y, z, 0, 1);
+  m.rotation.z = open + (Math.PI * 2 - arc) / 2;
+  return m;
+}
+
+// Asas a los lados (aros en el plano YZ)
+function handles(parent, color, x, y, r) {
+  for (const sx of [-1, 1]) {
+    const m = cp(parent, new THREE.TorusGeometry(r, r * 0.16, seg(4), seg(10), Math.PI), color, sx * x, y, 0, 0, 1);
+    m.rotation.set(Math.PI, sx * Math.PI / 2, 0);
+  }
+}
+
+function makeChestNormal() {
   const g = new THREE.Group();
-  const wood = 0x8a5a2b;
-  const gold = 0xf2c230;
-  const goldMat = { emissive: 0x6b4a00, phong: true, shininess: 80 };
-  box(g, 1.0, 0.5, 0.6, wood, 0, 0.25, 0);
-  box(g, 1.03, 0.08, 0.63, gold, 0, 0.04, 0, goldMat);
-  box(g, 1.03, 0.06, 0.63, gold, 0, 0.47, 0, goldMat);
-  box(g, 0.08, 0.5, 0.63, gold, -0.46, 0.25, 0, goldMat);
-  box(g, 0.08, 0.5, 0.63, gold, 0.46, 0.25, 0, goldMat);
+  const wood = 0x93602e, dark = 0x5a3616, gold = 0xf5c43a;
+  cp(g, cbox(1.0, 0.46, 0.6, true), wood, 0, 0.27, 0);
+  // vetas de las tablas (delante, detrás y a los lados)
+  for (const y of [0.2, 0.35]) {
+    cp(g, cbox(0.9, 0.014, 0.606), dark, 0, y, 0);
+    cp(g, cbox(1.006, 0.014, 0.5), dark, 0, y, 0);
+  }
+  cp(g, cbox(1.05, 0.08, 0.65, true), gold, 0, 0.04, 0, 0, 1);
+  cp(g, cbox(1.04, 0.05, 0.64), gold, 0, 0.475, 0, 0, 1);
+  for (const x of [-0.48, 0.48]) for (const z of [-0.28, 0.28]) cp(g, cbox(0.08, 0.5, 0.08), gold, x, 0.25, z, 0, 1);
+  for (const x of [-0.26, 0.26]) cp(g, cbox(0.07, 0.42, 0.624), gold, x, 0.27, 0, 0, 1);
+  // cerradura
+  cp(g, cbox(0.17, 0.17, 0.03), gold, 0, 0.37, 0.305, 0, 1);
+  cp(g, cbox(0.035, 0.07, 0.012), 0x1a1208, 0, 0.36, 0.322);
+  handles(g, 0x4a4a52, 0.515, 0.36, 0.07);
   const lid = new THREE.Group();
   lid.position.set(0, 0.5, -0.3);
   g.add(lid);
-  box(lid, 1.02, 0.2, 0.62, wood, 0, 0.1, 0.31);
-  box(lid, 1.04, 0.06, 0.64, gold, 0, 0.18, 0.31, goldMat);
-  box(lid, 0.12, 0.14, 0.04, gold, 0, 0.0, 0.63, goldMat);
+  cp(lid, cbox(1.04, 0.05, 0.64), gold, 0, 0.025, 0.3, 0, 1);
+  cp(lid, archGeo(0.98, 0.3, 0.2, 12), wood, 0, 0.04, 0.3);
+  for (const x of [-0.48, -0.26, 0.26, 0.48]) cp(lid, archGeo(0.07, 0.312, 0.212, 12), gold, x, 0.04, 0.3, 0, 1);
+  cp(lid, cbox(0.13, 0.13, 0.035), gold, 0, 0.0, 0.62, 0, 1);
   g.userData.lid = lid;
   return g;
+}
+
+// Cofre épico: laca violeta, adornos de plata, gemas y runas que brillan.
+function makeChestEpic() {
+  const g = new THREE.Group();
+  const body = 0x45196f, panel = 0x6b2db0, silver = 0xcbc2ea, steel = 0x8a7fb8, gemC = 0xd47cff, rune = 0xe9a8ff;
+  cp(g, cbox(1.1, 0.48, 0.66, true), body, 0, 0.3, 0);
+  // paneles en relieve
+  for (const z of [-0.335, 0.335]) cp(g, cbox(0.76, 0.28, 0.02, true), panel, 0, 0.3, z);
+  for (const x of [-0.555, 0.555]) cp(g, cbox(0.02, 0.28, 0.42, true), panel, x, 0.3, 0);
+  // zócalo escalonado, banda superior, columnas y patas
+  cp(g, cbox(1.2, 0.035, 0.76), steel, 0, 0.0175, 0, 0, 1);
+  cp(g, cbox(1.16, 0.09, 0.72, true), silver, 0, 0.075, 0, 0, 1);
+  cp(g, cbox(1.15, 0.05, 0.7), silver, 0, 0.515, 0, 0, 1);
+  for (const x of [-0.53, 0.53]) {
+    for (const z of [-0.31, 0.31]) {
+      cp(g, cbox(0.09, 0.46, 0.09), silver, x, 0.31, z, 0, 1);
+      cp(g, new THREE.SphereGeometry(0.06, seg(8), seg(6)), steel, x * 1.05, 0.035, z * 1.1, 0, 1);
+    }
+    cp(g, cbox(0.05, 0.42, 0.68), silver, x * 0.8, 0.3, 0, 0, 1);
+  }
+  // marco de plata del panel frontal con gemas en las esquinas
+  for (const y of [0.155, 0.445]) cp(g, cbox(0.8, 0.025, 0.02), silver, 0, y, 0.348, 0, 1);
+  for (const x of [-0.39, 0.39]) cp(g, cbox(0.025, 0.31, 0.02), silver, x, 0.3, 0.348, 0, 1);
+  for (const x of [-0.39, 0.39]) for (const y of [0.155, 0.445]) gem(g, 0.032, gemC, x, y, 0.36, 1, 1);
+  // cerradura con una gema grande dentro de un rombo de plata
+  cp(g, cbox(0.2, 0.2, 0.03, true), silver, 0, 0.36, 0.345, 0, 1);
+  const frame = cp(g, new THREE.TorusGeometry(0.105, 0.016, 4, 4), steel, 0, 0.3, 0.36, 0, 1);
+  frame.scale.set(1.25, 1, 1);
+  gem(g, 0.075, gemC, 0, 0.33, 0.37);
+  // volutas a los lados de la cerradura
+  curl(g, 0.06, silver, -0.2, 0.28, 0.35, 0);
+  curl(g, 0.06, silver, 0.2, 0.28, 0.35, Math.PI);
+  // runa luminosa bajo el panel y asas de plata
+  cp(g, cbox(0.7, 0.016, 0.012), rune, 0, 0.125, 0.334, 1);
+  handles(g, silver, 0.585, 0.38, 0.075);
+  const lid = new THREE.Group();
+  lid.position.set(0, 0.54, -0.33);
+  g.add(lid);
+  cp(lid, cbox(1.15, 0.05, 0.7), silver, 0, 0.025, 0.33, 0, 1);
+  cp(lid, archGeo(1.06, 0.33, 0.25, 14), body, 0, 0.045, 0.33);
+  for (const x of [-0.53, -0.3, 0.3, 0.53]) cp(lid, archGeo(0.06, 0.342, 0.262, 14), silver, x, 0.045, 0.33, 0, 1);
+  for (const x of [-0.15, 0.15]) cp(lid, archGeo(0.02, 0.336, 0.256, 14), rune, x, 0.045, 0.33, 1);
+  // emblema de la tapa: base de plata y gema
+  cp(lid, new THREE.CylinderGeometry(0.075, 0.09, 0.04, seg(8)), silver, 0, 0.3, 0.33, 0, 1);
+  gem(lid, 0.065, gemC, 0, 0.36, 0.33, 1.1, 1);
+  cp(lid, cbox(0.15, 0.13, 0.035), silver, 0, 0.0, 0.69, 0, 1);
+  g.userData.lid = lid;
+  return g;
+}
+
+// Cofre legendario: oro y terciopelo carmesí, filigrana, columnas, patas de
+// garra, medallón con una gema enorme y una corona en la tapa.
+function makeChestLegendary() {
+  const g = new THREE.Group();
+  const gold = 0xffc53a, deep = 0xd9961c, red = 0x7d0f20, velvet = 0xa8182e, gemC = 0xffa030, white = 0xffe39a;
+  cp(g, cbox(1.2, 0.52, 0.72, true), red, 0, 0.32, 0);
+  for (const z of [-0.365, 0.365]) cp(g, cbox(0.86, 0.32, 0.02, true), velvet, 0, 0.31, z);
+  for (const x of [-0.605, 0.605]) cp(g, cbox(0.02, 0.32, 0.5, true), velvet, x, 0.31, 0);
+  // marco dorado de los paneles (delante y detrás)
+  for (const z of [-0.375, 0.375]) {
+    for (const y of [0.14, 0.48]) cp(g, cbox(0.9, 0.032, 0.03), gold, 0, y, z, 0, 1);
+    for (const x of [-0.445, 0.445]) cp(g, cbox(0.032, 0.37, 0.03), gold, x, 0.31, z, 0, 1);
+  }
+  cp(g, cbox(1.3, 0.035, 0.82), deep, 0, 0.0175, 0, 0, 1);
+  cp(g, cbox(1.26, 0.1, 0.78, true), gold, 0, 0.08, 0, 0, 1);
+  cp(g, cbox(1.25, 0.055, 0.77, true), gold, 0, 0.555, 0, 0, 1);
+  // columnas torneadas con capitel y patas de garra
+  for (const x of [-0.585, 0.585]) {
+    for (const z of [-0.345, 0.345]) {
+      cp(g, new THREE.CylinderGeometry(0.045, 0.05, 0.44, seg(10)), gold, x, 0.33, z, 0, 1);
+      cp(g, cbox(0.12, 0.04, 0.12), deep, x, 0.53, z, 0, 1);
+      cp(g, cbox(0.12, 0.04, 0.12), deep, x, 0.13, z, 0, 1);
+      cp(g, new THREE.SphereGeometry(0.075, seg(10), seg(8)), gold, x * 1.03, 0.045, z * 1.05, 0, 1);
+    }
+  }
+  // gemas en las esquinas del marco y franja luminosa
+  for (const x of [-0.445, 0.445]) for (const y of [0.14, 0.48]) gem(g, 0.034, gemC, x, y, 0.392, 1, 1);
+  cp(g, cbox(0.8, 0.016, 0.012), white, 0, 0.175, 0.377, 1);
+  // filigrana: volutas doradas alrededor del medallón
+  curl(g, 0.075, gold, -0.215, 0.32, 0.38, 0);
+  curl(g, 0.075, gold, 0.215, 0.32, 0.38, Math.PI);
+  for (const sx of [-1, 1]) {
+    for (const y of [0.22, 0.42]) curl(g, 0.045, gold, sx * 0.34, y, 0.38, Math.atan2(0.32 - y, -sx * 0.34), Math.PI * 1.2);
+  }
+  // medallón con la gema grande
+  cp(g, new THREE.CylinderGeometry(0.125, 0.125, 0.03, seg(16)).rotateX(Math.PI / 2), gold, 0, 0.32, 0.385, 0, 1);
+  cp(g, new THREE.TorusGeometry(0.125, 0.016, seg(4), seg(18)), deep, 0, 0.32, 0.4, 0, 1);
+  gem(g, 0.08, gemC, 0, 0.32, 0.41, 1.25, 0.6);
+  handles(g, gold, 0.635, 0.38, 0.08);
+  const lid = new THREE.Group();
+  lid.position.set(0, 0.58, -0.36);
+  g.add(lid);
+  cp(lid, cbox(1.25, 0.055, 0.77, true), gold, 0, 0.0275, 0.36, 0, 1);
+  cp(lid, archGeo(1.16, 0.36, 0.28, 16), red, 0, 0.05, 0.36);
+  for (const x of [-0.56, -0.32, 0.32, 0.56]) cp(lid, archGeo(0.07, 0.372, 0.292, 16), gold, x, 0.05, 0.36, 0, 1);
+  for (const x of [-0.16, 0.16]) cp(lid, archGeo(0.022, 0.366, 0.286, 16), white, x, 0.05, 0.36, 0.55, 1);
+  // corona: aro, cinco puntas con gemas y una gema al frente
+  const cy = 0.05 + 0.28;
+  cp(lid, new THREE.CylinderGeometry(0.115, 0.1, 0.075, seg(14)), gold, 0, cy + 0.03, 0.36, 0, 1);
+  cp(lid, new THREE.TorusGeometry(0.112, 0.014, seg(4), seg(16)).rotateX(Math.PI / 2), deep, 0, cy + 0.065, 0.36, 0, 1);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + Math.PI / 2;
+    const x = Math.cos(a) * 0.095, z = 0.36 + Math.sin(a) * 0.095;
+    cp(lid, new THREE.ConeGeometry(0.03, 0.11, 4), gold, x, cy + 0.12, z, 0, 1);
+    gem(lid, 0.02, white, x, cy + 0.185, z, 1.2, 1);
+  }
+  gem(lid, 0.032, 0xff5a3a, 0, cy + 0.035, 0.36 + 0.118, 1.2, 0.6);
+  cp(lid, cbox(0.17, 0.15, 0.04), gold, 0, 0.0, 0.75, 0, 1);
+  // volutas en el borde frontal de la tapa y un sello con gema en cada lado
+  for (const sx of [-1, 1]) {
+    curl(lid, 0.04, gold, sx * 0.2, 0.028, 0.752, sx < 0 ? 0 : Math.PI, Math.PI * 1.2);
+    curl(lid, 0.04, gold, sx * 0.42, 0.028, 0.752, sx < 0 ? Math.PI : 0, Math.PI * 1.2);
+    const seal = cp(lid, new THREE.CylinderGeometry(0.085, 0.085, 0.02, seg(12)), gold, sx * 0.585, 0.15, 0.36, 0, 1);
+    seal.rotation.z = Math.PI / 2;
+    const sg = gem(lid, 0.035, gemC, sx * 0.6, 0.15, 0.36, 1.2, 1);
+    sg.scale.set(0.6, 1.2, 1);
+  }
+  g.userData.lid = lid;
+  return g;
+}
+
+function makeChest(tier = 0) {
+  return tier === 2 ? makeChestLegendary() : tier === 1 ? makeChestEpic() : makeChestNormal();
 }
 
 function makeAmmoBox() {
@@ -1432,30 +1602,106 @@ export function itemKey(item) {
   return 'pickaxe';
 }
 
+// Fusión de las piezas de un cofre: color por vértice y, además, el atributo
+// cfx (brillo, metal) de cada pieza.
+function mergeChestGeometry(root) {
+  root.updateMatrixWorld(true);
+  _inv.copy(root.matrixWorld).invert();
+  const pos = [], nor = [], col = [], fx = [];
+  const c = new THREE.Color();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    _m.multiplyMatrices(_inv, o.matrixWorld);
+    g.applyMatrix4(_m);
+    const p = g.attributes.position.array;
+    const n = g.attributes.normal.array;
+    const [glow, metal] = o.userData.cfx || [0, 0];
+    c.copy(o.material.color);
+    for (let i = 0; i < p.length; i += 3) {
+      pos.push(p[i], p[i + 1], p[i + 2]);
+      nor.push(n[i], n[i + 1], n[i + 2]);
+      // oclusión aproximada en las caras que miran abajo (no en lo que brilla)
+      const ao = glow ? 1 : 0.78 + 0.22 * (n[i + 1] * 0.5 + 0.5);
+      col.push(c.r * ao, c.g * ao, c.b * ao);
+      fx.push(glow, metal);
+    }
+    g.dispose();
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('cfx', new THREE.Float32BufferAttribute(fx, 2));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+// Material de los cofres: color por vértice + brillo propio (gemas y runas,
+// con un leve pulso) + metal pulido (oro y plata) donde lo marca cfx.
+const CHEST_U = { uGlow: { value: 1 }, uTime: { value: 0 } };
+export function setChestShading(glow, time) {
+  CHEST_U.uGlow.value = glow;
+  CHEST_U.uTime.value = time;
+}
+let chestMatCache = null;
+function chestMat() {
+  if (chestMatCache && chestMatCache.userData.pbr === PBR) return chestMatCache;
+  const pbr = PBR;
+  const m = pbr ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.05 }) : new THREE.MeshLambertMaterial({ vertexColors: true });
+  m.userData.pbr = pbr;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uGlow = CHEST_U.uGlow;
+    sh.uniforms.uTime = CHEST_U.uTime;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 cfx;\nvarying vec2 vCfx;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCfx = cfx;');
+    let fs = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vCfx;\nuniform float uGlow;\nuniform float uTime;');
+    if (pbr) {
+      fs = fs
+        .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.85, vCfx.y);')
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.3, vCfx.y);');
+    } else {
+      // Sin PBR el metal no refleja nada: se aclara un poco para que destaque
+      fs = fs.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vCfx.y * 0.12;');
+    }
+    fs = fs.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vCfx.x * uGlow * (0.8 + 0.2 * sin(uTime * 3.0));');
+    sh.fragmentShader = fs;
+  };
+  m.customProgramCacheKey = () => 'chest' + pbr;
+  chestMatCache = m;
+  return m;
+}
+
 // Cofre / caja de munición con 2 mallas fusionadas (cuerpo + tapa).
-export function makeContainerFast(kind) {
-  const key = kind === 'chest' ? 'chest' : 'ammobox';
+// tier (cofres): 0 normal, 1 épico, 2 legendario.
+export function makeContainerFast(kind, tier = 0) {
+  const chest = kind === 'chest';
+  const key = chest ? `chest${tier}|${PBR}` : 'ammobox';
   let entry = mergedCache.get(key);
   if (!entry) {
-    const proto = kind === 'chest' ? makeChest() : makeAmmoBox();
+    const proto = chest ? makeChest(tier) : makeAmmoBox();
     const lid = proto.userData.lid;
     const lidPos = lid.position.clone();
     proto.remove(lid);
     lid.position.set(0, 0, 0);
-    entry = { body: mergeGroupGeometry(proto), lid: mergeGroupGeometry(lid), lidPos };
+    const merge = chest ? mergeChestGeometry : mergeGroupGeometry;
+    entry = { body: merge(proto), lid: merge(lid), lidPos };
     mergedCache.set(key, entry);
   }
+  const material = chest ? chestMat() : vcMat();
   const g = new THREE.Group();
-  const body = new THREE.Mesh(entry.body, vcMat());
+  const body = new THREE.Mesh(entry.body, material);
   body.castShadow = true;
   g.add(body);
   const pivot = new THREE.Group();
   pivot.position.copy(entry.lidPos);
-  const lid = new THREE.Mesh(entry.lid, vcMat());
+  const lid = new THREE.Mesh(entry.lid, material);
   lid.castShadow = true;
   pivot.add(lid);
   g.add(pivot);
   g.userData.lid = pivot;
+  g.userData.tier = tier;
   return g;
 }
 

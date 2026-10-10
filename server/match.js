@@ -3,7 +3,7 @@
 // los estados y arbitra lo que se comparte: cofres, objetos del suelo,
 // vehículos, construcciones, eliminaciones, marcador y final de la partida.
 import { RNG } from '../src/core/rng.js';
-import { lootForChest, lootForAmmoBox, setLootPool } from '../src/game/items.js';
+import { lootForTier, lootForAmmoBox, setLootPool, chestTier, MAX_VAULT_CHESTS } from '../src/game/items.js';
 import { HitGuard } from './anticheat.js';
 
 let nextMatch = 1;
@@ -37,6 +37,8 @@ export class Match {
     this.drops = new Map(); // id -> fila de m.drop (objetos tirados aún en el suelo)
     this.pads = []; // plataformas de salto colocadas
     this.chestItems = new Map(); // cofre -> botín que soltó
+    this.chestTiers = new Map(); // cofre -> nivel (0 normal, 1 épico, 2 legendario)
+    this.vaultLeft = MAX_VAULT_CHESTS;
     this.harv = new Map(); // objeto del mapa -> daño recibido
     this.guard = new HitGuard();
     this.cars = new Map();
@@ -269,12 +271,28 @@ export class Match {
     const i = m.i | 0;
     if (i < 0 || i > 5000 || this.chests.has(i)) return;
     this.chests.add(i);
+    const ammo = m.kind === 'ammo';
+    // El nivel del cofre sale de la semilla del botín y de su índice (lo mismo
+    // que calculan los clientes): el cliente no lo elige. Los de las bóvedas
+    // son mejores; como el servidor no conoce el mapa, sólo acepta como de
+    // bóveda tantos cofres como hay.
+    let vault = false;
+    if (!ammo && m.v && this.vaultLeft > 0) {
+      this.vaultLeft--;
+      vault = true;
+    }
+    const tier = ammo ? 0 : chestTier(this.lootSeed, i, vault);
     setLootPool(this.mode.lootPool); // modos temporales (sólo ciertas armas)
-    const loot = m.kind === 'ammo' ? lootForAmmoBox(this.rng) : lootForChest(this.rng);
+    const loot = ammo ? lootForAmmoBox(this.rng) : lootForTier(this.rng, tier);
     setLootPool(null);
     const items = loot.map((it, k) => [`c${i}_${k}`, it]);
     this.chestItems.set(i, items);
-    this.broadcast({ t: 'm.chest', i, by: this.owns(c, m.by) ? m.by : me.id, items, brk: !!m.brk });
+    const msg = { t: 'm.chest', i, by: this.owns(c, m.by) ? m.by : me.id, items, brk: !!m.brk };
+    if (!ammo) {
+      this.chestTiers.set(i, tier);
+      msg.tier = tier;
+    }
+    this.broadcast(msg);
   }
 
   chat(c, text, teamOnly) {
@@ -372,7 +390,8 @@ export class Match {
     }
     this.send(c, {
       t: 'm.rejoin', id: this.id, you: me.id, host: this.entOf(this.host)?.id || 0, score: this.score,
-      builds: [...this.builds.values()], chests: [...this.chestItems], taken: [...this.taken], drops: [...this.drops.values()],
+      builds: [...this.builds.values()], chests: [...this.chestItems].map(([i, items]) => [i, items, this.chestTiers.get(i)]),
+      taken: [...this.taken], drops: [...this.drops.values()],
       pads: this.pads, cars: [...this.cars], harv: [...this.harv], dead: this.ents.filter((e) => !e.alive).map((e) => e.id),
       away: this.ents.filter((e) => e.away).map((e) => e.id),
     });

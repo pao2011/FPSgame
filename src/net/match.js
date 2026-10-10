@@ -424,9 +424,9 @@ export class OnlineMatch {
     }
     // Cofres abiertos (con el botín que aún queda en el suelo) y objetos cogidos
     const taken = new Set(m.taken || []);
-    for (const [i, items] of m.chests || []) {
+    for (const [i, items, tier] of m.chests || []) {
       const c = g.containers.list[i];
-      if (c && !c.opened) g.containers.openNet(c, items.filter((x) => !taken.has(x[0])), {});
+      if (c && !c.opened) g.containers.openNet(c, items.filter((x) => !taken.has(x[0])), {}, false, tier ?? undefined);
     }
     for (const id of taken) {
       const pk = g.pickups.byNid.get(id);
@@ -502,12 +502,13 @@ export class OnlineMatch {
   requestChest(c, opener, brk = false) {
     if (c.requested) return;
     c.requested = true;
-    this.net.send('m.chest', { i: c.index, kind: c.kind, by: opener?.netId || this.you, brk });
+    // v: cofre de bóveda (el servidor decide el nivel; ver server/match.js)
+    this.net.send('m.chest', { i: c.index, kind: c.kind, by: opener?.netId || this.you, brk, v: c.vault ? 1 : 0 });
   }
 
   onChest(m) {
     const c = this.game.containers.list[m.i];
-    if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by), !!m.brk);
+    if (c) this.game.containers.openNet(c, m.items, this.ents.get(m.by), !!m.brk, m.tier);
   }
 
   sendEmote(c, id) {
