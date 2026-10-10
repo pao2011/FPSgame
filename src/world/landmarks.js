@@ -701,16 +701,17 @@ function layoutObservatory(L) {
   put('dish', 13, 13, 0, 8, 8, {}, 0.5);
   put('dish', -13, 14.5, 0, 8, 8, {}, 0.5);
   put('mast', -16, -12, face2(1, 0), 5, 5, { chests: 1, chestChance: 0.8 }, 0.5);
-  put('quonset', 1, 17, face2(0, -1), 5, 9, { chests: 1, chestChance: 0.7 }, 1);
-  put('quonset', 15, -13, face2(-1, 0), 5, 9, { chests: 1, chestChance: 0.7 }, 1);
+  put('quonset', 1, 17, face2(0, -1), 6.4, 9.4, { chests: 1, chestChance: 0.7 }, 1);
+  put('quonset', 15, -13, face2(-1, 0), 6.4, 9.4, { chests: 1, chestChance: 0.7 }, 1);
   put('overlook', -21, 0, face2(-1, 0), 8, 4, {}, 0.5);
   for (const s of [-1, 1]) put('lamp', 14, s * 4.6, face2(0, -s), 0.6, 0.6, { noMap: true }, 0.2);
 }
 
 function layoutMine(L) {
   const { w, poi, A } = L;
-  // Galerías bajo tierra en la rejilla de 4 m de las cuevas
-  const NA = 10, NB = 8; // celdas a lo largo de u y de v
+  // Galerías bajo tierra en la rejilla de 4 m de las cuevas, bajo un cerro
+  // rocoso (a: celdas a lo largo de u, b: a lo largo de v; +v mira al centro)
+  const NA = 10, NB = 8;
   const nx = A === 'x' ? NA : NB, nz = A === 'x' ? NB : NA;
   const [cx, cz] = L.at(-2, -15);
   const ox = -HALF + CELL * Math.round((cx - (nx * CELL) / 2 + HALF) / CELL);
@@ -723,38 +724,44 @@ function layoutMine(L) {
     const [i, j] = ij(a, b);
     return [ox + (i + 0.5) * CELL, oz + (j + 0.5) * CELL];
   };
-  // Rampas: hacia el centro de la zona (borde b) y hacia un lado (borde a)
+  // Bocas: la principal en la cara del cerro (hacia el centro de la zona) y
+  // otra en un costado
   const sideB = A === 'x' ? 3 : 1, sideA = A === 'x' ? 1 : 3;
-  site.addRamp(sideB, 3);
-  site.addRamp(sideA, 4);
-  for (let a = 2; a <= 6; a++) set(a, 4, ROOM); // galería principal
-  for (let a = 1; a <= 3; a++) for (let b = 2; b <= 3; b++) set(a, b, ROOM); // sala del pozo
-  for (let a = 5; a <= 7; a++) for (let b = 1; b <= 2; b++) set(a, b, ROOM); // sala del mineral
-  set(6, 3, ROOM);
-  set(2, 2, OPEN); // pozo bajo el castillete
+  site.addRamp(sideB, 5);
+  site.addRamp(sideA, 2);
+  for (let a = 1; a <= 6; a++) set(a, 2, ROOM); // galería
+  set(5, 3, ROOM);
+  set(5, 4, ROOM); // túnel de la boca principal
+  for (let a = 2; a <= 4; a++) for (let b = 3; b <= 4; b++) set(a, b, ROOM); // sala del eco
+  for (let a = 6; a <= 8; a++) for (let b = 0; b <= 1; b++) set(a, b, ROOM); // sala del mineral
+  for (const [a, b] of [[0, 1], [1, 1], [0, 2], [0, 3], [1, 3]]) set(a, b, ROOM); // sala del pozo
+  set(1, 2, OPEN); // pozo bajo el castillete
   const chamber = (a0, b0, wa, hb, sa, sb, sky) => {
     const [i0, j0] = ij(a0, b0);
     const [w2, h2] = A === 'x' ? [wa, hb] : [hb, wa];
     const [ci, cj] = ij(sa, sb);
     return { i0, j0, w: w2, h: h2, ci, cj, sky };
   };
-  site.chambers = [chamber(1, 2, 3, 2, 2, 2, true), chamber(5, 1, 3, 2, 6, 1, false)];
+  site.chambers = [chamber(0, 1, 2, 3, 1, 2, true), chamber(2, 3, 3, 2, 3, 3, false), chamber(6, 0, 3, 2, 7, 0, false)];
   // Faroles colgados en la galería (su luz se hornea en las paredes)
   site.lanterns = [];
-  for (const a of [3, 5]) {
-    const [x, z] = center(a, 4);
+  for (const [a, b] of [[5, 3], [3, 2], [7, 1]]) {
+    const [x, z] = center(a, b);
     site.addLight(x, site.floor + 2.5, z, 0xffb35a, { bake: 1.5, range: 9, power: 13, flicker: true });
     site.lanterns.push([x, z]);
   }
-  site.mineRamps = [{ side: sideB, pos: 3, main: true }, { side: sideA, pos: 4 }];
-  const r1 = rampEnds(site, sideB, 3), r2 = rampEnds(site, sideA, 4);
-  site.railPath = [r1.o, r1.inner, center(3, 4), center(6, 4), r2.inner, r2.o];
+  site.mineRamps = [{ side: sideB, pos: 5, main: true }, { side: sideA, pos: 2 }];
+  const r1 = rampEnds(site, sideB, 5), r2 = rampEnds(site, sideA, 2);
+  site.railPath = [r1.o, r1.inner, center(5, 2), r2.inner, r2.o];
   site.finalize();
   w.sites.push(site);
   w.occ.add(ox - 1, oz - 1, ox + site.w + 1, oz + site.d + 1, { site });
   w.plans.push({ kind: 'site', site, x: site.x, z: site.z, rot: 0, fw: site.w, fd: site.d, noMap: true, chests: 6, chestChance: 1 });
+  // Cerro sobre las galerías (de a = 2.6 a 10 y de b = 0 a 5)
+  const ab = (a, b) => (A === 'x' ? [ox + a * CELL, oz + b * CELL] : [ox + b * CELL, oz + a * CELL]);
+  w.plans.push({ kind: 'minehill', x: site.x, z: site.z, rot: 0, fw: 0, fd: 0, poi, noMap: true, y0: site.H, site, ab, notch: [6.9, 1.9, 10.2, 3.1] });
   // Castillete sobre el pozo y casa de máquinas al lado
-  const [sx, sz] = center(2, 2);
+  const [sx, sz] = center(1, 2);
   const [hx, hz] = L.at(-29, 0);
   const hoistV = (A === 'x' ? sz - poi.z : sx - poi.x);
   w.plans.push({ kind: 'headframe', x: sx, z: sz, rot: L.face(-1, 0), fw: 6, fd: 6, poi, y0: site.H, depth: site.D, chests: 1, chestChance: 0.8, hoist: Math.abs((A === 'x' ? sx - hx : sz - hz)) });
@@ -764,9 +771,9 @@ function layoutMine(L) {
   L.put('tipple', 12, 28, L.face(0, -1), 8, 8, { chests: 1, chestChance: 0.8 }, 1);
   L.put('mineshed', -22, 28, L.face(0, -1), 9, 7, { chests: 1, chestChance: 0.7 }, 1);
   L.put('mineshed', -6, 29, L.face(0, -1), 7, 6, { chests: 1, chestChance: 0.6, small: true }, 1);
-  L.put('scaffold', 28, 6, L.face(-1, 0), 6, 8, { chests: 1, chestChance: 0.8 }, 1);
+  L.put('scaffold', 28, 4, L.face(-1, 0), 6, 8, { chests: 1, chestChance: 0.8 }, 1);
   L.put('orepile', -30, 6, 0, 7, 7, {}, 1);
-  L.put('orepile', 26, -14, 0, 7, 7, {}, 1);
+  L.put('orepile', 27, -14, 0, 7, 7, {}, 1);
   L.put('watertower', 30, 28, 0, 9, 9, { chests: 1, chestChance: 0.6 }, 1);
   // Vías de vagonetas desde la boca de la mina hasta la tolva
   const toPOI = (x, z) => (A === 'x' ? [x - poi.x, z - poi.z] : [z - poi.z, x - poi.x]); // -> (u, v)
@@ -827,35 +834,45 @@ function layoutMansion(L) {
 }
 
 // ------------------------------------------------------------ CAMINO DE MONTAÑA
-// Del observatorio (en la cima) baja una carretera con curvas hasta la red:
-// búsqueda de camino (Dijkstra en una rejilla de 6 m) que castiga las
-// pendientes fuertes, así el trazado serpentea por la ladera.
+// Del observatorio (en la cima) baja una carretera serpenteante hasta la red:
+// búsqueda de camino (Dijkstra) que castiga mucho las pendientes, así el
+// trazado bordea la ladera siguiendo las curvas de nivel.
 export function planAccessRoad(w, poi) {
   const g = poi.gates[0];
-  if (!g) return;
+  if (!g || !w.roads.roads.some((r) => r.hs)) return;
   const t = w.terrain;
-  if (!w.roads.roads.some((r) => r.hs)) return;
-  const C = 6, N = 120;
+  const others = w.pois.filter((p) => p !== poi);
+  // Altura del terreno con la cima ya allanada (igual que Terrain.shapedHeight)
+  const summitH = (x, z) => {
+    const raw = t.rawHeight(x, z);
+    const d = Math.hypot(x - poi.x, z - poi.z), r = poi.flatR;
+    const u = Math.min(1, Math.max(0, (d - r * 0.85) / (r * 0.75)));
+    return raw + (poi.height - raw) * (1 - u * u * (3 - 2 * u));
+  };
+  const dPoi = (x, z) => Math.hypot(x - poi.x, z - poi.z);
+  const blocked = (x, z) =>
+    Math.hypot(x, z) > ISLAND_RADIUS * 0.9 || t.rawHeight(x, z) < 1.5 ||
+    others.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius * 1.03) ||
+    w.hydro.distanceTo(x, z) < 10 ||
+    (dPoi(x, z) > poi.flatR && w.occ.hit(x - 3, z - 3, x + 3, z + 3));
+
+  // Rejilla de 4 m con 16 direcciones (también «saltos de caballo»): así el
+  // camino puede seguir las curvas de nivel con poca pendiente.
+  const C = 4, N = 170;
   const x0 = g.x - (N * C) / 2, z0 = g.z - (N * C) / 2;
   const NN = N * N;
   const H = new Float32Array(NN), block = new Uint8Array(NN), goal = new Uint8Array(NN);
-  const others = w.pois.filter((p) => p !== poi);
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const k = j * N + i;
-      const x = x0 + (i + 0.5) * C, z = z0 + (j + 0.5) * C;
-      const dp = Math.hypot(x - poi.x, z - poi.z);
-      let h = dp < poi.flatR * 0.85 ? poi.height : t.rawHeight(x, z);
-      H[k] = h;
-      if (Math.hypot(x, z) > ISLAND_RADIUS * 0.9 || h < 1.5) block[k] = 1;
-      else if (others.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius * 1.02)) block[k] = 1;
-      else if (w.hydro.distanceTo(x, z) < 10) block[k] = 1;
-      else if (dp > poi.flatR && w.occ.hit(x - 2.5, z - 2.5, x + 2.5, z + 2.5)) block[k] = 1;
-      else if (dp > poi.radius * 0.8 && w.roads.profileNear(x, z, 5)) goal[k] = 1;
+      const cx = x0 + (i + 0.5) * C, cz = z0 + (j + 0.5) * C;
+      H[k] = summitH(cx, cz);
+      if (blocked(cx, cz) || dPoi(cx, cz) < poi.flatR) block[k] = 1;
+      else if (dPoi(cx, cz) > poi.radius * 0.8 && w.roads.profileNear(cx, cz, 4)) goal[k] = 1;
     }
   }
-  const gi = Math.floor((g.x - x0) / C), gj = Math.floor((g.z - z0) / C);
-  const start = gj * N + gi;
+  const start = Math.floor((g.z - z0) / C) * N + Math.floor((g.x - x0) / C);
+  block[start] = 0;
   const dist = new Float32Array(NN).fill(Infinity);
   const prev = new Int32Array(NN).fill(-1);
   // Montículo binario sencillo
@@ -890,7 +907,8 @@ export function planAccessRoad(w, poi) {
   dist[start] = 0;
   push(start, 0);
   let end = -1;
-  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  const DIRS = [];
+  for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) if ((di || dj) && Math.abs(di) + Math.abs(dj) !== 4 && !(Math.abs(di) === 2 && dj === 0) && !(Math.abs(dj) === 2 && di === 0)) DIRS.push([di, dj, C * Math.hypot(di, dj)]);
   while (heap.length) {
     const [d, k] = pop();
     if (d > dist[k]) continue;
@@ -899,16 +917,17 @@ export function planAccessRoad(w, poi) {
       break;
     }
     const i = k % N, j = (k / N) | 0;
-    for (const [di, dj] of DIRS) {
+    for (const [di, dj, len] of DIRS) {
       const ni = i + di, nj = j + dj;
       if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
       const q = nj * N + ni;
       if (block[q] && !goal[q]) continue;
-      const len = C * (di && dj ? Math.SQRT2 : 1);
+      // (los saltos largos no pueden atravesar celdas bloqueadas)
+      if (len > C * 1.5 && block[(j + Math.round(dj / 2)) * N + i + Math.round(di / 2)]) continue;
       const grade = Math.abs(H[q] - H[k]) / len;
-      if (grade > 0.24) continue;
-      // las pendientes de más del 9 % salen caras: mejor rodear el monte
-      const c = len * (1 + Math.max(0, grade - 0.09) * 40);
+      if (grade > 1.2) continue;
+      // más del 11 % sale caro y más del 30 %, carísimo: el camino serpentea
+      const c = len * (1 + Math.max(0, grade - 0.11) * 30 + Math.max(0, grade - 0.3) * 90);
       if (d + c < dist[q]) {
         dist[q] = d + c;
         prev[q] = k;
@@ -929,39 +948,36 @@ export function planAccessRoad(w, poi) {
   const near = w.roads.nearest(last[0], last[1], 20);
   if (near) raw.push([near.x, near.z]);
   if (raw.length < 3) return;
-  const curve = new THREE.CatmullRomCurve3(raw.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+  const curve = new THREE.CatmullRomCurve3(raw.map(([px, pz]) => new THREE.Vector3(px, 0, pz)), false, 'centripetal');
   const pts = curve.getSpacedPoints(Math.max(4, Math.round(curve.getLength() / 5))).map((v) => [v.x, v.z]);
   // Perfil: arriba la altura de la cima, abajo la de la carretera; en medio
   // el terreno suavizado, con un máximo de pendiente
   const n = pts.length;
-  let hs = pts.map(([x, z]) => (Math.hypot(x - poi.x, z - poi.z) < poi.flatR * 0.85 ? poi.height : Math.max(1.5, t.rawHeight(x, z))));
-  const smooth = (a, R) => a.map((_, k) => {
+  let hs = pts.map(([px, pz]) => Math.max(1.5, summitH(px, pz)));
+  const smooth = (arr, R) => arr.map((_, k) => {
     let s = 0, c = 0;
     for (let q = Math.max(0, k - R); q <= Math.min(n - 1, k + R); q++) {
-      s += a[q];
+      s += arr[q];
       c++;
     }
     return s / c;
   });
-  hs = smooth(smooth(hs, 4), 4);
-  const anchors = [];
-  pts.forEach(([x, z], k) => {
-    if (Math.hypot(x - poi.x, z - poi.z) < poi.flatR * 0.85) anchors.push([k, poi.height - hs[k]]);
-    else if (k > n - 4) {
-      const pn = w.roads.profileNear(x, z, 9);
+  hs = smooth(smooth(hs, 3), 3);
+  const anchors = [[0, poi.height - hs[0]]];
+  pts.forEach(([px, pz], k) => {
+    if (k > n - 4) {
+      const pn = w.roads.profileNear(px, pz, 9);
       if (pn) anchors.push([k, pn.hp - hs[k]]);
     }
   });
-  if (anchors.length) {
-    let a = 0;
-    hs = hs.map((v, j) => {
-      while (a < anchors.length - 1 && anchors[a + 1][0] <= j) a++;
-      const [k0, r0] = anchors[a];
-      if (j <= k0 || a === anchors.length - 1) return v + r0;
-      const [k1, r1] = anchors[a + 1];
-      return v + r0 + ((r1 - r0) * (j - k0)) / (k1 - k0);
-    });
-  }
+  let ai = 0;
+  hs = hs.map((v, j) => {
+    while (ai < anchors.length - 1 && anchors[ai + 1][0] <= j) ai++;
+    const [k0, r0] = anchors[ai];
+    if (j <= k0 || ai === anchors.length - 1) return v + r0;
+    const [k1, r1] = anchors[ai + 1];
+    return v + r0 + ((r1 - r0) * (j - k0)) / (k1 - k0);
+  });
   const fixed = new Set(anchors.map(([k]) => k));
   for (let pass = 0; pass < 3; pass++) {
     for (let j = 1; j < n; j++) if (!fixed.has(j)) hs[j] = Math.min(hs[j - 1] + 0.8, Math.max(hs[j - 1] - 0.8, hs[j]));
@@ -969,6 +985,7 @@ export function planAccessRoad(w, poi) {
   }
   w.roads.add(pts, 6, 'road', hs);
   poi.accessRoad = pts;
+  poi.accessHs = hs;
 }
 
 // Contexto hijo que conserva las mallas extra (cristal, bombillas…).
@@ -1573,10 +1590,10 @@ function genFairBooth(ctx, rng, p) {
   ctx.box(-2.2, -0.5, -1.8, 2.2, 0.12, 1.8, WOOD_L);
   ctx.box(-2.2, 0.12, -1.8, 2.2, 2.9, -1.55, WHITE);
   ctx.box(-2.2, 0.12, -1.55, -1.95, 2.9, 1.6, C);
-  ctx.box(1.95, 0.12, -1.55, 2.2, 2.9, 0.15, C);
-  ctx.box(-1.95, 0.12, 1.15, 0.9, 1.1, 1.6, C);
-  ctx.box(-2.05, 1.1, 1.05, 1.0, 1.18, 1.7, WOOD_L, false);
-  for (let x = -1.7; x < 0.8; x += 0.5) ctx.box(x, 0.3, 1.6, x + 0.25, 0.95, 1.63, WHITE, false);
+  ctx.box(1.95, 0.12, -1.55, 2.2, 2.9, -0.7, C);
+  ctx.box(-1.95, 0.12, 1.15, 0.45, 1.1, 1.6, C);
+  ctx.box(-2.05, 1.1, 1.05, 0.55, 1.18, 1.7, WOOD_L, false);
+  for (let x = -1.7; x < 0.3; x += 0.5) ctx.box(x, 0.3, 1.6, x + 0.25, 0.95, 1.63, WHITE, false);
   ctx.box(-2.3, 2.9, -1.9, 2.3, 3.05, 1.65, C);
   for (let k = 0; k < 6; k++) {
     const x0 = -2.3 + k * 0.7667, x1 = x0 + 0.7667;
@@ -1649,9 +1666,9 @@ function genBumperCars(ctx, rng) {
   sign(ctx, 'AUTOS DE CHOQUE', 'ride', -4.0, H + 0.5, 4.0, H + 1.55, hd + 0.33);
   const cols = [RED, BLUE, YEL, 0x2fa84f, PURP, ORANGE];
   const cars = [];
-  for (let i = 0; i < 60 && cars.length < 6; i++) {
+  for (let i = 0; i < 120 && cars.length < 6; i++) {
     const x = rng.float(-hw + 1.4, hw - 1.4), z = rng.float(-hd + 1.3, hd - 1.3), yaw = rng.float(0, Math.PI * 2);
-    if (cars.some((c) => Math.hypot(c[0] - x, c[1] - z) < 2)) continue;
+    if (Math.abs(x) < 2.3 || cars.some((c) => Math.hypot(c[0] - x, c[1] - z) < 2)) continue;
     cars.push([x, z, yaw]);
   }
   cars.forEach(([x, z, yaw], i) => {
@@ -2148,7 +2165,7 @@ function genObservatory(ctx, rng) {
   rod(S, at(1.6), [at(1.6)[0], at(1.6)[1] + 0.55, at(1.6)[2]], 0.18, DARK, 8);
   ctx.colliderOnly(-0.9, Y0, -0.9, 0.9, Y0 + 2.0, 0.9);
   // Mesas de control con pantallas, sillas y mapa estelar
-  for (const [x, z, yaw] of [[-3.2, -2.6, 0.7], [3.2, -2.6, -0.7]]) {
+  for (const [x, z, yaw] of [[-3.15, -3.35, 0.75], [3.15, -3.35, -0.75]]) {
     S.put(geo('box'), 0x55575c, M(x, Y0 + 0.45, z, 0, yaw, 0, 1.8, 0.9, 0.8));
     for (const o of [-0.45, 0.45]) {
       const px = x + Math.cos(yaw) * o, pz = z - Math.sin(yaw) * o;
@@ -2156,7 +2173,7 @@ function genObservatory(ctx, rng) {
       glowPut(ctx, geo('box'), o < 0 ? 0x3aa8ff : 0x5dffb0, M(px - Math.sin(yaw) * 0.17, Y0 + 1.25, pz - Math.cos(yaw) * 0.17, -0.2, yaw, 0, 0.62, 0.42, 0.02), 1.3);
     }
     S.put(geo('box'), 0x2a2c30, M(x + Math.sin(yaw) * 0.9, Y0 + 0.5, z + Math.cos(yaw) * 0.9, 0, yaw, 0, 0.55, 0.1, 0.55));
-    ctx.colliderOnly(x - 0.9, Y0, z - 0.9, x + 0.9, Y0 + 0.9, z + 0.9);
+    ctx.colliderOnly(x - 0.85, Y0, z - 0.85, x + 0.85, Y0 + 0.9, z + 0.85);
   }
   // mapa estelar en la pared del fondo
   const back = Math.PI;
@@ -2269,67 +2286,59 @@ function genMast(ctx, rng) {
 // Barracón semicilíndrico de chapa con puerta en un extremo.
 function genQuonset(ctx, rng) {
   const S = sinkCtx(ctx);
-  const R = 2.5, L = 4.5, N = 10;
-  ctx.box(-R - 0.2, -0.6, -L - 0.2, R + 0.2, 0.15, L + 0.2, CONC);
+  const R = 3.0, L = 4.5, N = 12, Y = 0.15, DW = 1.25, DH = 2.5;
+  ctx.box(-R - 0.2, -0.6, -L - 0.2, R + 0.2, Y, L + 0.2, CONC);
+  const p = (a, z, r = R) => [Math.cos(a) * r, Y + Math.sin(a) * r, z];
   for (let k = 0; k < N; k++) {
     const a0 = (k / N) * Math.PI, a1 = ((k + 1) / N) * Math.PI;
-    const p = (a, z) => [Math.cos(a) * R, 0.15 + Math.sin(a) * R, z];
     const v = [p(a0, -L), p(a1, -L), p(a1, L), p(a0, L)];
     S.poly(v, 0x8c96a0, [0, 0.5, 0]);
-    S.poly(v, 0x9aa3ad, [Math.cos((a0 + a1) / 2) * R * 3, 0.15 + Math.sin((a0 + a1) / 2) * R * 3, 0]);
+    S.poly(v, 0x9aa3ad, [Math.cos((a0 + a1) / 2) * R * 3, Y + Math.sin((a0 + a1) / 2) * R * 3, 0]);
   }
   for (let z = -L; z <= L + 0.01; z += 1.5) {
-    for (let k = 0; k < N; k++) {
-      const a0 = (k / N) * Math.PI, a1 = ((k + 1) / N) * Math.PI;
-      rod(S, [Math.cos(a0) * (R + 0.05), 0.15 + Math.sin(a0) * (R + 0.05), z], [Math.cos(a1) * (R + 0.05), 0.15 + Math.sin(a1) * (R + 0.05), z], 0.05, STEEL, 4);
-    }
+    for (let k = 0; k < N; k++) rod(S, p((k / N) * Math.PI, z, R + 0.05), p(((k + 1) / N) * Math.PI, z, R + 0.05), 0.05, STEEL, 4);
   }
   // fachadas: la del fondo entera, la de delante con puerta
-  const ends = (z, door) => {
-    const inside = [0, 1, z - Math.sign(z) * 1];
-    const arc = (x0, x1) => {
-      const v = [];
-      for (let k = 0; k <= 8; k++) {
-        const x = x0 + ((x1 - x0) * k) / 8;
-        v.push([x, 0.15 + Math.sqrt(Math.max(0, R * R - x * x)), z]);
-      }
-      return v;
-    };
-    if (!door) {
-      S.poly([[R, 0.15, z], ...arc(R, -R).slice(1, -1), [-R, 0.15, z]], 0xd8d4c8, inside);
-      S.poly([[R, 0.15, z], ...arc(R, -R).slice(1, -1), [-R, 0.15, z]], 0xd8d4c8, [0, 1, z + Math.sign(z) * 1]);
-    } else {
-      for (const [x0, x1] of [[-R, -0.75], [0.75, R]]) {
-        const v = [[x0, 0.15, z], [x1, 0.15, z], ...arc(x1, x0)];
-        S.poly(v, 0xd8d4c8, inside);
-        S.poly(v, 0xd8d4c8, [0, 1, z + Math.sign(z) * 1]);
-      }
-      const top = [[-0.75, 2.4, z], [0.75, 2.4, z], ...arc(0.75, -0.75)];
-      S.poly(top, 0xd8d4c8, inside);
-      S.poly(top, 0xd8d4c8, [0, 1, z + Math.sign(z) * 1]);
-      ctx.box(-0.85, 0.15, z - 0.05, -0.75, 2.4, z + 0.12, DARK, false);
-      ctx.box(0.75, 0.15, z - 0.05, 0.85, 2.4, z + 0.12, DARK, false);
-      bulb(ctx, 0, 2.6, z + 0.15, 0xfff1c0, 0.1);
+  const arc = (z, x0, x1) => {
+    const v = [];
+    for (let k = 0; k <= 8; k++) {
+      const x = x0 + ((x1 - x0) * k) / 8;
+      v.push([x, Y + Math.sqrt(Math.max(0, R * R - x * x)), z]);
     }
+    return v;
   };
-  ends(-L, false);
-  ends(L, true);
-  ctx.colliderOnly(R - 0.6, 0.15, -L, R, 1.7, L);
-  ctx.colliderOnly(-R, 0.15, -L, -R + 0.6, 1.7, L);
-  ctx.colliderOnly(-2.0, 1.7, -L, 2.0, 2.3, L);
-  ctx.colliderOnly(-1.2, 2.3, -L, 1.2, 2.7, L);
-  ctx.colliderOnly(-R, 0.15, -L - 0.1, R, 2.4, -L + 0.1);
-  ctx.colliderOnly(-R, 0.15, L - 0.1, -0.75, 2.4, L + 0.1);
-  ctx.colliderOnly(0.75, 0.15, L - 0.1, R, 2.4, L + 0.1);
+  const both = (v, z) => {
+    S.poly(v, 0xd8d4c8, [0, 1, z - Math.sign(z)]);
+    S.poly(v, 0xd8d4c8, [0, 1, z + Math.sign(z)]);
+  };
+  both([[R, Y, -L], ...arc(-L, R, -R).slice(1, -1), [-R, Y, -L]], -L);
+  for (const [x0, x1] of [[-R, -DW], [DW, R]]) both([[x0, Y, L], [x1, Y, L], ...arc(L, x1, x0)], L);
+  both([[-DW, Y + DH, L], [DW, Y + DH, L], ...arc(L, DW, -DW)], L);
+  for (const s of [-1, 1]) ctx.box(s * DW - 0.1, Y, L - 0.05, s * DW + 0.1, Y + DH, L + 0.14, DARK, false);
+  ctx.box(-DW - 0.1, Y + DH, L - 0.05, DW + 0.1, Y + DH + 0.12, L + 0.14, DARK, false);
+  ctx.box(-1.4, Y + DH + 0.12, L, 1.4, Y + DH + 0.22, L + 0.9, DARK, false);
+  bulb(ctx, 0, Y + DH + 0.05, L + 0.4, 0xfff1c0, 0.1);
+  // Colisiones que siguen el arco (por dentro se anda de pie)
+  for (const s of [-1, 1]) {
+    ctx.colliderOnly(s > 0 ? R - 0.6 : -R, Y, -L, s > 0 ? R : -R + 0.6, Y + 1.8, L);
+    ctx.colliderOnly(s > 0 ? 1.6 : -R + 0.6, Y + 1.8, -L, s > 0 ? R - 0.6 : -1.6, Y + 2.55, L);
+  }
+  ctx.colliderOnly(-1.6, Y + 2.55, -L, 1.6, Y + R, L);
+  ctx.colliderOnly(-R, Y, -L - 0.1, R, Y + R, -L + 0.1);
+  ctx.colliderOnly(-R, Y, L - 0.1, -DW, Y + R, L + 0.1);
+  ctx.colliderOnly(DW, Y, L - 0.1, R, Y + R, L + 0.1);
+  ctx.colliderOnly(-DW, Y + DH, L - 0.1, DW, Y + R, L + 0.1);
   // dentro: literas, mesa con radio y cajas
-  ctx.box(-2.1, 0.15, -3.8, -1.1, 0.7, -1.4, 0x6f7a55);
-  ctx.box(-2.1, 1.4, -3.8, -1.1, 1.6, -1.4, 0x6f7a55, false);
-  ctx.box(1.0, 0.15, -2.6, 2.0, 0.95, -1.2, WOOD);
-  S.box(1.2, 0.95, -2.3, 1.7, 1.25, -1.6, DARK);
-  glowBox(ctx, 1.25, 1.05, -1.62, 1.6, 1.18, -1.58, 0x5dffb0, 1.4);
-  rod(S, [0.4, 0.15 + R, -2], [0.4, 0.15 + R + 1.6, -2], 0.04, STEEL, 4);
-  ctx.spot(ctx.chestSpots, 1.5, 0.15, -3.8, 0, 0);
-  ctx.spot(ctx.lootSpots, 0, 0.15, 1);
+  ctx.box(-2.35, Y, -3.9, -1.35, Y + 0.55, -1.5, 0x6f7a55);
+  ctx.box(-2.35, Y + 1.35, -3.9, -1.35, Y + 1.5, -1.5, 0x6f7a55, false);
+  for (const z of [-3.85, -1.55]) S.box(-1.42, Y + 0.55, z - 0.04, -1.36, Y + 1.5, z + 0.04, STEEL);
+  ctx.box(1.2, Y, -2.6, 2.2, Y + 0.8, -1.2, WOOD);
+  S.box(1.4, Y + 0.8, -2.3, 1.9, Y + 1.1, -1.6, DARK);
+  glowBox(ctx, 1.45, Y + 0.9, -1.62, 1.8, Y + 1.03, -1.58, 0x5dffb0, 1.4);
+  rod(S, [0.4, Y + R, -2], [0.4, Y + R + 1.6, -2], 0.04, STEEL, 4);
+  ctx.box(-2.3, Y, 2.4, -1.4, Y + 0.8, 3.4, 0x8b6a40);
+  ctx.spot(ctx.chestSpots, 1.6, Y, -3.8, 0, 0);
+  ctx.spot(ctx.lootSpots, 0, Y, 1);
 }
 
 // Mirador al borde de la cima con prismáticos de monedas.
@@ -2694,8 +2703,136 @@ function genOrePile(ctx, rng) {
   ctx.spot(ctx.lootSpots, 2.8, 0, 2.8);
 }
 
-// Superficie de la mina: arco de entrada con el cartel, rocas, vías hasta
-// la tolva, vagoneta y faroles.
+// Cerro rocoso sobre las galerías: malla de alturas (hierba arriba, roca en
+// las laderas) con paredes verticales donde se abren las bocas, rocas y
+// pinos; las colisiones son columnas de 1 m (sólo se sube escalando).
+const _hc = new THREE.Color(), _hr = new THREE.Color(0.47, 0.44, 0.38), _hn = new THREE.Vector3(), _ha = new THREE.Vector3(), _hb = new THREE.Vector3();
+function genMineHill(ctx, rng, p) {
+  const S = sinkCtx(ctx);
+  const w = ctx.fx.world, T = w.terrain, nz = w.noise;
+  const H = p.site.H;
+  const [na0, nb0, na1, nb1] = p.notch;
+  const sm = (e0, e1, x) => {
+    const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
+  const A0 = 2.6, A1 = 10, B1 = 5, D = 0.25; // (en celdas de 4 m; D = 1 m)
+  const NI = Math.round((A1 - A0) / D), NJ = Math.round(B1 / D);
+  // Frente irregular salvo junto a la boca principal (a = 5..6)
+  const front = (a) => (a > 4.55 && a < 6.45 ? B1 : B1 - 0.25 - (nz(a * 0.8 + 17, 3.1) > 0 ? 0.25 : 0));
+  const cellIn = (i, j) => {
+    if (i < 0 || j < 0 || i >= NI || j >= NJ) return false;
+    const a = A0 + (i + 0.5) * D, b = (j + 0.5) * D;
+    return b <= front(a) && !(a >= na0 && a <= na1 && b >= nb0 && b <= nb1);
+  };
+  const L = (a, b) => {
+    const [x, z] = p.ab(a, b);
+    return [x - p.x, z - p.z];
+  };
+  const hv = [];
+  for (let i = 0; i <= NI; i++) {
+    hv.push([]);
+    for (let j = 0; j <= NJ; j++) {
+      const a = A0 + i * D, b = j * D;
+      const [x, z] = p.ab(a, b);
+      const f = sm(A0, A0 + 2.4, a) * (1 - sm(8.3, A1, a)) * sm(0, 2.8, b) * (1 - 0.34 * sm(2.8, B1, b));
+      const n = nz(x * 0.08, z * 0.08) * 1.1 + nz(x * 0.21 + 40, z * 0.21) * 0.5;
+      hv[i].push(Math.max(0, 10 * f + n * Math.min(1, f * 3)));
+    }
+  }
+  const P = (i, j) => {
+    const [x, z] = L(A0 + i * D, j * D);
+    return [x, hv[i][j], z];
+  };
+  const ROCKS = [0x8b8579, 0x7d776c, 0x948e82, 0x6e6a64];
+  const rockHex = (x, z) => ROCKS[Math.floor((nz(x * 0.3 + 9, z * 0.3) * 0.5 + 0.5) * 3.99)];
+  const tri = (a, b, c) => {
+    _ha.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    _hb.set(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+    _hn.crossVectors(_ha, _hb).normalize();
+    if (_hn.y < 0) _hn.negate();
+    const cx = (a[0] + b[0] + c[0]) / 3, cy = (a[1] + b[1] + c[1]) / 3, cz = (a[2] + b[2] + c[2]) / 3;
+    let hex;
+    if (_hn.y < 0.74) hex = rockHex(cx + p.x, cz + p.z);
+    else {
+      T.colorAt(cx + p.x, cz + p.z, H + cy, 0, _hc, true);
+      if (_hn.y < 0.86) _hc.lerp(_hr, (0.86 - _hn.y) * 5);
+      hex = _hc.getHex();
+    }
+    S.poly([a, b, c], hex, [cx, cy - 1, cz]);
+  };
+  for (let i = 0; i < NI; i++) {
+    for (let j = 0; j < NJ; j++) {
+      if (!cellIn(i, j)) continue;
+      const a = P(i, j), b = P(i + 1, j), c = P(i + 1, j + 1), d = P(i, j + 1);
+      tri(a, b, c);
+      tri(a, c, d);
+      // Paredes verticales en el borde (si el cerro ya es alto ahí)
+      for (const [di, dj, e0, e1] of [[-1, 0, a, d], [1, 0, b, c], [0, -1, a, b], [0, 1, d, c]]) {
+        if (cellIn(i + di, j + dj) || (e0[1] < 0.06 && e1[1] < 0.06)) continue;
+        const cx = (a[0] + c[0]) / 2, cz = (a[2] + c[2]) / 2;
+        S.poly([[e0[0], -0.5, e0[2]], [e1[0], -0.5, e1[2]], [e1[0], e1[1], e1[2]], [e0[0], e0[1], e0[2]]], rockHex(e0[0] + p.x, e0[2] + p.z), [cx, 0, cz]);
+      }
+    }
+  }
+  // Colisiones: columnas de 1 m con la altura media (unidas por filas)
+  for (let j = 0; j < NJ; j++) {
+    let i = 0;
+    while (i < NI) {
+      const q = (k) => (cellIn(k, j) ? Math.round(((hv[k][j] + hv[k + 1][j] + hv[k][j + 1] + hv[k + 1][j + 1]) / 4) * 4) / 4 : 0);
+      const h = q(i);
+      if (h < 0.4) {
+        i++;
+        continue;
+      }
+      let e = i;
+      while (e + 1 < NI && q(e + 1) === h) e++;
+      const [x0, z0] = L(A0 + i * D, j * D), [x1, z1] = L(A0 + (e + 1) * D, (j + 1) * D);
+      ctx.colliderOnly(Math.min(x0, x1), -0.2, Math.min(z0, z1), Math.max(x0, x1), h, Math.max(z0, z1));
+      i = e + 1;
+    }
+  }
+  // Rocas y pinos
+  const spots = [];
+  for (let k = 0; k < 260 && spots.length < 22; k++) {
+    const i = rng.int(1, NI - 2), j = rng.int(1, NJ - 2);
+    if (!cellIn(i, j) || !cellIn(i - 1, j) || !cellIn(i + 1, j) || !cellIn(i, j - 1) || !cellIn(i, j + 1)) continue;
+    if (spots.some(([si, sj]) => Math.abs(si - i) + Math.abs(sj - j) < 4)) continue;
+    const h = hv[i][j];
+    const slope = Math.max(Math.abs(hv[i + 1][j] - hv[i - 1][j]), Math.abs(hv[i][j + 1] - hv[i][j - 1])) / (2 * D * CELL);
+    spots.push([i, j]);
+    const [x, y, z] = P(i, j);
+    if (spots.length % 3 && slope < 0.5 && h > 1.5) {
+      // pino
+      const s = rng.float(0.8, 1.25);
+      cyl(S, x, y - 0.3, z, 0.22 * s, 1.6 * s, 0x6b4a2b, 6);
+      for (let t = 0; t < 3; t++) cone(S, x, y + (1.0 + t * 1.15) * s, z, (1.7 - t * 0.42) * s, (2.0 - t * 0.3) * s, t % 2 ? 0x2f5f3a : 0x356b40, 7);
+      ctx.colliderOnly(x - 0.25, y, z - 0.25, x + 0.25, y + 3 * s, z + 0.25);
+    } else {
+      const s = rng.float(0.7, 1.9);
+      blob(S, x, y + s * 0.15, z, s * 1.2, s * 0.8, s, rng.pick(ROCKS), rng.float(0, 6));
+    }
+  }
+  // Fachadas de madera con el cartel sobre cada boca
+  for (const r of p.site.mineRamps) {
+    const { d, inner } = rampEnds(p.site, r.side, r.pos);
+    const f = subFx(ctx, inner[0] - p.x, inner[1] - p.z, rotFacing(-d[0], -d[1]));
+    const SF = sinkCtx(f);
+    const F0 = -p.site.D, top = 1.9;
+    for (const s of [-1, 1]) {
+      f.box(s * 2.3 - 0.3, F0, -0.3, s * 2.3 + 0.3, top + 0.4, 0.3, TIMBER);
+      beam(SF, [s * 2.3, top - 0.3, 0.25], [s * 1.4, top + 0.2, 0.25], 0.2, 0.2, WOOD_D);
+      lantern(ctx, SF, s * 2.3, 1.1, 0.5);
+    }
+    f.box(-2.8, -1.0, -0.05, 2.8, top, 0.22, PLANK);
+    f.box(-3.0, top, -0.2, 3.0, top + 0.45, 0.45, WOOD_D);
+    poly2(SF, [[-3.2, top + 0.45, -0.1], [3.2, top + 0.45, -0.1], [3.2, top + 0.1, 1.1], [-3.2, top + 0.1, 1.1]], PLANK, WOOD_D);
+    f.box(-2.25, 0.05, 0.22, 2.25, 1.35, 0.32, WOOD, false);
+    sign(f, r.main ? 'MINA DEL ECO' : 'GALERÍA 2', 'mine', -2.15, 0.1, 2.15, 1.3, 0.33);
+  }
+}
+
+// Superficie de la mina: vías hasta la tolva, vagoneta, faroles y rocas.
 function genMineRails(ctx, rng, p) {
   const S = sinkCtx(ctx);
   const T = ctx.fx.world.terrain;
@@ -2715,21 +2852,17 @@ function genMineRails(ctx, rng, p) {
     lantern(ctx, S, x + 0.62, y + 2.3, z);
     ctx.colliderOnly(x - 0.12, y, z - 0.12, x + 0.12, y + 3.0, z + 0.12);
   }
-  // Arco de la boca principal (mirando hacia fuera)
+  // Barandilla de troncos y rocas a los lados de la rampa principal
   const main = site.mineRamps.find((r) => r.main);
   const { o, d } = rampEnds(site, main.side, main.pos);
   const a = subFx(ctx, o[0] - p.x, o[1] - p.z, rotFacing(-d[0], -d[1]), site.H - ctx.cy);
   const SA = sinkCtx(a);
   for (const s of [-1, 1]) {
-    a.box(s * 2.4 - 0.25, 0, -0.25, s * 2.4 + 0.25, 4.6, 0.25, TIMBER);
-    beam(SA, [s * 2.4, 3.2, 0], [s * 1.6, 4.25, 0], 0.18, 0.18, WOOD_D);
-    lantern(ctx, SA, s * 2.4, 3.3, 0.45);
+    for (let z = -0.4; z > -11; z -= 2.6) a.box(s * 2.25 - 0.1, 0, z - 0.1, s * 2.25 + 0.1, 1.1, z + 0.1, TIMBER, false);
+    beam(SA, [s * 2.25, 1.0, -0.4], [s * 2.25, 1.0, -10.8], 0.12, 0.12, WOOD_D);
+    beam(SA, [s * 2.25, 0.55, -0.4], [s * 2.25, 0.55, -10.8], 0.08, 0.08, WOOD_D);
+    a.colliderOnly(s * 2.25 - 0.1, 0, -10.8, s * 2.25 + 0.1, 1.1, -0.4);
   }
-  a.box(-2.9, 4.2, -0.35, 2.9, 4.65, 0.35, WOOD_D);
-  for (const s of [-1, 1]) poly2(SA, [[-3.1, 4.65, s * 0.7], [3.1, 4.65, s * 0.7], [3.1, 5.3, 0], [-3.1, 5.3, 0]], PLANK, WOOD_D);
-  a.box(-2.2, 3.25, 0.25, 2.2, 4.15, 0.37, WOOD, false);
-  sign(a, 'MINA DEL ECO', 'mine', -2.1, 3.3, 2.1, 4.1, 0.38);
-  // rocas a los lados de la boca (la colina de la mina)
   for (const s of [-1, 1]) {
     for (let k = 0; k < 3; k++) {
       const lx = s * rng.float(3.6, 5.6), lz = -rng.float(1.5, 9), r = rng.float(1.4, 2.6);
@@ -2907,37 +3040,34 @@ function genGarage(ctx, rng) {
   ctx.spot(ctx.lootSpots, -3, 0.12, 1.5);
 }
 
-// Piscina elevada con agua animada, escalones, trampolín y tumbonas.
+// Piscina con agua animada, tarima, trampolín y tumbonas.
 function genPool(ctx, rng) {
   const S = sinkCtx(ctx);
-  const DY = 1.15, PX = 9, PZ = 3.5;
+  // Terraza de un escalón (se sube andando) y lámina de agua poco honda:
+  // nadie se queda atrapado dentro
+  const DY = 0.5, PX = 9, PZ = 3.5;
   const deck = STONE_L;
   ctx.box(-11, -0.5, -5.5, 11, DY, -PZ, deck);
-  ctx.box(-11, -0.5, PZ, -3, DY, 5.5, deck);
-  ctx.box(3, -0.5, PZ, 11, DY, 5.5, deck);
+  ctx.box(-11, -0.5, PZ, 11, DY, 5.5, deck);
   ctx.box(PX, -0.5, -PZ, 11, DY, PZ, deck);
-  ctx.box(-11, -0.5, -PZ, -PX, DY, -1.5, deck);
-  ctx.box(-11, -0.5, 1.5, -PX, DY, PZ, deck);
-  // escalones (de frente y por el lado)
-  for (let k = 0; k < 3; k++) {
-    const h = (DY * (k + 1)) / 3;
-    ctx.box(-3, -0.5, 5.5 - (k + 1) * 0.67, 3, h, 5.5 - k * 0.67, deck);
-    ctx.box(-11 + k * 0.67, -0.5, -1.5, -11 + (k + 1) * 0.67, h, 1.5, deck);
+  ctx.box(-11, -0.5, -PZ, -PX, DY, PZ, deck);
+  // juntas de la tarima de madera alrededor
+  for (let x = -10.5; x <= 10.5; x += 1.5) {
+    S.box(x - 0.02, DY, 3.75, x + 0.02, DY + 0.01, 5.45, 0xb8a080);
+    S.box(x - 0.02, DY, -5.45, x + 0.02, DY + 0.01, -3.75, 0xb8a080);
   }
   // borde, azulejos, fondo y agua
   for (const s of [-1, 1]) {
-    S.box(-PX - 0.2, DY - 0.02, s * PZ - 0.2, PX + 0.2, DY + 0.06, s * PZ + 0.2, WHITE);
-    S.box(s * PX - 0.2, DY - 0.02, -PZ, s * PX + 0.2, DY + 0.06, PZ, WHITE);
+    S.box(-PX - 0.25, DY - 0.02, s * PZ - 0.25, PX + 0.25, DY + 0.07, s * PZ + 0.25, WHITE);
+    S.box(s * PX - 0.25, DY - 0.02, -PZ, s * PX + 0.25, DY + 0.07, PZ, WHITE);
     S.box(-PX, 0.05, s * PZ - (s > 0 ? 0.04 : 0), PX, DY - 0.06, s * PZ + (s > 0 ? 0 : 0.04), 0x5cc8e0);
     S.box(s * PX - (s > 0 ? 0.04 : 0), 0.05, -PZ, s * PX + (s > 0 ? 0 : 0.04), DY - 0.06, PZ, 0x5cc8e0);
-    S.box(-PX, DY - 0.3, s * PZ - (s > 0 ? 0.05 : 0), PX, DY - 0.12, s * PZ + (s > 0 ? 0 : 0.05), 0x1f5f8a);
+    S.box(-PX, DY - 0.2, s * PZ - (s > 0 ? 0.05 : 0), PX, DY - 0.1, s * PZ + (s > 0 ? 0 : 0.05), 0x1f5f8a);
   }
-  S.box(-PX, -0.05, -PZ, PX, 0.05, PZ, 0x4fb8d8);
-  for (let x = -6; x <= 6; x += 3) S.box(x - 0.12, 0.05, -2.6, x + 0.12, 0.07, 2.6, 0x1f5f8a);
-  waterRect(ctx, -PX, -PZ, PX, PZ, DY - 0.18, 0x1a98cc);
-  for (const x of [-5, 0, 5]) for (const s of [-1, 1]) glowBox(ctx, x - 0.2, 0.45, s * PZ - (s > 0 ? 0.06 : -0.02), x + 0.2, 0.7, s * PZ - (s > 0 ? 0.02 : -0.06), 0x9af4ff, 1.6);
-  ctx.ladderVisual(PX - 0.15, 0, 0.05, DY, 'z');
-  for (const s of [-1, 1]) rod(S, [PX - 0.35, DY + 0.8, s * 0.4], [PX - 0.35, DY - 0.6, s * 0.4], 0.04, STEEL_W, 4);
+  S.box(-PX, -0.05, -PZ, PX, 0.04, PZ, 0x4fb8d8);
+  for (let x = -6; x <= 6; x += 3) S.box(x - 0.12, 0.04, -2.6, x + 0.12, 0.06, 2.6, 0x1f5f8a);
+  waterRect(ctx, -PX, -PZ, PX, PZ, DY - 0.1, 0x1a98cc);
+  for (const x of [-5, 0, 5]) for (const s of [-1, 1]) glowBox(ctx, x - 0.25, 0.12, s * PZ - (s > 0 ? 0.06 : -0.02), x + 0.25, 0.3, s * PZ - (s > 0 ? 0.02 : -0.06), 0x9af4ff, 1.6);
   // trampolín
   ctx.box(9.3, DY, -1.2, 10.6, DY + 0.5, 1.2, WHITE);
   S.box(6.4, DY + 0.45, -0.4, 10.0, DY + 0.55, 0.4, 0x2f7de1);
@@ -2951,8 +3081,10 @@ function genPool(ctx, rng) {
     rod(S, [x, DY, -5.0], [x, DY + 2.6, -5.0], 0.04, STEEL_W, 4);
     cone(S, x, DY + 2.2, -5.0, 1.7, 0.6, x < 0 ? 0xff7ab8 : 0x2fb5a8, 8);
   }
-  ball(S, 2.5, DY - 0.08, 1.2, 0.35, RED, 10);
-  S.put(geo('torus'), 0xff7ab8, M(-4, DY - 0.15, -1, Math.PI / 2, 0, 0, 0.55, 0.55, 0.55));
+  // flotadores
+  ball(S, 2.5, DY - 0.05, 1.2, 0.35, RED, 10);
+  S.put(geo('torus'), 0xff7ab8, M(-4, DY - 0.08, -1, Math.PI / 2, 0, 0, 0.55, 0.55, 0.55));
+  S.put(geo('torus'), YEL, M(5.5, DY - 0.08, 1.6, Math.PI / 2, 0, 0, 0.5, 0.5, 0.5));
   ctx.spot(ctx.chestSpots, 10.2, DY, -4.6, 0, 0);
   ctx.spot(ctx.lootSpots, -6, 0.05, 0);
   ctx.spot(ctx.ammoSpots, -9.5, DY, 4.6, 0, 0);
@@ -3108,6 +3240,6 @@ export const LANDMARK_GEN = {
   fairbooth: genFairBooth, fairlights: genFairLights, bumpers: genBumperCars,
   pyramid: genPyramid, column: genColumn, idol: genIdol, templepool: genTemplePool, templehut: genTempleHut, stela: genStela, jungle: genJungle,
   observatory: genObservatory, obslab: genObsLab, dish: genDish, mast: genMast, quonset: genQuonset, overlook: genOverlook,
-  headframe: genHeadframe, hoist: genHoist, mineshed: genMineShed, tipple: genTipple, scaffold: genScaffold, orepile: genOrePile, minerails: genMineRails,
+  headframe: genHeadframe, minehill: genMineHill, hoist: genHoist, mineshed: genMineShed, tipple: genTipple, scaffold: genScaffold, orepile: genOrePile, minerails: genMineRails,
   mansion: genMansion, garage: genGarage, pool: genPool, helipad: genHelipad, cabana: genCabana, garden: genGarden, hedge: genHedge, mansiongate: genMansionGate,
 };
