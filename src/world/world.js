@@ -19,6 +19,7 @@ import { HALF, ISLAND_RADIUS } from './constants.js';
 import { LodSet } from './lod.js';
 import { planZiplines, buildZiplines } from './ziplines.js';
 import { modelQuality } from '../game/models.js';
+import { LANDMARK_GEN, LANDMARK_KINDS, findSpecialSpot, layoutSpecialPOI, planAccessRoad, decorateMine, LandmarkFx } from './landmarks.js';
 
 const POI_NAMES = {
   port: ['Puerto Pez', 'Bahía Brillante', 'Muelle Marinero', 'Cala Corsaria', 'Dársena Dorada'],
@@ -29,6 +30,12 @@ const POI_NAMES = {
   stadium: ['Estadio Estelar', 'Parque Placentero'],
   town: ['Pueblo Tranquilo', 'Colinas Cansadas', 'Pantano Pegajoso', 'Villa Vacía', 'Aldea Alegre', 'Arroyo Apacible', 'Cruce Curioso'],
   farm: ['Granja Feliz', 'Huerto Hermoso', 'Rancho Risueño'],
+  // Lugares únicos (ver landmarks.js)
+  fair: ['Feria Feliz'],
+  temple: ['Templo Olvidado'],
+  observatory: ['Observatorio Estelar'],
+  mine: ['Mina del Eco'],
+  mansion: ['Villa Millonaria'],
 };
 
 // El orden importa: el puerto (costero) y la ciudad se colocan primero.
@@ -52,6 +59,13 @@ const POI_SPECS = [
   // Zonas pequeñas extra: más sitios donde aterrizar y pelear
   { type: 'town', radius: 66 },
   { type: 'apartments', radius: 60 },
+  // Lugares únicos: al final, para no mover las zonas de siempre. Buscan su
+  // sitio en los huecos que quedan (el observatorio, en lo alto de un monte).
+  { type: 'observatory', radius: 50, special: true, high: true, flatR: 30 },
+  { type: 'fair', radius: 62, special: true },
+  { type: 'mine', radius: 56, special: true },
+  { type: 'temple', radius: 54, special: true },
+  { type: 'mansion', radius: 52, special: true },
 ];
 
 // Rotación (múltiplo de 90°) que hace mirar la puerta (+Z local) hacia (dx, dz).
@@ -62,7 +76,7 @@ function rotFacing(dx, dz) {
 
 // Edificios que se pueden destruir (a pico, a tiros y con explosivos). Los
 // especiales (bóvedas, búnker, faro, castillo, estadio…) son indestructibles.
-const DESTRUCTIBLE = new Set(['house', 'warehouse', 'factory', 'shop', 'gas', 'church', 'tent', 'ruins', 'windmill', 'market', 'silo', 'hay', 'container', 'fence', 'sandbags', 'crates', 'watchtower', 'watertower']);
+const DESTRUCTIBLE = new Set(['house', 'warehouse', 'factory', 'shop', 'gas', 'church', 'tent', 'ruins', 'windmill', 'market', 'silo', 'hay', 'container', 'fence', 'sandbags', 'crates', 'watchtower', 'watertower', ...LANDMARK_KINDS.destructible]);
 
 export class World {
   // opts.creative: isla plana y vacía para el modo creativo.
@@ -121,7 +135,8 @@ export class World {
       this.planCover();
     }
     yield ['Levantando montañas…', 0.14];
-    this.terrain.flats = [...this.pois, ...this.pads];
+    // (el observatorio sólo allana la cima: el resto del monte sigue igual)
+    this.terrain.flats = [...this.pois.map((p) => (p.flatR ? { x: p.x, z: p.z, radius: p.flatR, height: p.height } : p)), ...this.pads];
     this.terrain.zones = this.pois;
     this.terrain.hydro = this.hydro.lakes.length || this.hydro.rivers.length ? this.hydro : null;
     this.hydro.buildMask(HALF);
@@ -218,6 +233,19 @@ export class World {
     const names = {};
     for (const k in POI_NAMES) names[k] = rng.shuffle(POI_NAMES[k].slice());
     for (const spec of POI_SPECS) {
+      if (spec.special) {
+        const f = findSpecialSpot(this, spec, rng);
+        if (!f) {
+          console.warn('No cabe el lugar', spec.type);
+          continue;
+        }
+        this.pois.push({
+          name: names[spec.type].shift() || spec.type, type: spec.type, x: f.x, z: f.z, radius: f.radius, coastal: false,
+          height: f.height, axis: rng.chance(0.5) ? 'x' : 'z', seaDir: null, gates: [], special: true,
+          flatR: spec.flatR || 0, ownRoad: !!spec.high,
+        });
+        continue;
+      }
       for (let attempt = 0; attempt < (spec.type === 'port' ? 2000 : 1400); attempt++) {
         const ang = rng.float(0, Math.PI * 2);
         const coastal = spec.type === 'port';
@@ -607,6 +635,8 @@ export class World {
         this.addCar(...at(-4, 6), A === 'x' ? Math.PI / 2 : 0);
         break;
       }
+      default:
+        if (poi.special) layoutSpecialPOI(this, poi, rng, at);
     }
   }
 
@@ -920,7 +950,8 @@ export class World {
   // ------------------------------------------------------------ CARRETERAS
   planRoads() {
     const rng = this.rng;
-    const P = this.pois;
+    // (el observatorio tiene su propio camino de montaña, ver planAccessRoad)
+    const P = this.pois.filter((p) => !p.ownRoad);
     if (P.length < 2) return;
     // Árbol de expansión mínima + algunas conexiones extra. El coste
     // penaliza las parejas separadas por montañas (mejor rodearlas).
@@ -960,6 +991,7 @@ export class World {
       this.roads.add(r.pts, 7, 'road', r.hs);
       this.roadEdges.push(r);
     });
+    for (const poi of this.pois) if (poi.ownRoad) planAccessRoad(this, poi);
   }
 
   // Perfil (altura del firme) de una carretera: suavizado, fijo a la altura
@@ -1389,11 +1421,14 @@ export class World {
     const glow = new GeoBuilder(); // llamas, faroles y cristales (sin iluminar)
     const caps = new GeoBuilder(); // tapas de cuevas/trincheras (material del terreno)
     const rng = this.rng;
+    const fx = new LandmarkFx(this); // cristal, agua de piscinas, luces, carteles y atracciones
     for (const p of this.plans) {
       let ctx;
-      if (p.kind === 'site') ctx = buildSite(p.site, geo, glow, caps, this.collision, rng, this.terrain);
-      else {
-        let y = this.terrain.heightAt(p.x, p.z);
+      if (p.kind === 'site') {
+        ctx = buildSite(p.site, geo, glow, caps, this.collision, rng, this.terrain);
+        if (p.site.mine) decorateMine(p.site, ctx, glow, rng);
+      } else {
+        let y = p.y0 ?? this.terrain.heightAt(p.x, p.z);
         if (p.kind === 'pier') {
           const r = this.placePier(p);
           if (!r) continue;
@@ -1401,6 +1436,10 @@ export class World {
         }
         ctx = new BuildingCtx(geo, this.collision, p.x, y, p.z, p.rot);
         if (DESTRUCTIBLE.has(p.kind)) ctx.dest = new DestSet(geo, y, this.destructibles);
+        if (LANDMARK_GEN[p.kind]) {
+          ctx.fx = fx.bucket(p.poi, p.x, p.z);
+          LANDMARK_GEN[p.kind](ctx, rng, p);
+        }
         switch (p.kind) {
           case 'house': genHouse(ctx, rng, p); break;
           case 'warehouse': genWarehouse(ctx, rng, p); break;
@@ -1482,6 +1521,7 @@ export class World {
     // En parcelas de 120 m: sólo se dibujan las que están a la vista y cerca
     const { group, chunks, ranges } = geo.buildChunks(120);
     for (const piece of this.destructibles) piece.ranges = ranges.get(piece.id) || [];
+    fx.finish();
     this.buildingMesh = group;
     this.buildingMesh.name = 'buildings';
     for (const c of chunks) this.lod.add(c.mesh, 'building', c.cx, c.cz, c.r);
