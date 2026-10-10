@@ -337,6 +337,8 @@ export class ChestFx {
     const motes = new THREE.Points(T.moteGeo, T.moteMat);
     const beam = new THREE.Mesh(T.beamGeo, T.beamMat);
     beam.position.y = 0.3;
+    // sin oclusión ambiental (el pase de normales los vería opacos)
+    ring.userData.noAO = beam.userData.noAO = true;
     group.add(ring, motes);
     this.game.scene.add(group, beam);
     beam.position.add(c.pos);
@@ -376,6 +378,7 @@ export class ChestFx {
     if (c.tier) {
       const wave = new THREE.Mesh(this.waveGeo, new THREE.MeshBasicMaterial({ map: this.waveTex, color: T.color, ...additive, fog: false }));
       wave.position.set(pos.x, pos.y + 0.06, pos.z);
+      wave.userData.noAO = true;
       this.game.scene.add(wave);
       b.wave = wave;
       b.waveR = T.f.ring * 3.2;

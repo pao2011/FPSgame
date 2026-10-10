@@ -3,7 +3,7 @@
 // los estados y arbitra lo que se comparte: cofres, objetos del suelo,
 // vehículos, construcciones, eliminaciones, marcador y final de la partida.
 import { RNG } from '../src/core/rng.js';
-import { lootForTier, lootForAmmoBox, setLootPool, chestTier, MAX_VAULT_CHESTS } from '../src/game/items.js';
+import { lootForTier, lootForAmmoBox, setLootPool, chestTier } from '../src/game/items.js';
 import { HitGuard } from './anticheat.js';
 
 let nextMatch = 1;
@@ -38,7 +38,6 @@ export class Match {
     this.pads = []; // plataformas de salto colocadas
     this.chestItems = new Map(); // cofre -> botín que soltó
     this.chestTiers = new Map(); // cofre -> nivel (0 normal, 1 épico, 2 legendario)
-    this.vaultLeft = MAX_VAULT_CHESTS;
     this.harv = new Map(); // objeto del mapa -> daño recibido
     this.guard = new HitGuard();
     this.cars = new Map();
@@ -274,14 +273,9 @@ export class Match {
     const ammo = m.kind === 'ammo';
     // El nivel del cofre sale de la semilla del botín y de su índice (lo mismo
     // que calculan los clientes): el cliente no lo elige. Los de las bóvedas
-    // son mejores; como el servidor no conoce el mapa, sólo acepta como de
-    // bóveda tantos cofres como hay.
-    let vault = false;
-    if (!ammo && m.v && this.vaultLeft > 0) {
-      this.vaultLeft--;
-      vault = true;
-    }
-    const tier = ammo ? 0 : chestTier(this.lootSeed, i, vault);
+    // son mejores; van los primeros de la lista y chestTier sólo acepta como
+    // de bóveda esos índices.
+    const tier = ammo ? 0 : chestTier(this.lootSeed, i, !!m.v);
     setLootPool(this.mode.lootPool); // modos temporales (sólo ciertas armas)
     const loot = ammo ? lootForAmmoBox(this.rng) : lootForTier(this.rng, tier);
     setLootPool(null);

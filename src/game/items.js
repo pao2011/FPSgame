@@ -211,8 +211,8 @@ export const BOT_WEAPONS = Object.keys(WEAPONS).filter((k) => !WEAPONS[k].explos
 const THROWABLE_WEIGHTS = { grenade: 30, sticky: 14, impulse: 18, c4: 8, smoke: 14, molotov: 14 };
 const FLOOR_RARITY = [42, 30, 17, 8, 2.6, 0.4, 0];
 const CHEST_RARITY = [12, 34, 32, 16, 5, 1, 0];
-const EPIC_RARITY = [0, 0, 0, 78, 19, 3, 0];
-const LEGENDARY_RARITY = [0, 0, 0, 0, 88, 12, 0];
+const EPIC_RARITY = [0, 0, 0, 80, 18, 2, 0];
+const LEGENDARY_RARITY = [0, 0, 0, 0, 92, 8, 0];
 const SECOND_RARITY = [0, 0, 45, 38, 15, 2, 0];
 
 // Niveles de cofre. El de cada cofre en una partida sale de la semilla del
@@ -228,8 +228,9 @@ export const CHEST_TIERS = [
 ];
 // Probabilidad de cada nivel en un hueco de cofre normal y en las bóvedas.
 export const CHEST_ODDS = { legendary: 0.02, epic: 0.07, vaultLegendary: 0.4 };
-// Cofres de bóveda que el servidor acepta como tales en una partida (no
-// conoce el mapa; hay 4 bóvedas con 3 cofres cada una).
+// Los cofres de las bóvedas van los primeros en la lista de cofres (ver
+// ContainerManager): el servidor, que no conoce el mapa, sólo trata como de
+// bóveda los índices por debajo de este número (hay 4 bóvedas de 3 cofres).
 export const MAX_VAULT_CHESTS = 12;
 
 // Número pseudoaleatorio en [0, 1) a partir de (semilla, índice).
@@ -241,9 +242,11 @@ function hash01(seed, i) {
   return (h >>> 0) / 4294967296;
 }
 
+// Nivel del cofre `index` en la partida de semilla `seed`. vault: es de una
+// bóveda (sólo cuenta en los primeros MAX_VAULT_CHESTS índices).
 export function chestTier(seed, index, vault = false) {
   const r = hash01(seed, index);
-  if (vault) return r < CHEST_ODDS.vaultLegendary ? CHEST_LEGENDARY : CHEST_EPIC;
+  if (vault && index >= 0 && index < MAX_VAULT_CHESTS) return r < CHEST_ODDS.vaultLegendary ? CHEST_LEGENDARY : CHEST_EPIC;
   if (r < CHEST_ODDS.legendary) return CHEST_LEGENDARY;
   return r < CHEST_ODDS.legendary + CHEST_ODDS.epic ? CHEST_EPIC : CHEST_NORMAL;
 }

@@ -109,7 +109,8 @@ function makeHalfResAO(scene, camera, w, h) {
       n = 60;
       hide = [];
       scene.traverse((o) => {
-        if (o.isPoints || o.isLine || o.isLine2) hide.push(o);
+        // (y los halos: sprites y efectos marcados con userData.noAO)
+        if (o.isPoints || o.isLine || o.isLine2 || o.isSprite || o.userData.noAO) hide.push(o);
       });
     }
     for (const o of hide) {

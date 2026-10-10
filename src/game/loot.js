@@ -138,7 +138,10 @@ export class ContainerManager {
     this.special = []; // cofres épicos y legendarios de esta partida
     this.fx = new ChestFx(game);
     const glowTex = getGlowTexture();
-    for (const s of chestSpots) this._create('chest', s, glowTex);
+    // Primero los cofres de las bóvedas: el servidor los reconoce por el
+    // índice (ver chestTier en items.js).
+    for (const s of chestSpots) if (s.vault) this._create('chest', s, glowTex);
+    for (const s of chestSpots) if (!s.vault) this._create('chest', s, glowTex);
     for (const s of ammoSpots) this._create('ammo', s, glowTex);
   }
 
