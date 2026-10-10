@@ -174,13 +174,17 @@ export class ContainerManager {
     this._create(kind, { ...s, forced: true }, getGlowTexture());
     const c = this.list[this.list.length - 1];
     c.extra = true;
+    if (c.glow) this.fx.noAO.add(c.glow); // (los del mapa ya los ve la AO al recorrer la escena)
     return c;
   }
 
   clearExtra() {
     for (const c of this.list.filter((x) => x.extra)) {
       this.game.scene.remove(c.model);
-      if (c.glow) this.game.scene.remove(c.glow);
+      if (c.glow) {
+        this.game.scene.remove(c.glow);
+        this.fx.noAO.delete(c.glow);
+      }
       this.fx.detach(c);
       this._setCollider(c, false);
       this.list.splice(this.list.indexOf(c), 1);

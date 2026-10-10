@@ -318,6 +318,10 @@ export class ChestFx {
       });
       return o;
     });
+    // Lo que hay que ocultar en el pase de normales de la oclusión ambiental
+    // (si no, estos efectos transparentes la oscurecen como si fueran sólidos)
+    const sd = game.scene.userData;
+    this.noAO = sd.noAO || (sd.noAO = new Set());
     // Destello de luz al abrir (luz virtual del pool: ver lightpool.js)
     this.light = game.lights.add(new THREE.PointLight(0xffffff, 0, 14, 2), 2);
     this.lightT = 0;
@@ -337,9 +341,8 @@ export class ChestFx {
     const motes = new THREE.Points(T.moteGeo, T.moteMat);
     const beam = new THREE.Mesh(T.beamGeo, T.beamMat);
     beam.position.y = 0.3;
-    // sin oclusión ambiental (el pase de normales los vería opacos)
-    ring.userData.noAO = beam.userData.noAO = true;
     group.add(ring, motes);
+    this.noAO.add(group).add(beam);
     this.game.scene.add(group, beam);
     beam.position.add(c.pos);
     c.fx = { group, ring, motes, beam, flare: null };
@@ -351,6 +354,8 @@ export class ChestFx {
     const fx = c.fx;
     if (!fx) return;
     this.game.scene.remove(fx.group, fx.beam);
+    this.noAO.delete(fx.group);
+    this.noAO.delete(fx.beam);
     if (fx.flare) fx.flare.material.dispose();
     c.fx = null;
     this.list.delete(c);
@@ -374,12 +379,13 @@ export class ChestFx {
     pts.position.copy(pos);
     pts.frustumCulled = false;
     this.game.scene.add(pts);
+    this.noAO.add(pts);
     const b = { pts, wave: null, t: 0, life: 1.8 };
     if (c.tier) {
       const wave = new THREE.Mesh(this.waveGeo, new THREE.MeshBasicMaterial({ map: this.waveTex, color: T.color, ...additive, fog: false }));
       wave.position.set(pos.x, pos.y + 0.06, pos.z);
-      wave.userData.noAO = true;
       this.game.scene.add(wave);
+      this.noAO.add(wave);
       b.wave = wave;
       b.waveR = T.f.ring * 3.2;
     }
@@ -413,9 +419,11 @@ export class ChestFx {
 
   removeBurst(b) {
     this.game.scene.remove(b.pts);
+    this.noAO.delete(b.pts);
     b.pts.material.dispose();
     if (b.wave) {
       this.game.scene.remove(b.wave);
+      this.noAO.delete(b.wave);
       b.wave.material.dispose();
     }
   }

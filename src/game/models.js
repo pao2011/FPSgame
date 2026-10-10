@@ -802,8 +802,8 @@ export function makeItemModel(item, camo = null, pick = null) {
 // Frente hacia +Z, bisagra atrás. tier: 0 normal, 1 épico, 2 legendario.
 // Cada pieza lleva en userData.cfx [brillo, metal]: el brillo se ilumina solo
 // (gemas, runas) y el metal refleja el entorno (ver chestMat).
-const seg = (n) => (PBR ? n : Math.max(3, Math.ceil(n / 2)));
-function cp(parent, geo, color, x = 0, y = 0, z = 0, glow = 0, metal = 0) {
+const chestSeg = (n) => (PBR ? n : Math.max(3, Math.ceil(n / 2)));
+function chestPart(parent, geo, color, x = 0, y = 0, z = 0, glow = 0, metal = 0) {
   const m = new THREE.Mesh(geo, mat(color));
   m.position.set(x, y, z);
   m.userData.cfx = [glow, metal];
@@ -811,29 +811,29 @@ function cp(parent, geo, color, x = 0, y = 0, z = 0, glow = 0, metal = 0) {
   return m;
 }
 // Caja (round: aristas suavizadas en calidad normal/alta)
-const cbox = (w, h, d, round = false) => boxGeo(w, h, d, !round);
+const chestBox = (w, h, d, round = false) => boxGeo(w, h, d, !round);
 // Semicilindro tumbado a lo largo de X (tapa abombada): radio r, altura h.
-function archGeo(w, r, h, n) {
-  return new THREE.CylinderGeometry(r, r, w, seg(n), 1, false, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, h / r, 1);
+function chestArch(w, r, h, n) {
+  return new THREE.CylinderGeometry(r, r, w, chestSeg(n), 1, false, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, h / r, 1);
 }
 // Gema tallada (octaedro) algo aplastada contra la superficie
-function gem(parent, r, color, x, y, z, sy = 1.25, sz = 0.6) {
-  const m = cp(parent, new THREE.OctahedronGeometry(r), color, x, y, z, 1);
+function chestGem(parent, r, color, x, y, z, sy = 1.25, sz = 0.6) {
+  const m = chestPart(parent, new THREE.OctahedronGeometry(r), color, x, y, z, 1);
   m.scale.set(1, sy, sz);
   return m;
 }
 // Voluta de filigrana: arco de toro en el plano XY (frente del cofre) con la
 // abertura hacia el ángulo `open`.
-function curl(parent, r, color, x, y, z, open, arc = Math.PI * 1.4) {
-  const m = cp(parent, new THREE.TorusGeometry(r, r * 0.17, seg(4), seg(12), arc), color, x, y, z, 0, 1);
+function chestCurl(parent, r, color, x, y, z, open, arc = Math.PI * 1.4) {
+  const m = chestPart(parent, new THREE.TorusGeometry(r, r * 0.17, chestSeg(4), chestSeg(12), arc), color, x, y, z, 0, 1);
   m.rotation.z = open + (Math.PI * 2 - arc) / 2;
   return m;
 }
 
 // Asas a los lados (aros en el plano YZ)
-function handles(parent, color, x, y, r) {
+function chestHandles(parent, color, x, y, r) {
   for (const sx of [-1, 1]) {
-    const m = cp(parent, new THREE.TorusGeometry(r, r * 0.16, seg(4), seg(10), Math.PI), color, sx * x, y, 0, 0, 1);
+    const m = chestPart(parent, new THREE.TorusGeometry(r, r * 0.16, chestSeg(4), chestSeg(10), Math.PI), color, sx * x, y, 0, 0, 1);
     m.rotation.set(Math.PI, sx * Math.PI / 2, 0);
   }
 }
@@ -841,27 +841,27 @@ function handles(parent, color, x, y, r) {
 function makeChestNormal() {
   const g = new THREE.Group();
   const wood = 0x93602e, dark = 0x5a3616, gold = 0xf5c43a;
-  cp(g, cbox(1.0, 0.46, 0.6, true), wood, 0, 0.27, 0);
+  chestPart(g, chestBox(1.0, 0.46, 0.6, true), wood, 0, 0.27, 0);
   // vetas de las tablas (delante, detrás y a los lados)
   for (const y of [0.2, 0.35]) {
-    cp(g, cbox(0.9, 0.014, 0.606), dark, 0, y, 0);
-    cp(g, cbox(1.006, 0.014, 0.5), dark, 0, y, 0);
+    chestPart(g, chestBox(0.9, 0.014, 0.606), dark, 0, y, 0);
+    chestPart(g, chestBox(1.006, 0.014, 0.5), dark, 0, y, 0);
   }
-  cp(g, cbox(1.05, 0.08, 0.65, true), gold, 0, 0.04, 0, 0, 1);
-  cp(g, cbox(1.04, 0.05, 0.64), gold, 0, 0.475, 0, 0, 1);
-  for (const x of [-0.48, 0.48]) for (const z of [-0.28, 0.28]) cp(g, cbox(0.08, 0.5, 0.08), gold, x, 0.25, z, 0, 1);
-  for (const x of [-0.26, 0.26]) cp(g, cbox(0.07, 0.42, 0.624), gold, x, 0.27, 0, 0, 1);
+  chestPart(g, chestBox(1.05, 0.08, 0.65, true), gold, 0, 0.04, 0, 0, 1);
+  chestPart(g, chestBox(1.04, 0.05, 0.64), gold, 0, 0.475, 0, 0, 1);
+  for (const x of [-0.48, 0.48]) for (const z of [-0.28, 0.28]) chestPart(g, chestBox(0.08, 0.5, 0.08), gold, x, 0.25, z, 0, 1);
+  for (const x of [-0.26, 0.26]) chestPart(g, chestBox(0.07, 0.42, 0.624), gold, x, 0.27, 0, 0, 1);
   // cerradura
-  cp(g, cbox(0.17, 0.17, 0.03), gold, 0, 0.37, 0.305, 0, 1);
-  cp(g, cbox(0.035, 0.07, 0.012), 0x1a1208, 0, 0.36, 0.322);
-  handles(g, 0x4a4a52, 0.515, 0.36, 0.07);
+  chestPart(g, chestBox(0.17, 0.17, 0.03), gold, 0, 0.37, 0.305, 0, 1);
+  chestPart(g, chestBox(0.035, 0.07, 0.012), 0x1a1208, 0, 0.36, 0.322);
+  chestHandles(g, 0x4a4a52, 0.515, 0.36, 0.07);
   const lid = new THREE.Group();
   lid.position.set(0, 0.5, -0.3);
   g.add(lid);
-  cp(lid, cbox(1.04, 0.05, 0.64), gold, 0, 0.025, 0.3, 0, 1);
-  cp(lid, archGeo(0.98, 0.3, 0.2, 12), wood, 0, 0.04, 0.3);
-  for (const x of [-0.48, -0.26, 0.26, 0.48]) cp(lid, archGeo(0.07, 0.312, 0.212, 12), gold, x, 0.04, 0.3, 0, 1);
-  cp(lid, cbox(0.13, 0.13, 0.035), gold, 0, 0.0, 0.62, 0, 1);
+  chestPart(lid, chestBox(1.04, 0.05, 0.64), gold, 0, 0.025, 0.3, 0, 1);
+  chestPart(lid, chestArch(0.98, 0.3, 0.2, 12), wood, 0, 0.04, 0.3);
+  for (const x of [-0.48, -0.26, 0.26, 0.48]) chestPart(lid, chestArch(0.07, 0.312, 0.212, 12), gold, x, 0.04, 0.3, 0, 1);
+  chestPart(lid, chestBox(0.13, 0.13, 0.035), gold, 0, 0.0, 0.62, 0, 1);
   g.userData.lid = lid;
   return g;
 }
@@ -870,47 +870,47 @@ function makeChestNormal() {
 function makeChestEpic() {
   const g = new THREE.Group();
   const body = 0x45196f, panel = 0x6b2db0, silver = 0xcbc2ea, steel = 0x8a7fb8, gemC = 0xd47cff, rune = 0xe9a8ff;
-  cp(g, cbox(1.1, 0.48, 0.66, true), body, 0, 0.3, 0);
+  chestPart(g, chestBox(1.1, 0.48, 0.66, true), body, 0, 0.3, 0);
   // paneles en relieve
-  for (const z of [-0.335, 0.335]) cp(g, cbox(0.76, 0.28, 0.02, true), panel, 0, 0.3, z);
-  for (const x of [-0.555, 0.555]) cp(g, cbox(0.02, 0.28, 0.42, true), panel, x, 0.3, 0);
+  for (const z of [-0.335, 0.335]) chestPart(g, chestBox(0.76, 0.28, 0.02, true), panel, 0, 0.3, z);
+  for (const x of [-0.555, 0.555]) chestPart(g, chestBox(0.02, 0.28, 0.42, true), panel, x, 0.3, 0);
   // zócalo escalonado, banda superior, columnas y patas
-  cp(g, cbox(1.2, 0.035, 0.76), steel, 0, 0.0175, 0, 0, 1);
-  cp(g, cbox(1.16, 0.09, 0.72, true), silver, 0, 0.075, 0, 0, 1);
-  cp(g, cbox(1.15, 0.05, 0.7), silver, 0, 0.515, 0, 0, 1);
+  chestPart(g, chestBox(1.2, 0.035, 0.76), steel, 0, 0.0175, 0, 0, 1);
+  chestPart(g, chestBox(1.16, 0.09, 0.72, true), silver, 0, 0.075, 0, 0, 1);
+  chestPart(g, chestBox(1.15, 0.05, 0.7), silver, 0, 0.515, 0, 0, 1);
   for (const x of [-0.53, 0.53]) {
     for (const z of [-0.31, 0.31]) {
-      cp(g, cbox(0.09, 0.46, 0.09), silver, x, 0.31, z, 0, 1);
-      cp(g, new THREE.SphereGeometry(0.06, seg(8), seg(6)), steel, x * 1.05, 0.035, z * 1.1, 0, 1);
+      chestPart(g, chestBox(0.09, 0.46, 0.09), silver, x, 0.31, z, 0, 1);
+      chestPart(g, new THREE.SphereGeometry(0.06, chestSeg(8), chestSeg(6)), steel, x * 1.05, 0.035, z * 1.1, 0, 1);
     }
-    cp(g, cbox(0.05, 0.42, 0.68), silver, x * 0.8, 0.3, 0, 0, 1);
+    chestPart(g, chestBox(0.05, 0.42, 0.68), silver, x * 0.8, 0.3, 0, 0, 1);
   }
   // marco de plata del panel frontal con gemas en las esquinas
-  for (const y of [0.155, 0.445]) cp(g, cbox(0.8, 0.025, 0.02), silver, 0, y, 0.348, 0, 1);
-  for (const x of [-0.39, 0.39]) cp(g, cbox(0.025, 0.31, 0.02), silver, x, 0.3, 0.348, 0, 1);
-  for (const x of [-0.39, 0.39]) for (const y of [0.155, 0.445]) gem(g, 0.032, gemC, x, y, 0.36, 1, 1);
+  for (const y of [0.155, 0.445]) chestPart(g, chestBox(0.8, 0.025, 0.02), silver, 0, y, 0.348, 0, 1);
+  for (const x of [-0.39, 0.39]) chestPart(g, chestBox(0.025, 0.31, 0.02), silver, x, 0.3, 0.348, 0, 1);
+  for (const x of [-0.39, 0.39]) for (const y of [0.155, 0.445]) chestGem(g, 0.032, gemC, x, y, 0.36, 1, 1);
   // cerradura con una gema grande dentro de un rombo de plata
-  cp(g, cbox(0.2, 0.2, 0.03, true), silver, 0, 0.36, 0.345, 0, 1);
-  const frame = cp(g, new THREE.TorusGeometry(0.105, 0.016, 4, 4), steel, 0, 0.3, 0.36, 0, 1);
+  chestPart(g, chestBox(0.2, 0.2, 0.03, true), silver, 0, 0.36, 0.345, 0, 1);
+  const frame = chestPart(g, new THREE.TorusGeometry(0.105, 0.016, 4, 4), steel, 0, 0.3, 0.36, 0, 1);
   frame.scale.set(1.25, 1, 1);
-  gem(g, 0.075, gemC, 0, 0.33, 0.37);
+  chestGem(g, 0.075, gemC, 0, 0.33, 0.37);
   // volutas a los lados de la cerradura
-  curl(g, 0.06, silver, -0.2, 0.28, 0.35, 0);
-  curl(g, 0.06, silver, 0.2, 0.28, 0.35, Math.PI);
+  chestCurl(g, 0.06, silver, -0.2, 0.28, 0.35, 0);
+  chestCurl(g, 0.06, silver, 0.2, 0.28, 0.35, Math.PI);
   // runa luminosa bajo el panel y asas de plata
-  cp(g, cbox(0.7, 0.016, 0.012), rune, 0, 0.125, 0.334, 1);
-  handles(g, silver, 0.585, 0.38, 0.075);
+  chestPart(g, chestBox(0.7, 0.016, 0.012), rune, 0, 0.125, 0.334, 1);
+  chestHandles(g, silver, 0.585, 0.38, 0.075);
   const lid = new THREE.Group();
   lid.position.set(0, 0.54, -0.33);
   g.add(lid);
-  cp(lid, cbox(1.15, 0.05, 0.7), silver, 0, 0.025, 0.33, 0, 1);
-  cp(lid, archGeo(1.06, 0.33, 0.25, 14), body, 0, 0.045, 0.33);
-  for (const x of [-0.53, -0.3, 0.3, 0.53]) cp(lid, archGeo(0.06, 0.342, 0.262, 14), silver, x, 0.045, 0.33, 0, 1);
-  for (const x of [-0.15, 0.15]) cp(lid, archGeo(0.02, 0.336, 0.256, 14), rune, x, 0.045, 0.33, 1);
+  chestPart(lid, chestBox(1.15, 0.05, 0.7), silver, 0, 0.025, 0.33, 0, 1);
+  chestPart(lid, chestArch(1.06, 0.33, 0.25, 14), body, 0, 0.045, 0.33);
+  for (const x of [-0.53, -0.3, 0.3, 0.53]) chestPart(lid, chestArch(0.06, 0.342, 0.262, 14), silver, x, 0.045, 0.33, 0, 1);
+  for (const x of [-0.15, 0.15]) chestPart(lid, chestArch(0.02, 0.336, 0.256, 14), rune, x, 0.045, 0.33, 1);
   // emblema de la tapa: base de plata y gema
-  cp(lid, new THREE.CylinderGeometry(0.075, 0.09, 0.04, seg(8)), silver, 0, 0.3, 0.33, 0, 1);
-  gem(lid, 0.065, gemC, 0, 0.36, 0.33, 1.1, 1);
-  cp(lid, cbox(0.15, 0.13, 0.035), silver, 0, 0.0, 0.69, 0, 1);
+  chestPart(lid, new THREE.CylinderGeometry(0.075, 0.09, 0.04, chestSeg(8)), silver, 0, 0.3, 0.33, 0, 1);
+  chestGem(lid, 0.065, gemC, 0, 0.36, 0.33, 1.1, 1);
+  chestPart(lid, chestBox(0.15, 0.13, 0.035), silver, 0, 0.0, 0.69, 0, 1);
   g.userData.lid = lid;
   return g;
 }
@@ -920,66 +920,66 @@ function makeChestEpic() {
 function makeChestLegendary() {
   const g = new THREE.Group();
   const gold = 0xffc53a, deep = 0xd9961c, red = 0x7d0f20, velvet = 0xa8182e, gemC = 0xffa030, white = 0xffe39a;
-  cp(g, cbox(1.2, 0.52, 0.72, true), red, 0, 0.32, 0);
-  for (const z of [-0.365, 0.365]) cp(g, cbox(0.86, 0.32, 0.02, true), velvet, 0, 0.31, z);
-  for (const x of [-0.605, 0.605]) cp(g, cbox(0.02, 0.32, 0.5, true), velvet, x, 0.31, 0);
+  chestPart(g, chestBox(1.2, 0.52, 0.72, true), red, 0, 0.32, 0);
+  for (const z of [-0.365, 0.365]) chestPart(g, chestBox(0.86, 0.32, 0.02, true), velvet, 0, 0.31, z);
+  for (const x of [-0.605, 0.605]) chestPart(g, chestBox(0.02, 0.32, 0.5, true), velvet, x, 0.31, 0);
   // marco dorado de los paneles (delante y detrás)
   for (const z of [-0.375, 0.375]) {
-    for (const y of [0.14, 0.48]) cp(g, cbox(0.9, 0.032, 0.03), gold, 0, y, z, 0, 1);
-    for (const x of [-0.445, 0.445]) cp(g, cbox(0.032, 0.37, 0.03), gold, x, 0.31, z, 0, 1);
+    for (const y of [0.14, 0.48]) chestPart(g, chestBox(0.9, 0.032, 0.03), gold, 0, y, z, 0, 1);
+    for (const x of [-0.445, 0.445]) chestPart(g, chestBox(0.032, 0.37, 0.03), gold, x, 0.31, z, 0, 1);
   }
-  cp(g, cbox(1.3, 0.035, 0.82), deep, 0, 0.0175, 0, 0, 1);
-  cp(g, cbox(1.26, 0.1, 0.78, true), gold, 0, 0.08, 0, 0, 1);
-  cp(g, cbox(1.25, 0.055, 0.77, true), gold, 0, 0.555, 0, 0, 1);
+  chestPart(g, chestBox(1.3, 0.035, 0.82), deep, 0, 0.0175, 0, 0, 1);
+  chestPart(g, chestBox(1.26, 0.1, 0.78, true), gold, 0, 0.08, 0, 0, 1);
+  chestPart(g, chestBox(1.25, 0.055, 0.77, true), gold, 0, 0.555, 0, 0, 1);
   // columnas torneadas con capitel y patas de garra
   for (const x of [-0.585, 0.585]) {
     for (const z of [-0.345, 0.345]) {
-      cp(g, new THREE.CylinderGeometry(0.045, 0.05, 0.44, seg(10)), gold, x, 0.33, z, 0, 1);
-      cp(g, cbox(0.12, 0.04, 0.12), deep, x, 0.53, z, 0, 1);
-      cp(g, cbox(0.12, 0.04, 0.12), deep, x, 0.13, z, 0, 1);
-      cp(g, new THREE.SphereGeometry(0.075, seg(10), seg(8)), gold, x * 1.03, 0.045, z * 1.05, 0, 1);
+      chestPart(g, new THREE.CylinderGeometry(0.045, 0.05, 0.44, chestSeg(10)), gold, x, 0.33, z, 0, 1);
+      chestPart(g, chestBox(0.12, 0.04, 0.12), deep, x, 0.53, z, 0, 1);
+      chestPart(g, chestBox(0.12, 0.04, 0.12), deep, x, 0.13, z, 0, 1);
+      chestPart(g, new THREE.SphereGeometry(0.075, chestSeg(10), chestSeg(8)), gold, x * 1.03, 0.045, z * 1.05, 0, 1);
     }
   }
   // gemas en las esquinas del marco y franja luminosa
-  for (const x of [-0.445, 0.445]) for (const y of [0.14, 0.48]) gem(g, 0.034, gemC, x, y, 0.392, 1, 1);
-  cp(g, cbox(0.8, 0.016, 0.012), white, 0, 0.175, 0.377, 1);
+  for (const x of [-0.445, 0.445]) for (const y of [0.14, 0.48]) chestGem(g, 0.034, gemC, x, y, 0.392, 1, 1);
+  chestPart(g, chestBox(0.8, 0.016, 0.012), white, 0, 0.175, 0.377, 1);
   // filigrana: volutas doradas alrededor del medallón
-  curl(g, 0.075, gold, -0.215, 0.32, 0.38, 0);
-  curl(g, 0.075, gold, 0.215, 0.32, 0.38, Math.PI);
+  chestCurl(g, 0.075, gold, -0.215, 0.32, 0.38, 0);
+  chestCurl(g, 0.075, gold, 0.215, 0.32, 0.38, Math.PI);
   for (const sx of [-1, 1]) {
-    for (const y of [0.22, 0.42]) curl(g, 0.045, gold, sx * 0.34, y, 0.38, Math.atan2(0.32 - y, -sx * 0.34), Math.PI * 1.2);
+    for (const y of [0.22, 0.42]) chestCurl(g, 0.045, gold, sx * 0.34, y, 0.38, Math.atan2(0.32 - y, -sx * 0.34), Math.PI * 1.2);
   }
   // medallón con la gema grande
-  cp(g, new THREE.CylinderGeometry(0.125, 0.125, 0.03, seg(16)).rotateX(Math.PI / 2), gold, 0, 0.32, 0.385, 0, 1);
-  cp(g, new THREE.TorusGeometry(0.125, 0.016, seg(4), seg(18)), deep, 0, 0.32, 0.4, 0, 1);
-  gem(g, 0.08, gemC, 0, 0.32, 0.41, 1.25, 0.6);
-  handles(g, gold, 0.635, 0.38, 0.08);
+  chestPart(g, new THREE.CylinderGeometry(0.125, 0.125, 0.03, chestSeg(16)).rotateX(Math.PI / 2), gold, 0, 0.32, 0.385, 0, 1);
+  chestPart(g, new THREE.TorusGeometry(0.125, 0.016, chestSeg(4), chestSeg(18)), deep, 0, 0.32, 0.4, 0, 1);
+  chestGem(g, 0.08, gemC, 0, 0.32, 0.41, 1.25, 0.6);
+  chestHandles(g, gold, 0.635, 0.38, 0.08);
   const lid = new THREE.Group();
   lid.position.set(0, 0.58, -0.36);
   g.add(lid);
-  cp(lid, cbox(1.25, 0.055, 0.77, true), gold, 0, 0.0275, 0.36, 0, 1);
-  cp(lid, archGeo(1.16, 0.36, 0.28, 16), red, 0, 0.05, 0.36);
-  for (const x of [-0.56, -0.32, 0.32, 0.56]) cp(lid, archGeo(0.07, 0.372, 0.292, 16), gold, x, 0.05, 0.36, 0, 1);
-  for (const x of [-0.16, 0.16]) cp(lid, archGeo(0.022, 0.366, 0.286, 16), white, x, 0.05, 0.36, 0.55, 1);
+  chestPart(lid, chestBox(1.25, 0.055, 0.77, true), gold, 0, 0.0275, 0.36, 0, 1);
+  chestPart(lid, chestArch(1.16, 0.36, 0.28, 16), red, 0, 0.05, 0.36);
+  for (const x of [-0.56, -0.32, 0.32, 0.56]) chestPart(lid, chestArch(0.07, 0.372, 0.292, 16), gold, x, 0.05, 0.36, 0, 1);
+  for (const x of [-0.16, 0.16]) chestPart(lid, chestArch(0.022, 0.366, 0.286, 16), white, x, 0.05, 0.36, 0.55, 1);
   // corona: aro, cinco puntas con gemas y una gema al frente
   const cy = 0.05 + 0.28;
-  cp(lid, new THREE.CylinderGeometry(0.115, 0.1, 0.075, seg(14)), gold, 0, cy + 0.03, 0.36, 0, 1);
-  cp(lid, new THREE.TorusGeometry(0.112, 0.014, seg(4), seg(16)).rotateX(Math.PI / 2), deep, 0, cy + 0.065, 0.36, 0, 1);
+  chestPart(lid, new THREE.CylinderGeometry(0.115, 0.1, 0.075, chestSeg(14)), gold, 0, cy + 0.03, 0.36, 0, 1);
+  chestPart(lid, new THREE.TorusGeometry(0.112, 0.014, chestSeg(4), chestSeg(16)).rotateX(Math.PI / 2), deep, 0, cy + 0.065, 0.36, 0, 1);
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2 + Math.PI / 2;
     const x = Math.cos(a) * 0.095, z = 0.36 + Math.sin(a) * 0.095;
-    cp(lid, new THREE.ConeGeometry(0.03, 0.11, 4), gold, x, cy + 0.12, z, 0, 1);
-    gem(lid, 0.02, white, x, cy + 0.185, z, 1.2, 1);
+    chestPart(lid, new THREE.ConeGeometry(0.03, 0.11, 4), gold, x, cy + 0.12, z, 0, 1);
+    chestGem(lid, 0.02, white, x, cy + 0.185, z, 1.2, 1);
   }
-  gem(lid, 0.032, 0xff5a3a, 0, cy + 0.035, 0.36 + 0.118, 1.2, 0.6);
-  cp(lid, cbox(0.17, 0.15, 0.04), gold, 0, 0.0, 0.75, 0, 1);
+  chestGem(lid, 0.032, 0xff5a3a, 0, cy + 0.035, 0.36 + 0.118, 1.2, 0.6);
+  chestPart(lid, chestBox(0.17, 0.15, 0.04), gold, 0, 0.0, 0.75, 0, 1);
   // volutas en el borde frontal de la tapa y un sello con gema en cada lado
   for (const sx of [-1, 1]) {
-    curl(lid, 0.04, gold, sx * 0.2, 0.028, 0.752, sx < 0 ? 0 : Math.PI, Math.PI * 1.2);
-    curl(lid, 0.04, gold, sx * 0.42, 0.028, 0.752, sx < 0 ? Math.PI : 0, Math.PI * 1.2);
-    const seal = cp(lid, new THREE.CylinderGeometry(0.085, 0.085, 0.02, seg(12)), gold, sx * 0.585, 0.15, 0.36, 0, 1);
+    chestCurl(lid, 0.04, gold, sx * 0.2, 0.028, 0.752, sx < 0 ? 0 : Math.PI, Math.PI * 1.2);
+    chestCurl(lid, 0.04, gold, sx * 0.42, 0.028, 0.752, sx < 0 ? Math.PI : 0, Math.PI * 1.2);
+    const seal = chestPart(lid, new THREE.CylinderGeometry(0.085, 0.085, 0.02, chestSeg(12)), gold, sx * 0.585, 0.15, 0.36, 0, 1);
     seal.rotation.z = Math.PI / 2;
-    const sg = gem(lid, 0.035, gemC, sx * 0.6, 0.15, 0.36, 1.2, 1);
+    const sg = chestGem(lid, 0.035, gemC, sx * 0.6, 0.15, 0.36, 1.2, 1);
     sg.scale.set(0.6, 1.2, 1);
   }
   g.userData.lid = lid;

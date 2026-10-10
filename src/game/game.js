@@ -104,19 +104,23 @@ function makeHalfResAO(scene, camera, w, h) {
   ao.setSize = (sw, sh) => setSize(half(sw), half(sh));
   let hide = [];
   let n = 0;
+  // Efectos transparentes que se apuntan aquí al crearse (halos de los
+  // cofres): se ocultan siempre, sin esperar al siguiente recorrido.
+  const noAO = scene.userData.noAO || (scene.userData.noAO = new Set());
   ao._overrideVisibility = function () {
     if (--n <= 0) {
       n = 60;
       hide = [];
       scene.traverse((o) => {
-        // (y los halos: sprites y efectos marcados con userData.noAO)
-        if (o.isPoints || o.isLine || o.isLine2 || o.isSprite || o.userData.noAO) hide.push(o);
+        if (o.isPoints || o.isLine || o.isLine2 || o.isSprite) hide.push(o);
       });
     }
-    for (const o of hide) {
-      if (!o.visible) continue;
-      o.visible = false;
-      this._visibilityCache.push(o);
+    for (const list of [hide, noAO]) {
+      for (const o of list) {
+        if (!o.visible) continue;
+        o.visible = false;
+        this._visibilityCache.push(o);
+      }
     }
   };
   return ao;
