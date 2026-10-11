@@ -4,6 +4,11 @@ Juego de disparos en 3D estilo Fortnite hecho con **Three.js**. Todo es
 procedural (no usa modelos ni texturas externas): la isla, los edificios, las
 armas y los sonidos se generan con código.
 
+**Lugares nuevos y cofres:** 🎡 **Feria Feliz**, 🛕 **Templo Olvidado**, 🔭
+**Observatorio Estelar**, ⛏️ **Mina del Eco** y 🏖️ **Villa Millonaria**;
+💜 **cofres épicos** y 💛 **cofres legendarios** (rayo de luz, botín épico o
+legendario garantizado).
+
 **Objetos de Fortnite:** 🔥 **fogata acogedora**, 🫧 **burbuja escudo**, 🏰
 **fuerte portátil** (con neumático para subir), 🌳 **arbusto**, 🎣 **caña de
 pescar** con **bancos de peces**, 🔧 **mesas de mejora** de armas en cada zona

@@ -138,6 +138,8 @@ const HOWTO = [
 ];
 
 const NEWS = [
+  ['5 lugares nuevos', 'Feria Feliz (noria, montaña rusa, tiovivo y carpas), Templo Olvidado (pirámide con cámara secreta y cofres), Observatorio Estelar (en lo alto de una montaña), Mina del Eco (túnel, vagonetas y castillete) y Villa Millonaria (mansión con piscina y helipuerto).'],
+  ['Cofres épicos y legendarios', 'Cofres morados (épicos) y dorados (legendarios, con un rayo de luz que se ve desde lejos): armas épicas o legendarias garantizadas, más curas y explosivos. Online los decide el servidor.'],
   ['Objetos de Fortnite', 'Fogata acogedora (cura 2 de vida por segundo), burbuja escudo (para las balas 15 s), fuerte portátil (torre de metal con neumático para subir a la azotea), arbusto (los enemigos no te ven de lejos hasta que te dañan) y caña de pescar.'],
   ['Pesca y mesas de mejora', 'Bancos de peces (🐟 en el mapa): lanza la caña y saca peces saltarines, Slurp, pociones o armas. Mesas de mejora (🔧) en cada zona: mejora el arma que llevas a la siguiente rareza con madera, piedra o metal.'],
   ['Sifón', 'En los modos con reaparición y en la Arena, cada eliminación te da +50 de vida o escudo.'],
