@@ -395,6 +395,15 @@ export class Terrain {
         const stripe = Math.floor((x + 1000) / 5) % 2 === 0;
         if (stripe) out.lerp(tmpRock.setRGB(0.55, 0.42, 0.25), edge * 0.8);
         else out.lerp(tmpRock.setRGB(0.72, 0.68, 0.3), edge * 0.7);
+      } else if (zn.special) {
+        // Lugares únicos: césped regado, tierra de mina, selva, grava o paseos
+        if (zn.type === 'mansion') out.lerp(tmpRock.setRGB(0.24 + n2 * 0.05, 0.62 + n * 0.06, 0.2), edge * 0.8);
+        else if (zn.type === 'mine') out.lerp(tmpRock.setRGB(0.5 + n2 * 0.07, 0.41 + n2 * 0.05, 0.29), edge * (0.5 + n * 0.35));
+        else if (zn.type === 'temple') {
+          out.lerp(tmpRock.setRGB(0.18 + n2 * 0.06, 0.39 + n * 0.08, 0.13), edge * 0.75);
+          if (n2 > 0.6) out.lerp(tmpRock.setRGB(0.4, 0.31, 0.19), Math.min(1, (n2 - 0.6) * 2) * edge);
+        } else if (zn.type === 'observatory') out.lerp(tmpRock.setRGB(0.5 + n2 * 0.06, 0.48 + n2 * 0.05, 0.43), edge * (0.35 + n * 0.4));
+        else out.lerp(tmpRock.setRGB(0.7, 0.6, 0.42), edge * smoothstep(0.35, 0.75, n2) * 0.75);
       } else {
         out.lerp(tmpRock.setRGB(0.55, 0.5, 0.4), edge * 0.35 * n2);
       }
