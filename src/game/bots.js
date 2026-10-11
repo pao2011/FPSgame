@@ -599,7 +599,8 @@ class Bot extends Character {
     }
     for (const c of g.containers.list) {
       if (!c.active || c.opened || c.locked || c.kind !== 'chest' || this.blacklist.has(c)) continue;
-      const d = c.pos.distanceTo(this.pos);
+      // los cofres épicos y legendarios atraen desde más lejos
+      const d = c.pos.distanceTo(this.pos) / (1 + 0.6 * (c.tier || 0));
       if (d >= bd) continue;
       // sólo cofres a ras de suelo (la IA no sube escaleras)
       const k = g.nav.idx(c.pos.x, c.pos.z);

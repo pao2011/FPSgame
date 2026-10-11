@@ -65,14 +65,19 @@ class AudioSys {
     lfoGain.gain.value = 0.5;
     lfo.connect(lfoGain).connect(trem.gain);
     lfo.start();
+    this.chestLfo = lfo;
+    this.chestOsc = [];
+    this.chestTier = 0;
     for (const f of [880, 1320, 1760]) {
       const o = c.createOscillator();
       o.type = 'sine';
       o.frequency.value = f;
+      o.baseF = f;
       const g = c.createGain();
       g.gain.value = 0.25;
       o.connect(g).connect(trem);
       o.start();
+      this.chestOsc.push(o);
     }
     if (this.chestPan) trem.connect(this.chestGain).connect(this.chestPan).connect(this.master);
     else trem.connect(this.chestGain).connect(this.master);
@@ -309,6 +314,28 @@ class AudioSys {
       this._tone(f, 0.35, { gain: 0.14, type: 'triangle', delay: i * 0.06 }),
     );
     this._burst(0.3, { freq: 4000, type: 'highpass', gain: 0.06 });
+  }
+
+  // Cofre épico: golpe grave mágico, arpegio menor y destellos.
+  chestEpic() {
+    if (!this.ctx) return;
+    this._tone(110, 0.6, { gain: 0.22, slide: 0.5 });
+    this._burst(0.5, { freq: 600, endFreq: 3800, type: 'bandpass', gain: 0.12, q: 1.5 });
+    [440, 523, 659, 880, 1047, 1319].forEach((f, i) => this._tone(f, 0.5, { gain: 0.11, type: 'triangle', delay: 0.05 + i * 0.055 }));
+    [1760, 2093, 2637].forEach((f, i) => this._tone(f, 0.35, { gain: 0.05, delay: 0.38 + i * 0.07 }));
+    this._burst(0.6, { freq: 5000, type: 'highpass', gain: 0.05, delay: 0.3 });
+  }
+
+  // Cofre legendario: fanfarria (metales), acorde de coro y lluvia de brillos.
+  chestLegendary() {
+    if (!this.ctx) return;
+    this._tone(65, 0.9, { gain: 0.3, slide: 0.6 });
+    this._burst(0.7, { freq: 300, endFreq: 5000, type: 'bandpass', gain: 0.14, q: 1.2 });
+    [523, 659, 784, 1047].forEach((f, i) => this._tone(f, 0.28, { type: 'square', gain: 0.045, delay: i * 0.07 }));
+    // acorde de do mayor algo desafinado: suena a coro
+    for (const f of [523, 659, 784, 1047]) for (const k of [0.997, 1.003]) this._tone(f * k, 1.3, { type: 'triangle', gain: 0.05, delay: 0.3 });
+    [1568, 2093, 2637, 3136, 4186].forEach((f, i) => this._tone(f, 0.3, { gain: 0.045, delay: 0.45 + i * 0.06 }));
+    this._burst(0.9, { freq: 6000, type: 'highpass', gain: 0.06, delay: 0.4 });
   }
 
   glider() {
@@ -583,10 +610,19 @@ class AudioSys {
     this.windFilter.frequency.setTargetAtTime(300 + v * 900, this.t, 0.2);
   }
 
-  setChest(volume, pan) {
+  // Zumbido del cofre cercano según su nivel: el épico, más grave y lento;
+  // el legendario, más agudo, rápido y fuerte.
+  setChest(volume, pan, tier = 0) {
     if (!this.ctx) return;
-    this.chestGain.gain.setTargetAtTime(volume * 0.05, this.t, 0.1);
-    if (this.chestPan) this.chestPan.pan.setTargetAtTime(pan, this.t, 0.1);
+    const t = this.t;
+    if (tier !== this.chestTier && this.chestOsc) {
+      this.chestTier = tier;
+      const k = [1, 0.84, 1.19][tier] || 1;
+      for (const o of this.chestOsc) o.frequency.setTargetAtTime(o.baseF * k, t, 0.15);
+      this.chestLfo.frequency.setTargetAtTime([5, 3.2, 7.5][tier] || 5, t, 0.15);
+    }
+    this.chestGain.gain.setTargetAtTime(volume * 0.05 * ([1, 1.3, 1.6][tier] || 1), t, 0.1);
+    if (this.chestPan) this.chestPan.pan.setTargetAtTime(pan, t, 0.1);
   }
 
   setStorm(v) {

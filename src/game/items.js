@@ -211,6 +211,45 @@ export const BOT_WEAPONS = Object.keys(WEAPONS).filter((k) => !WEAPONS[k].explos
 const THROWABLE_WEIGHTS = { grenade: 30, sticky: 14, impulse: 18, c4: 8, smoke: 14, molotov: 14 };
 const FLOOR_RARITY = [42, 30, 17, 8, 2.6, 0.4, 0];
 const CHEST_RARITY = [12, 34, 32, 16, 5, 1, 0];
+const EPIC_RARITY = [0, 0, 0, 80, 18, 2, 0];
+const LEGENDARY_RARITY = [0, 0, 0, 0, 92, 8, 0];
+const SECOND_RARITY = [0, 0, 45, 38, 15, 2, 0];
+
+// Niveles de cofre. El de cada cofre en una partida sale de la semilla del
+// botín y de su índice (función pura: el cliente y el servidor llegan al
+// mismo resultado y nadie puede pedir un cofre legendario que no lo es).
+export const CHEST_NORMAL = 0;
+export const CHEST_EPIC = 1;
+export const CHEST_LEGENDARY = 2;
+export const CHEST_TIERS = [
+  { name: 'Cofre', color: '#ffd34d', hex: 0xffd34d },
+  { name: 'Cofre épico', color: '#c77dff', hex: 0xb65cff },
+  { name: 'Cofre legendario', color: '#ffb43a', hex: 0xffa22a },
+];
+// Probabilidad de cada nivel en un hueco de cofre normal y en las bóvedas.
+export const CHEST_ODDS = { legendary: 0.02, epic: 0.07, vaultLegendary: 0.4 };
+// Los cofres de las bóvedas van los primeros en la lista de cofres (ver
+// ContainerManager): el servidor, que no conoce el mapa, sólo trata como de
+// bóveda los índices por debajo de este número (hay 4 bóvedas de 3 cofres).
+export const MAX_VAULT_CHESTS = 12;
+
+// Número pseudoaleatorio en [0, 1) a partir de (semilla, índice).
+function hash01(seed, i) {
+  let h = ((seed >>> 0) ^ Math.imul((i | 0) + 0x632be5ab, 0x9e3779b1)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+// Nivel del cofre `index` en la partida de semilla `seed`. vault: es de una
+// bóveda (sólo cuenta en los primeros MAX_VAULT_CHESTS índices).
+export function chestTier(seed, index, vault = false) {
+  const r = hash01(seed, index);
+  if (vault && index >= 0 && index < MAX_VAULT_CHESTS) return r < CHEST_ODDS.vaultLegendary ? CHEST_LEGENDARY : CHEST_EPIC;
+  if (r < CHEST_ODDS.legendary) return CHEST_LEGENDARY;
+  return r < CHEST_ODDS.legendary + CHEST_ODDS.epic ? CHEST_EPIC : CHEST_NORMAL;
+}
 
 export function itemName(item) {
   if (!item) return '';
@@ -285,6 +324,64 @@ export function lootForChest(rng) {
   if (rng.chance(0.4)) out.push(rollThrowable(rng));
   if (rng.chance(0.3)) out.push(ammoFor(pickKey(rng, weaponWeights())));
   return out;
+}
+
+// Arma con una rareza mínima garantizada: sólo entre las armas del modo que
+// llegan a esa rareza (el rifle de caza, por ejemplo, no pasa de épico).
+// avoid: tipo que se evita si hay otra opción (segunda arma distinta).
+function rollWeaponMin(rng, rarityWeights, minR, avoid = null) {
+  const pool = weaponWeights();
+  const ok = {};
+  for (const k in pool) if (pool[k] > 0 && (WEAPONS[k].maxR ?? MYTHIC) >= minR && k !== avoid) ok[k] = pool[k];
+  const type = pickKey(rng, Object.keys(ok).length ? ok : pool);
+  return makeWeapon(type, Math.max(minR, rng.weighted(rarityWeights)));
+}
+
+// Curas buenas (escudo sobre todo) para los cofres épicos y legendarios.
+function rollGoodHeal(rng, legendary = false) {
+  const type = pickKey(rng, legendary
+    ? { shieldpot: 34, chugjug: 14, slurp: 20, medkit: 14, smallshield: 18 }
+    : { shieldpot: 30, smallshield: 26, medkit: 18, slurp: 14, chugjug: 4, bubble: 4, portafort: 4 });
+  return { kind: 'consumable', type, count: CONSUMABLES[type].pickup };
+}
+
+// Cofre épico: un arma épica o mejor seguro, escudo o cura buena y extras.
+export function lootForEpicChest(rng) {
+  const w = rollWeaponMin(rng, EPIC_RARITY, 3);
+  const out = [w, ammoFor(w.type, 2)];
+  if (rng.chance(0.4)) {
+    const w2 = rollWeaponMin(rng, SECOND_RARITY, 2, w.type);
+    out.push(w2, ammoFor(w2.type, 1.5));
+  }
+  out.push(rollGoodHeal(rng));
+  if (rng.chance(0.5)) out.push(rollGoodHeal(rng));
+  if (rng.chance(0.65)) out.push(rollThrowable(rng));
+  if (rng.chance(0.5)) out.push(ammoFor(pickKey(rng, weaponWeights()), 1.5));
+  return out;
+}
+
+// Cofre legendario: arma legendaria o mejor (a veces mítica), otra épica o
+// mejor, escudos, arrojadizos y munición.
+export function lootForLegendaryChest(rng) {
+  const w = rollWeaponMin(rng, LEGENDARY_RARITY, 4);
+  const w2 = rollWeaponMin(rng, EPIC_RARITY, 3, w.type);
+  const out = [w, ammoFor(w.type, 2.5), w2, ammoFor(w2.type, 1.5)];
+  out.push(rollGoodHeal(rng, true));
+  out.push({ kind: 'consumable', type: 'smallshield', count: CONSUMABLES.smallshield.pickup });
+  out.push(rollThrowable(rng));
+  if (rng.chance(0.5)) out.push(rollThrowable(rng));
+  if (rng.chance(0.25)) {
+    const type = rng.chance(0.5) ? 'launchpad' : 'grappler';
+    out.push({ kind: 'consumable', type, count: CONSUMABLES[type].pickup });
+  }
+  return out;
+}
+
+// Botín según el nivel del cofre (0 normal, 1 épico, 2 legendario).
+export function lootForTier(rng, tier = 0) {
+  if (tier === CHEST_LEGENDARY) return lootForLegendaryChest(rng);
+  if (tier === CHEST_EPIC) return lootForEpicChest(rng);
+  return lootForChest(rng);
 }
 
 export function lootForFloor(rng) {

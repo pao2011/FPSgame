@@ -158,6 +158,8 @@ export class CreativePanel {
               <button data-act="dummy">🎯 Colocar diana</button>
               <button data-act="clearDummies">Quitar dianas colocadas</button>
               <button data-act="chest">🧰 Colocar cofre</button>
+              <button data-act="chestEpic">🟣 Colocar cofre épico</button>
+              <button data-act="chestLegendary">🌟 Colocar cofre legendario</button>
               <button data-act="ammo">📦 Colocar caja de munición</button>
             </div>
           </div>
@@ -244,6 +246,8 @@ export class CreativePanel {
       dummy: () => t.spawnDummy(),
       clearDummies: () => g.dummies.clearExtra(),
       chest: () => t.spawnContainer('chest'),
+      chestEpic: () => t.spawnContainer('chest', 1),
+      chestLegendary: () => t.spawnContainer('chest', 2),
       ammo: () => t.spawnContainer('ammo'),
       clearBuilds: () => t.clearBuilds(),
       erase: () => {

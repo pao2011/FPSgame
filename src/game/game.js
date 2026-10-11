@@ -48,7 +48,7 @@ import { TouchControls, isTouchDevice, isMobileDevice } from '../ui/touch.js';
 import { Progress } from './progress.js';
 import { Creative } from './creative.js';
 import { MapRenderer } from '../ui/minimap.js';
-import { itemName, itemRarity, RARITIES, MATERIALS, AMMO, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon, stackDef, setLootPool } from './items.js';
+import { itemName, itemRarity, RARITIES, MATERIALS, AMMO, CONSUMABLES, PICKAXE, WEAPONS, makeWeapon, stackDef, setLootPool, CHEST_TIERS } from './items.js';
 import { mergeBinds, keyName } from '../core/binds.js';
 import { CreativePanel } from '../ui/creative.js';
 import { MODES, loadSettings, saveSettings } from './modes.js';
@@ -104,18 +104,23 @@ function makeHalfResAO(scene, camera, w, h) {
   ao.setSize = (sw, sh) => setSize(half(sw), half(sh));
   let hide = [];
   let n = 0;
+  // Efectos transparentes que se apuntan aquí al crearse (halos de los
+  // cofres): se ocultan siempre, sin esperar al siguiente recorrido.
+  const noAO = scene.userData.noAO || (scene.userData.noAO = new Set());
   ao._overrideVisibility = function () {
     if (--n <= 0) {
       n = 60;
       hide = [];
       scene.traverse((o) => {
-        if (o.isPoints || o.isLine || o.isLine2) hide.push(o);
+        if (o.isPoints || o.isLine || o.isLine2 || o.isSprite) hide.push(o);
       });
     }
-    for (const o of hide) {
-      if (!o.visible) continue;
-      o.visible = false;
-      this._visibilityCache.push(o);
+    for (const list of [hide, noAO]) {
+      for (const o of list) {
+        if (!o.visible) continue;
+        o.visible = false;
+        this._visibilityCache.push(o);
+      }
     }
   };
   return ao;
@@ -744,7 +749,7 @@ export class Game {
     const mode = { ...base, scoreLimit: info.scoreLimit || base.scoreLimit, online: true, onlineMatch: true };
     const net = new OnlineMatch(this, this.netClient, info);
     this.net = net;
-    this.prepareMatch(mode, { rng: new RNG(info.lootSeed), stormRng: new RNG(info.stormSeed), team: net.myTeam, online: true });
+    this.prepareMatch(mode, { rng: new RNG(info.lootSeed), stormRng: new RNG(info.stormSeed), tierSeed: info.lootSeed, team: net.myTeam, online: true });
     const me = info.ents.find((e) => e.id === info.you);
     this.player.name = me?.name || 'Tú';
     if (this.netClient.user?.outfit) this.player.setOutfit(this.netClient.user.outfit);
@@ -829,7 +834,7 @@ export class Game {
     this.pickups.clear();
     setLootPool(mode.lootPool);
     spawnFloorLoot(this, this.world.lootSpots, o.rng, !!o.online);
-    this.containers.reset(o.rng);
+    this.containers.reset(o.rng, o.tierSeed);
     this.dummies.reset();
     this.player.team = o.team;
     this.weather.start(o.stormRng, mode);
@@ -2012,7 +2017,8 @@ export class Game {
     }
     if (target.container) {
       const ct = target.container;
-      this.hud.setPrompt(`${E} ${ct.kind === 'chest' ? 'Abrir cofre' : 'Abrir caja de munición'}`);
+      const tn = ct.kind === 'chest' && ct.tier ? CHEST_TIERS[ct.tier] : null;
+      this.hud.setPrompt(`${E} ${ct.kind !== 'chest' ? 'Abrir caja de munición' : tn ? `Abrir <span style="color:${tn.color}">${tn.name.toLowerCase()}</span>` : 'Abrir cofre'}`);
       if (input.hit('interact')) {
         this.containers.open(ct, p);
         if (ct.kind === 'chest') {
@@ -2113,7 +2119,7 @@ export class Game {
       const v = Math.pow(1 - near.dist / 20, 2);
       tmpR.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
       const to = tmpV.copy(near.chest.pos).sub(p.pos).setY(0).normalize();
-      a.setChest(v, to.dot(tmpR));
+      a.setChest(v, to.dot(tmpR), near.chest.tier || 0);
     } else a.setChest(0, 0);
     a.setStorm(p.alive && p.mode !== 'bus' && this.storm.active && this.storm.isOutside(p.pos.x, p.pos.z) ? 1 : 0);
   }

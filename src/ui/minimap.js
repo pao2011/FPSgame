@@ -204,7 +204,38 @@ export class MapRenderer {
     if (p.mode === 'bus' || (game.bus.active && p.mode === 'lobby')) this.drawBusPath(ctx, game.bus, scale, ox, oy);
     this.drawMates(ctx, game, scale, ox, oy);
     this.drawMarks(ctx, game, scale, ox, oy);
+    this.drawChests(ctx, game, scale, ox, oy, metersShown * 0.5);
     this.drawPlayer(ctx, w / 2, h / 2, p.yaw, 6);
+  }
+
+  // Cofres legendarios sin abrir cerca (sólo en el minimapa): rombo dorado
+  // que late.
+  drawChests(ctx, game, scale, ox, oy, range) {
+    const list = game.containers?.special;
+    if (!list?.length) return;
+    const p = game.player.pos;
+    const pulse = 1 + Math.sin(performance.now() / 180) * 0.15;
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#3a2000';
+    for (const c of list) {
+      if (c.tier !== 2 || !c.active || c.opened || Math.abs(c.pos.x - p.x) > range || Math.abs(c.pos.z - p.z) > range) continue;
+      const x = ox + c.pos.x * scale, y = oy + c.pos.z * scale, r = 5 * pulse;
+      ctx.fillStyle = 'rgba(255,180,58,0.35)';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 1.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffc23d';
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r * 0.75, y);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r * 0.75, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Nombres de las zonas y lugares destacados que caen dentro del minimapa.

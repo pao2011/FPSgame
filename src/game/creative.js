@@ -512,11 +512,12 @@ export class Creative {
     g.dummies.add({ x: f.x, y: this.groundAt(f), z: f.z, yaw: p.yaw }, true);
   }
 
-  spawnContainer(kind) {
+  // tier: nivel del cofre (0 normal, 1 épico, 2 legendario)
+  spawnContainer(kind, tier = 0) {
     const g = this.game;
     const f = this.front(3);
     const p = g.player;
-    g.containers.add(kind, { x: f.x, y: this.groundAt(f), z: f.z, rotY: p.yaw + Math.PI });
+    g.containers.add(kind, { x: f.x, y: this.groundAt(f), z: f.z, rotY: p.yaw + Math.PI, tier });
   }
 
   prefab(id) {
